@@ -4,6 +4,7 @@ Created on Tue Dec  6 17:42:31 2011
 
 @author: proto
 """
+
 from copy import deepcopy, copy
 from bionetgen.atomizer.writer import bnglWriter as writer
 
@@ -1453,7 +1454,7 @@ class SBML2BNGL:
                 for molecule in translator[element[0]].molecules:
                     for component in molecule.components:
                         molecule.sort()
-                        componentList = Counter([(molecule.signature(freactionCenter))])
+                        componentList = Counter([molecule.signature(freactionCenter)])
                         for _ in range(0, int(element[1])):
                             rcomponent[
                                 (
@@ -1469,7 +1470,7 @@ class SBML2BNGL:
                 for molecule in translator[element[0]].molecules:
                     molecule.sort()
                     for component in molecule.components:
-                        componentList = Counter([(molecule.signature(breactionCenter))])
+                        componentList = Counter([molecule.signature(breactionCenter)])
                         for _ in range(0, int(element[1])):
                             pcomponent[
                                 (

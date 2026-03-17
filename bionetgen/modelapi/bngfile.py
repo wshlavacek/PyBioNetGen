@@ -7,7 +7,6 @@ from bionetgen.main import BioNetGen
 from bionetgen.core.exc import BNGFileError
 from bionetgen.core.utils.utils import find_BNG_path, run_command, ActionList
 
-
 # This allows access to the CLIs config setup
 app = BioNetGen()
 app.setup()

@@ -1651,7 +1651,7 @@ def main():
         metavar="FILE",
     )
 
-    (options, _) = parser.parse_args()
+    options, _ = parser.parse_args()
     # 144
     rdfArray = []
     # classificationArray = []

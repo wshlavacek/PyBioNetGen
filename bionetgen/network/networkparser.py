@@ -11,7 +11,6 @@ from bionetgen.network.blocks import (
     NetworkPopulationMapBlock,
 )
 
-
 # This allows access to the CLIs config setup
 app = BioNetGen()
 app.setup()
