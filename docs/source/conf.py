@@ -21,8 +21,8 @@ import sphinx_rtd_theme
 # -- Project information -----------------------------------------------------
 
 project = "PyBioNetGen"
-copyright = "2021, Ali Sinan Saglam"
-author = "Ali Sinan Saglam"
+copyright = "2026"
+author = "RuleWorld Team"
 
 # The short X.Y version
 version = "0.2.9"
