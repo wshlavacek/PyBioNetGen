@@ -4,7 +4,6 @@ import yaml, os
 
 from bionetgen.core.utils.logging import BNGLogger, log_level
 
-
 d = BNGDefaults()
 
 

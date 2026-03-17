@@ -2,15 +2,17 @@ from setuptools import setup, find_packages
 import sys, os, json, urllib, subprocess
 import shutil, tarfile, zipfile
 
+
 # Utility function for Mac idiosyncracy
-def get_folder (arch):
+def get_folder(arch):
     for fname in arch.getnames():
-        if (fname.startswith('._')):
+        if fname.startswith("._"):
             continue
         else:
             break
     print(fname)
-    return(fname)
+    return fname
+
 
 subprocess.check_call([sys.executable, "-m", "pip", "install", "numpy"])
 import urllib.request
@@ -199,5 +201,6 @@ setup(
         "python-libsbml",
         "pylru",
         "pyparsing",
+        "packaging",
     ],
 )

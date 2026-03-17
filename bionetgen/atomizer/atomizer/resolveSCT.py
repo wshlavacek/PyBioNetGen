@@ -113,9 +113,9 @@ class SCTSolver:
                     # lexicalDependencyGraph[element], oldDependency))
                 """
                 if self.database.dependencyGraph[element] != []:
-                    self.database.alternativeDependencyGraph[
-                        element
-                    ] = lexicalDependencyGraph[element]
+                    self.database.alternativeDependencyGraph[element] = (
+                        lexicalDependencyGraph[element]
+                    )
                 else:
                     logMess(
                         "INFO:LAE009",
@@ -1464,9 +1464,9 @@ class SCTSolver:
 
                     tmpCandidates = namingTmpCandidates
                     if loginformation:
-                        self.database.alternativeDependencyGraph[
-                            reactant
-                        ] = tmpCandidates
+                        self.database.alternativeDependencyGraph[reactant] = (
+                            tmpCandidates
+                        )
                 elif all(
                     sorted(x) == sorted(originalTmpCandidates[0])
                     for x in originalTmpCandidates
@@ -1568,9 +1568,9 @@ class SCTSolver:
                                 namingTmpCandidates = tmpCandidates
 
                             else:
-                                self.database.alternativeDependencyGraph[
-                                    reactant
-                                ] = namingtmpCandidates
+                                self.database.alternativeDependencyGraph[reactant] = (
+                                    namingtmpCandidates
+                                )
                                 logMess(
                                     "WARNING:SCT111",
                                     "{0}:stoichiometry analysis:{1}:conflicts with and naming conventions:{2}:Selecting lexical analysis".format(

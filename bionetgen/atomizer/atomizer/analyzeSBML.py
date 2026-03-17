@@ -6,7 +6,6 @@ Created on Thu Mar 22 13:11:38 2012
 """
 
 import enum
-import imp
 from pyparsing import Word, Suppress, Optional, alphanums, Group, ZeroOrMore
 import numpy as np
 import json
@@ -820,9 +819,9 @@ class SBMLAnalyzer:
                 # deal with modifications
                 if "modificationDefinition" in reactionDefinition_new:
                     # TODO: Change file format to be nicer?
-                    reactionDefinition[
-                        "modificationDefinition"
-                    ] = reactionDefinition_new["modificationDefinition"]
+                    reactionDefinition["modificationDefinition"] = (
+                        reactionDefinition_new["modificationDefinition"]
+                    )
                     # convert new JSON format to old data format
                 else:
                     reactionDefinition["modificationDefinition"] = {}

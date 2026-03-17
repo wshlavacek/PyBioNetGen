@@ -4,6 +4,7 @@ Created on Mon Nov 19 14:28:16 2012
 
 @author: proto
 """
+
 from lxml import etree
 from . import smallStructures as st
 from io import StringIO

@@ -4,6 +4,7 @@ Created on Wed May 30 11:44:17 2012
 
 @author: proto
 """
+
 from copy import deepcopy
 import difflib
 import hashlib

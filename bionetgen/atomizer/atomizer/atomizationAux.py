@@ -3,7 +3,6 @@ from bionetgen.atomizer.utils.util import pmemoize as memoize
 
 
 class CycleError(Exception):
-
     """Exception raised for errors in the input.
 
     Attributes:

@@ -128,11 +128,11 @@ class ModelLearning:
                             for x in reactionDictionary[moleculeName][component]
                             if x in componentPair
                         ]:
-                            correlationList[
-                                (component[0], componentComplement)
-                            ] = reactionDictionary[moleculeName][component][
-                                componentComplement
-                            ]
+                            correlationList[(component[0], componentComplement)] = (
+                                reactionDictionary[moleculeName][component][
+                                    componentComplement
+                                ]
+                            )
         return correlationList
 
     def getPairsFromMotif(self, motif1, motif2, excludedComponents):
@@ -146,10 +146,10 @@ class ModelLearning:
                     if len(self.motifMoleculeDict[element][molecule]) > 0:
                         for componentPair in self.motifMoleculeDict[element][molecule]:
                             if not any(x in excludedComponents for x in componentPair):
-                                correlationList[
-                                    componentPair
-                                ] = self.getParticipatingReactions(
-                                    molecule, componentPair, self.patternXreactions
+                                correlationList[componentPair] = (
+                                    self.getParticipatingReactions(
+                                        molecule, componentPair, self.patternXreactions
+                                    )
                                 )
                     moleculeCorrelationList[molecule].update(correlationList)
         return dict(moleculeCorrelationList)
@@ -283,10 +283,13 @@ class ModelLearning:
                                 localAnalysisFlag = True
                                 if not any(
                                     [
-                                        molecule
-                                        in database.prunnedDependencyGraph[x][0]
-                                        if len(database.prunnedDependencyGraph[x]) > 0
-                                        else molecule in x
+                                        (
+                                            molecule
+                                            in database.prunnedDependencyGraph[x][0]
+                                            if len(database.prunnedDependencyGraph[x])
+                                            > 0
+                                            else molecule in x
+                                        )
                                         for x in difference
                                     ]
                                 ):
@@ -372,9 +375,9 @@ class ModelLearning:
             "nullrequirement",
             "exclusion",
         ]:
-            motifDictionary[
-                frozenset([requirementClass, requirementClass])
-            ] = self.getPairsFromMotif(requirementClass, requirementClass, [])
+            motifDictionary[frozenset([requirementClass, requirementClass])] = (
+                self.getPairsFromMotif(requirementClass, requirementClass, [])
+            )
         return motifDictionary
 
     def getComplexReactions(self, threshold=2):
@@ -548,10 +551,10 @@ if __name__ == "__main__":
         "nullrequirement",
         "exclusion",
     ]:
-        motifDictionary[
-            (requirementClass, requirementClass)
-        ] = modelLearning.getPairsFromMotif(
-            requirementClass, requirementClass, ["imod"]
+        motifDictionary[(requirementClass, requirementClass)] = (
+            modelLearning.getPairsFromMotif(
+                requirementClass, requirementClass, ["imod"]
+            )
         )
         if len(motifDictionary[(requirementClass, requirementClass)]) > 0:
             print(

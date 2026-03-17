@@ -681,9 +681,9 @@ def getContextRequirements(
                             requirementDependencies[molecule][
                                 "doubleActivation"
                             ].append(relationship)
-                            processNodes[molecule]["doubleActivation"][
-                                relationship
-                            ] = "{0}_{1}".format(molecule, "_".join(label))
+                            processNodes[molecule]["doubleActivation"][relationship] = (
+                                "{0}_{1}".format(molecule, "_".join(label))
+                            )
                         elif not combination[0] and combination[1]:
                             if motif in ["ordering"]:
                                 requirementDependencies[molecule][motif].remove(
@@ -700,14 +700,14 @@ def getContextRequirements(
                             requirementDependencies[molecule]["reprordering"].append(
                                 relationship
                             )
-                            processNodes[molecule]["reprordering"][
-                                relationship
-                            ] = "{0}_{1}".format(molecule, "_".join(label))
+                            processNodes[molecule]["reprordering"][relationship] = (
+                                "{0}_{1}".format(molecule, "_".join(label))
+                            )
 
                         elif not combination[0] and not combination[1]:
-                            processNodes[molecule]["doubleRepression"][
-                                relationship
-                            ] = "{0}_{1}".format(molecule, "_".join(label))
+                            processNodes[molecule]["doubleRepression"][relationship] = (
+                                "{0}_{1}".format(molecule, "_".join(label))
+                            )
                             if motif == "repression":
                                 requirementDependencies[molecule][motif].remove(
                                     relationship

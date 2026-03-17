@@ -4,6 +4,7 @@ Created on Sun Mar 25 21:26:49 2012
 
 @author: proto
 """
+
 from __future__ import division
 import json
 from functools import partial
@@ -151,7 +152,6 @@ class TranslationException(Exception):
 
 
 class NumericStringParser(object):
-
     """
     Most of this code comes from the fourFn.py pyparsing example
 
@@ -319,6 +319,27 @@ def logMess(logType, logMessage):
         logger.critical(logMessage, loc=f"{__file__} : {module}.logMess()")
     elif level == "ERROR":
         logger.error(logMessage, loc=f"{__file__} : {module}.logMess()")
+
+
+def get_size(obj):
+    if hasattr(obj, "getSize"):
+        return obj.getSize()
+    elif hasattr(obj, "size"):
+        return obj.size()
+    elif hasattr(obj, "getLength"):
+        return obj.getLength()
+    else:
+        try:
+            return len(obj)
+        except:
+            return 0
+
+
+def get_item(obj, idx):
+    if hasattr(obj, "get"):
+        return obj.get(idx)
+    else:
+        return obj[idx]
 
 
 def testBNGFailure(fileName):

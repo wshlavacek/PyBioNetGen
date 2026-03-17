@@ -18,7 +18,7 @@ VERSION_BANNER = bng.defaults.banner
 
 # require version argparse action
 import argparse, sys
-from pkg_resources import packaging
+from packaging import version as packaging_version
 
 
 class requireAction(argparse.Action):
@@ -30,9 +30,9 @@ class requireAction(argparse.Action):
     def __call__(self, parser, namespace, values, option_string=None):
         setattr(namespace, self.dest, values)
         if values is not None:
-            req_version = packaging.version.parse(values)
+            req_version = packaging_version.parse(values)
             cver = bng.core.version.get_version()
-            cur_version = packaging.version.parse(cver)
+            cur_version = packaging_version.parse(cver)
             # if we don't meet requirement, warn user
             sys.tracebacklimit = 0
             if not (cur_version >= req_version):

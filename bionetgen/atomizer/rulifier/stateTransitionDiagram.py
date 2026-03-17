@@ -138,9 +138,9 @@ def getStateTransitionDiagram(
                 for species in centerUnit:
                     for element in species.split("."):
                         if element.split("(")[0].split("%")[0] not in sourceCounter:
-                            sourceCounter[
-                                element.split("(")[0].split("%")[0]
-                            ] = Counter()
+                            sourceCounter[element.split("(")[0].split("%")[0]] = (
+                                Counter()
+                            )
                             for component in moleculeDict[
                                 element.split("(")[0].split("%")[0]
                             ]:
@@ -158,9 +158,9 @@ def getStateTransitionDiagram(
                 for species in centerUnit:
                     for element in species.split("."):
                         if element.split("(")[0].split("%")[0] not in sourceCounter:
-                            sourceCounter[
-                                element.split("(")[0].split("%")[0]
-                            ] = Counter()
+                            sourceCounter[element.split("(")[0].split("%")[0]] = (
+                                Counter()
+                            )
                             for component in moleculeDict[
                                 element.split("(")[0].split("%")[0]
                             ]:
@@ -179,9 +179,9 @@ def getStateTransitionDiagram(
             for species in productUnit:
                 for element in species.split("."):
                     if element.split("(")[0].split("%")[0] not in destinationCounter:
-                        destinationCounter[
-                            element.split("(")[0].split("%")[0]
-                        ] = Counter()
+                        destinationCounter[element.split("(")[0].split("%")[0]] = (
+                            Counter()
+                        )
                         for component in moleculeDict[
                             element.split("(")[0].split("%")[0]
                         ]:

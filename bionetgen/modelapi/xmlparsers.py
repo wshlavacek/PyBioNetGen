@@ -301,7 +301,7 @@ class ParameterBlockXML(XMLObj):
                 # add content to line
                 name = b["@id"]
                 value = b["@value"]
-                # If "@expr" is set, it supercedes value 
+                # If "@expr" is set, it supercedes value
                 if "@expr" in b:
                     value = b["@expr"]
                 block.add_parameter(name, value)
@@ -701,14 +701,14 @@ class RuleBlockXML(XMLObj):
         if "Delete" in list_ops:
             del_op = list_ops["Delete"]
             if not isinstance(del_op, list):
-                del_op = [del_op] # Make sure del_op is list
-            dmvals= [op['@DeleteMolecules'] for op in del_op]
-            # All Delete operations in rule must have DeleteMolecules attribute or 
+                del_op = [del_op]  # Make sure del_op is list
+            dmvals = [op["@DeleteMolecules"] for op in del_op]
+            # All Delete operations in rule must have DeleteMolecules attribute or
             # it does not apply to the whole rule
-            if (all(dmvals)==1):
+            if all(dmvals) == 1:
                 rule_mod.type = "DeleteMolecules"
-                # JRF: I don't believe the id of the specific op rule_mod is currently used 
-                #rule_mod.id = op["@id"]
+                # JRF: I don't believe the id of the specific op rule_mod is currently used
+                # rule_mod.id = op["@id"]
         elif "ChangeCompartment" in list_ops:
             move_op = list_ops["ChangeCompartment"]
             if not isinstance(move_op, list):

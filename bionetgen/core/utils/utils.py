@@ -558,25 +558,49 @@ def find_BNG_path(BNGPATH=None):
     # in the PATH variable. Solution: set os.environ BNGPATH
     # and make everything use that route
 
-    # Let's keep up the idea we pull this path from the environment
-    if BNGPATH is None:
-        try:
-            BNGPATH = os.environ["BNGPATH"]
-        except:
-            pass
-    # if still none, try pulling it from cmd line
-    if BNGPATH is None:
-        bngexec = "BNG2.pl"
-        if test_bngexec(bngexec):
-            # print("BNG2.pl seems to be working")
-            # get the source of BNG2.pl
-            BNGPATH = spawn.find_executable("BNG2.pl")
-            BNGPATH, _ = os.path.split(BNGPATH)
-    else:
-        bngexec = os.path.join(BNGPATH, "BNG2.pl")
-        if not test_bngexec(bngexec):
-            RuntimeError("BNG2.pl is not working")
-    return BNGPATH, bngexec
+    def _try_path(candidate_path):
+        if candidate_path is None:
+            return None
+        # candidate can be either a directory or a direct path to BNG2.pl
+        if os.path.basename(candidate_path).lower() == "bng2.pl":
+            candidate_dir = os.path.dirname(candidate_path)
+            candidate_exec = candidate_path
+        else:
+            candidate_dir = candidate_path
+            candidate_exec = os.path.join(candidate_path, "BNG2.pl")
+        if test_bngexec(candidate_exec):
+            return candidate_dir, candidate_exec
+        return None
+
+    # 1) Prefer explicit argument
+    tried = []
+    if BNGPATH is not None:
+        tried.append(BNGPATH)
+        hit = _try_path(BNGPATH)
+        if hit is not None:
+            return hit
+
+    # 2) Environment variable
+    env_path = os.environ.get("BNGPATH")
+    if env_path:
+        tried.append(env_path)
+        hit = _try_path(env_path)
+        if hit is not None:
+            return hit
+
+    # 3) On PATH
+    bng_on_path = spawn.find_executable("BNG2.pl")
+    if bng_on_path:
+        tried.append(bng_on_path)
+        hit = _try_path(bng_on_path)
+        if hit is not None:
+            return hit
+
+    # If we get here, BNG2.pl is not available. Some users may only need
+    # basic BNGL parsing behavior and may not have BioNetGen installed.
+    # Return (None, None) so callers can either raise a clearer error or
+    # fall back to a minimal in-Python parse.
+    return None, None
 
 
 def test_perl(app=None, perl_path=None):
@@ -621,7 +645,7 @@ def test_bngexec(bngexec):
         return False
 
 
-def run_command(command, suppress=True, timeout=None):
+def run_command(command, suppress=True, timeout=None, cwd=None):
     """
     A convenience function to run a given command. The command should be
     given as a list of values e.g. ['command', 'arg1', 'arg2'] etc.
@@ -638,11 +662,12 @@ def run_command(command, suppress=True, timeout=None):
                 timeout=timeout,
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
+                cwd=cwd,
             )
             return rc.returncode, rc
         else:
             # I am unsure how to do both timeout and the live polling of stdo
-            rc = subprocess.run(command, timeout=timeout, capture_output=True)
+            rc = subprocess.run(command, timeout=timeout, capture_output=True, cwd=cwd)
             return rc.returncode, rc
     else:
         if suppress:
@@ -651,11 +676,14 @@ def run_command(command, suppress=True, timeout=None):
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
                 bufsize=-1,
+                cwd=cwd,
             )
             rc = process.wait()
             return rc, process
         else:
-            process = subprocess.Popen(command, stdout=subprocess.PIPE, encoding="utf8")
+            process = subprocess.Popen(
+                command, stdout=subprocess.PIPE, encoding="utf8", cwd=cwd
+            )
             out = []
             while True:
                 output = process.stdout.readline()
@@ -664,6 +692,6 @@ def run_command(command, suppress=True, timeout=None):
                 if output:
                     o = output.strip()
                     out.append(o)
-                    print(o)
+                    # print(o) # Removed to avoid bottleneck in tests
             rc = process.wait()
             return rc, out

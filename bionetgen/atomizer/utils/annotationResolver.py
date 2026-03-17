@@ -38,15 +38,15 @@ def resolveAnnotationHelper(annotation):
         resolveAnnotation.k = bioservices.kegg.KEGG(verbose=False)
         resolveAnnotation.qg = bioservices.QuickGO(verbose=False)
         resolveAnnotation.t = bioservices.Taxon()
-        resolveAnnotation.db[
+        resolveAnnotation.db["http://identifiers.org/uniprot/P62988"] = (
             "http://identifiers.org/uniprot/P62988"
-        ] = "http://identifiers.org/uniprot/P62988"
-        resolveAnnotation.db[
+        )
+        resolveAnnotation.db["http://identifiers.org/uniprot/P06842"] = (
             "http://identifiers.org/uniprot/P06842"
-        ] = "http://identifiers.org/uniprot/P06842"
-        resolveAnnotation.db[
-            "http://identifiers.org/uniprot/P07006"
-        ] = "http://identifiers.org/uniprot/P06842"
+        )
+        resolveAnnotation.db["http://identifiers.org/uniprot/P07006"] = (
+            "http://identifiers.org/uniprot/P06842"
+        )
 
     if annotation in resolveAnnotation.db:
         return annotation, resolveAnnotation.db[annotation]
