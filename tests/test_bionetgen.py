@@ -97,7 +97,8 @@ def test_bionetgen_all_model_loading():
             success += 1
             mstr = str(m)
             succ.append(model)
-        except:
+        except Exception as e:
+            print(e)
             print("can't load model {}".format(model))
             fails += 1
             fail.append(model)
@@ -155,7 +156,8 @@ def test_model_running_CLI():
             model = os.path.split(model)
             model = model[1]
             succ.append(model)
-        except:
+        except Exception as e:
+            print(e)
             print("can't run model {}".format(model))
             fails += 1
             model = os.path.split(model)
@@ -185,7 +187,8 @@ def test_model_running_lib():
             model = os.path.split(model)
             model = model[1]
             succ.append(model)
-        except:
+        except Exception as e:
+            print(e)
             print("can't run model {}".format(model))
             fails += 1
             model = os.path.split(model)
@@ -297,7 +300,8 @@ def test_pattern_canonicalization():
             if pat1_obj != pat2_obj:
                 res = False
                 break
-        except:
+        except Exception as e:
+            print(e)
             res = False
             break
     # assert that everything matched up

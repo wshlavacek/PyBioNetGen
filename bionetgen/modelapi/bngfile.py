@@ -231,6 +231,9 @@ class BNGFile:
                     open_file.seek(0)
                     return True
             elif xml_type == "sbml":
+                if self.bngexec is None:
+                    print("SBML generation requires BNG2.pl (BioNetGen) to be installed.")
+                    return False
                 command = ["perl", self.bngexec, "temp.bngl"]
                 rc, _ = run_command(command, suppress=self.suppress)
                 if rc != 0:

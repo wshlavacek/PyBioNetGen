@@ -6,7 +6,7 @@ Created on Fri Nov 14 18:17:20 2014
 """
 
 import libsbml
-from util import logMess
+from util import logMess, get_size, get_item
 from sbml2bngl import SBML2BNGL as SBML2BNGL
 import structures
 import atomizer.resolveSCT as mc
@@ -128,15 +128,15 @@ def parseAnnotation(annotation):
     speciesAnnotationDict = defaultdict(list)
     lista = libsbml.CVTermList()
     libsbml.RDFAnnotationParser.parseRDFAnnotation(annotation, lista)
-    for idx in range(0, lista.getSize()):
-        for idx2 in range(0, lista.get(idx).getResources().getLength()):
-            resource = lista.get(idx).getResources().getValue(idx2)
+    for idx in range(0, get_size(lista)):
+        for idx2 in range(0, get_size(get_item(lista, idx).getResources())):
+            resource = get_item(lista, idx).getResources().getValue(idx2)
 
-            qualifierType = lista.get(idx).getQualifierType()
+            qualifierType = get_item(lista, idx).getQualifierType()
             qualifierDescription = (
-                bioqual[lista.get(idx).getBiologicalQualifierType()]
+                bioqual[get_item(lista, idx).getBiologicalQualifierType()]
                 if qualifierType
-                else modqual[lista.get(idx).getModelQualifierType()]
+                else modqual[get_item(lista, idx).getModelQualifierType()]
             )
             speciesAnnotationDict[qualifierDescription].append(resource)
     return speciesAnnotationDict

@@ -50,6 +50,10 @@ class BNGCLI:
             # ensure correct path to the input file
             self.inp_path = os.path.abspath(self.inp_file)
         # pull other arugments out
+        if log_file is not None:
+            self.log_file = os.path.abspath(log_file)
+        else:
+            self.log_file = None
         self._set_output(output)
         # sedml_file = sedml
         # Resolve BioNetGen executable path. Historically this code assumed
@@ -73,12 +77,12 @@ class BNGCLI:
             self.old_bngpath = os.environ["BNGPATH"]
         else:
             self.old_bngpath = None
-        os.environ["BNGPATH"] = self.bngpath
+        if self.bngpath is not None:
+            os.environ["BNGPATH"] = self.bngpath
         self.result = None
         self.stdout = "PIPE"
         self.stderr = "STDOUT"
         self.suppress = suppress
-        self.log_file = log_file
         self.timeout = timeout
 
     def _set_output(self, output):
@@ -86,13 +90,9 @@ class BNGCLI:
             "Setting up output path", loc=f"{__file__} : BNGCLI._set_output()"
         )
         # setting up output area
-        self.output = output
-        if os.path.isdir(output):
-            # path exists, let's go there
-            os.chdir(output)
-        else:
-            os.mkdir(output)
-            os.chdir(output)
+        self.output = os.path.abspath(output)
+        if not os.path.isdir(self.output):
+            os.makedirs(self.output, exist_ok=True)
 
     def run(self):
         self.logger.debug("Running", loc=f"{__file__} : BNGCLI.run()")
@@ -102,11 +102,14 @@ class BNGCLI:
         if self.bng_exec is None:
             from bionetgen.core.tools import BNGResult
 
-            self.result = BNGResult(os.getcwd())
+            self.result = BNGResult(self.output)
             self.result.process_return = 0
             self.result.output = []
             if self.old_bngpath is not None:
                 os.environ["BNGPATH"] = self.old_bngpath
+            else:
+                if "BNGPATH" in os.environ:
+                    del os.environ["BNGPATH"]
             return
 
         from bionetgen.core.utils.utils import run_command
@@ -127,7 +130,7 @@ class BNGCLI:
             self.logger.debug(
                 "Writing the model to a file", loc=f"{__file__} : BNGCLI.run()"
             )
-            write_to = self.inp_file.model_name + ".bngl"
+            write_to = os.path.join(self.output, self.inp_file.model_name + ".bngl")
             write_to = os.path.abspath(write_to)
             if os.path.isfile(write_to):
                 self.logger.warning(
@@ -144,7 +147,9 @@ class BNGCLI:
             fname = fname.replace(".bngl", "")
             command = ["perl", self.bng_exec, self.inp_path]
         self.logger.debug("Running command", loc=f"{__file__} : BNGCLI.run()")
-        rc, out = run_command(command, suppress=self.suppress, timeout=self.timeout)
+        rc, out = run_command(
+            command, suppress=self.suppress, timeout=self.timeout, cwd=self.output
+        )
         if self.log_file is not None:
             self.logger.debug("Setting up log file", loc=f"{__file__} : BNGCLI.run()")
             # test if we were given a path
@@ -166,6 +171,9 @@ class BNGCLI:
                 # and we keep it as is
                 full_log_path = self.log_file
             self.logger.debug("Writing log file", loc=f"{__file__} : BNGCLI.run()")
+            log_parent = os.path.dirname(os.path.abspath(full_log_path))
+            if not os.path.exists(log_parent):
+                os.makedirs(log_parent, exist_ok=True)
             with open(full_log_path, "w") as f:
                 f.write("\n".join(out))
         if rc == 0:
@@ -175,18 +183,24 @@ class BNGCLI:
             from bionetgen.core.tools import BNGResult
 
             # load in the result
-            self.result = BNGResult(os.getcwd())
+            self.result = BNGResult(self.output)
             self.result.process_return = rc
             self.result.output = out
             # set BNGPATH back
             if self.old_bngpath is not None:
                 os.environ["BNGPATH"] = self.old_bngpath
+            else:
+                if "BNGPATH" in os.environ:
+                    del os.environ["BNGPATH"]
         else:
             self.logger.error("Command failed to run", loc=f"{__file__} : BNGCLI.run()")
             self.result = None
             # set BNGPATH back
             if self.old_bngpath is not None:
                 os.environ["BNGPATH"] = self.old_bngpath
+            else:
+                if "BNGPATH" in os.environ:
+                    del os.environ["BNGPATH"]
             if hasattr(out, "stdout"):
                 if out.stdout is not None:
                     stdout_str = out.stdout.decode("utf-8")

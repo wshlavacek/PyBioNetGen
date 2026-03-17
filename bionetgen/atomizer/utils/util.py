@@ -321,6 +321,27 @@ def logMess(logType, logMessage):
         logger.error(logMessage, loc=f"{__file__} : {module}.logMess()")
 
 
+def get_size(obj):
+    if hasattr(obj, "getSize"):
+        return obj.getSize()
+    elif hasattr(obj, "size"):
+        return obj.size()
+    elif hasattr(obj, "getLength"):
+        return obj.getLength()
+    else:
+        try:
+            return len(obj)
+        except:
+            return 0
+
+
+def get_item(obj, idx):
+    if hasattr(obj, "get"):
+        return obj.get(idx)
+    else:
+        return obj[idx]
+
+
 def testBNGFailure(fileName):
     with open(os.devnull, "w") as f:
         result = call(["bngdev", fileName], stdout=f)

@@ -6,7 +6,6 @@ Created on Thu Mar 22 13:11:38 2012
 """
 
 import enum
-import imp
 from pyparsing import Word, Suppress, Optional, alphanums, Group, ZeroOrMore
 import numpy as np
 import json

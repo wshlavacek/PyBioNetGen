@@ -7,6 +7,7 @@ Created on Fri Nov 14 18:17:20 2014
 
 import libsbml
 from sbml2bngl import SBML2BNGL as SBML2BNGL
+from .util import get_size, get_item
 import structures
 import atomizer.moleculeCreation as mc
 import os
@@ -96,14 +97,14 @@ class AnnotationExtractor:
         lista = libsbml.CVTermList()
         libsbml.RDFAnnotationParser.parseRDFAnnotation(annotation, lista)
         # print '----',species.getName()
-        for idx in range(0, lista.getSize()):
-            for idx2 in range(0, lista.get(idx).getResources().getLength()):
-                resource = lista.get(idx).getResources().getValue(idx2)
-                qualifierType = lista.get(idx).getQualifierType()
+        for idx in range(0, get_size(lista)):
+            for idx2 in range(0, get_size(get_item(lista, idx).getResources())):
+                resource = get_item(lista, idx).getResources().getValue(idx2)
+                qualifierType = get_item(lista, idx).getQualifierType()
                 qualifierDescription = (
-                    bioqual[lista.get(idx).getBiologicalQualifierType()]
+                    bioqual[get_item(lista, idx).getBiologicalQualifierType()]
                     if qualifierType
-                    else modqual[lista.get(idx).getModelQualifierType()]
+                    else modqual[get_item(lista, idx).getModelQualifierType()]
                 )
                 speciesAnnotationDict[qualifierDescription].append(resource)
         return speciesAnnotationDict
@@ -294,20 +295,20 @@ class AnnotationExtractor:
         lista = libsbml.CVTermList()
         libsbml.RDFAnnotationParser.parseRDFAnnotation(annotationXML, lista)
         modelAnnotations = []
-        for idx in range(lista.getSize()):
-            for idx2 in range(lista.get(idx).getResources().getLength()):
-                if lista.get(idx).getQualifierType():
+        for idx in range(get_size(lista)):
+            for idx2 in range(get_size(get_item(lista, idx).getResources())):
+                if get_item(lista, idx).getQualifierType():
                     modelAnnotations.append(
                         [
-                            bioqual[lista.get(idx).getBiologicalQualifierType()],
-                            lista.get(idx).getResources().getValue(idx2),
+                            bioqual[get_item(lista, idx).getBiologicalQualifierType()],
+                            get_item(lista, idx).getResources().getValue(idx2),
                         ]
                     )
                 else:
                     modelAnnotations.append(
                         [
-                            modqual[lista.get(idx).getModelQualifierType()],
-                            lista.get(idx).getResources().getValue(idx2),
+                            modqual[get_item(lista, idx).getModelQualifierType()],
+                            get_item(lista, idx).getResources().getValue(idx2),
                         ]
                     )
 

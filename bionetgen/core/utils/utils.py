@@ -645,7 +645,7 @@ def test_bngexec(bngexec):
         return False
 
 
-def run_command(command, suppress=True, timeout=None):
+def run_command(command, suppress=True, timeout=None, cwd=None):
     """
     A convenience function to run a given command. The command should be
     given as a list of values e.g. ['command', 'arg1', 'arg2'] etc.
@@ -662,11 +662,12 @@ def run_command(command, suppress=True, timeout=None):
                 timeout=timeout,
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
+                cwd=cwd,
             )
             return rc.returncode, rc
         else:
             # I am unsure how to do both timeout and the live polling of stdo
-            rc = subprocess.run(command, timeout=timeout, capture_output=True)
+            rc = subprocess.run(command, timeout=timeout, capture_output=True, cwd=cwd)
             return rc.returncode, rc
     else:
         if suppress:
@@ -675,11 +676,14 @@ def run_command(command, suppress=True, timeout=None):
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
                 bufsize=-1,
+                cwd=cwd,
             )
             rc = process.wait()
             return rc, process
         else:
-            process = subprocess.Popen(command, stdout=subprocess.PIPE, encoding="utf8")
+            process = subprocess.Popen(
+                command, stdout=subprocess.PIPE, encoding="utf8", cwd=cwd
+            )
             out = []
             while True:
                 output = process.stdout.readline()
@@ -688,6 +692,6 @@ def run_command(command, suppress=True, timeout=None):
                 if output:
                     o = output.strip()
                     out.append(o)
-                    print(o)
+                    # print(o) # Removed to avoid bottleneck in tests
             rc = process.wait()
             return rc, out

@@ -8,6 +8,7 @@ Created on Mon Jun 17 11:19:37 2013
 import libsbml
 import json
 from optparse import OptionParser
+from .utils.util import get_size
 
 
 def factorial(x):
@@ -114,7 +115,7 @@ time	 second	 second
         compartmentList = {}
         for compartment in self.model.getListOfCompartments():
             name = compartment.getId()
-            size = compartment.getSize()
+            size = get_size(compartment)
             outside = compartment.getOutside()
             dimensions = compartment.getSpatialDimensions()
             compartmentList[name] = [dimensions, size, outside]

@@ -7,7 +7,6 @@ Created on Fri Mar  1 16:14:42 2013
 
 #!/usr/bin/env python
 from collections import OrderedDict
-from telnetlib import IP
 import time
 import libsbml
 import bionetgen.atomizer.writer.bnglWriter as writer
