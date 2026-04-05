@@ -24,9 +24,17 @@ PyBioNetGen comes with a command line interface (CLI), based on [cement framewor
 
 The library side provides a simple BNGL model runner as well as a model object that can be manipulated and used to get libRoadRunner simulators for the model. 
 
+**BNGsim integration:** When [BNGsim](https://github.com/RuleWorld/bngsim) is installed in the same environment (`pip install bngsim`), PyBioNetGen automatically uses it for high-performance in-process simulation, replacing the subprocess-based `run_network` and `NFsim` backends. BNGsim also enables direct simulation of SBML (`.xml`) and Antimony (`.ant`) files in addition to BNGL. BNGsim is optional — without it, PyBioNetGen works exactly as before.
+
+**Supported input formats:**
+- `.bngl` — BioNetGen Language (always processed by BNG2.pl, then simulated via BNGsim or run_network)
+- `.net` — BioNetGen network files (direct simulation via BNGsim or run_network)
+- `.xml` — SBML files (requires BNGsim) or BioNetGen XML files (for network-free simulation)
+- `.ant` — Antimony files (requires BNGsim)
+
 PyBioNetGen also includes a heavily updated version of [Atomizer](https://github.com/RuleWorld/atomizer) which allows for conversion of SBML models into BNGL format. Atomizer can also be used to automatically try to infer the internal structure of SBML species during the conversion, see [here](https://pybionetgen.readthedocs.io/en/latest/atomizer.html) for more information. Please note that this version of Atomizer is the main supported version and the version distributed with BioNetGen will eventually be deprecated. 
 
-The model object requires a system call to BioNetGen so the initialization can be relatively costly, in case you would like to use it for parallel applications, use the [libRoadRunner](http://libroadrunner.org/) simulator instead, unless you are doing NFSim simulations.
+The model object requires a system call to BioNetGen so the initialization can be relatively costly, in case you would like to use it for parallel applications, use the [libRoadRunner](http://libroadrunner.org/) simulator or BNGsim instead, unless you are doing NFSim simulations.
 
 ### Usage 
 
@@ -35,7 +43,11 @@ Sample CLI usage
 ```
 $ bionetgen -h # help on every subcommand
 $ bionetgen run -h # help on run subcommand
-$ bionetgen run -i mymodel.bngl -o output_folder # this runs the model in output_folder
+$ bionetgen run -i mymodel.bngl -o output_folder # run a BNGL model
+$ bionetgen run -i mymodel.net -o output_folder # run a .net file directly
+$ bionetgen run -i mymodel.xml --format sbml -o output_folder # run an SBML model (requires BNGsim)
+$ bionetgen run -i mymodel.bngl --no-bngsim -o output_folder # force subprocess path
+$ bionetgen run -i mymodel.net --method ssa -o output_folder # use SSA method via BNGsim
 ```
 
 Sample library usage
@@ -43,11 +55,21 @@ Sample library usage
 ```
 import bionetgen 
 
+# Check if BNGsim is available
+print(bionetgen.BNGSIM_AVAILABLE)
+
 ret = bionetgen.run("/path/to/mymodel.bngl", out="/path/to/output/folder")
 # out keyword is optional, if not given, 
 # generated files will be deleted after running
 res = ret.results['mymodel']
 # res will be a numpy record array of your gdat results
+
+# Run with explicit simulator and method options
+ret = bionetgen.run("model.net", out="output/", simulator="bngsim", method="ode")
+
+# Run SBML or Antimony files (requires BNGsim)
+ret = bionetgen.run("model.xml", out="output/", format="sbml")
+ret = bionetgen.run("model.ant", out="output/")
 
 model = bionetgen.bngmodel("/path/to/mymodel.bngl")
 # model will be a python object that contains all model information
