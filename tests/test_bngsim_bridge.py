@@ -21,6 +21,7 @@ from bionetgen.core.tools.bngsim_bridge import (
     FORMAT_SBML,
     _normalize_method,
     _parse_protocol_block,
+    _parse_simulate_params,
     _parse_table_functions,
     _resolve_sample_times,
     _sniff_xml_format,
@@ -598,3 +599,113 @@ class TestParseTableFunctions:
     def test_nonexistent_file(self):
         specs = _parse_table_functions("/nonexistent/path/model.bngl")
         assert specs == []
+
+
+# ─── _parse_simulate_params ──────────────────────────────────────
+
+
+class _FakeAction:
+    """Lightweight stand-in for bionetgen.modelapi.structs.Action."""
+
+    def __init__(self, action_type, args):
+        self.type = action_type
+        self.name = action_type
+        self.args = args
+
+
+class TestParseSimulateParams:
+    def test_simulate_ode_defaults(self):
+        a = _FakeAction("simulate_ode", {})
+        sp = _parse_simulate_params(a)
+        assert sp["method"] == "ode"
+        assert sp["t_start"] == 0.0
+        assert sp["t_end"] == 100.0
+        assert sp["n_steps"] == 100
+        assert sp["poplevel"] is None
+        assert sp["gml"] is None
+        assert sp["sample_times"] is None
+
+    def test_simulate_ssa_no_poplevel(self):
+        a = _FakeAction("simulate_ssa", {})
+        sp = _parse_simulate_params(a)
+        assert sp["method"] == "ssa"
+        assert sp["poplevel"] is None
+
+    def test_simulate_ssa_with_poplevel_promotes_to_psa(self):
+        """BNG2.pl compat: simulate_ssa + poplevel → psa."""
+        a = _FakeAction("simulate_ssa", {"poplevel": "200"})
+        sp = _parse_simulate_params(a)
+        assert sp["method"] == "psa"
+        assert sp["poplevel"] == 200.0
+
+    def test_simulate_with_method_psa(self):
+        """simulate({method=>"psa"}) should work directly."""
+        a = _FakeAction("simulate", {"method": "psa", "poplevel": "500"})
+        sp = _parse_simulate_params(a)
+        assert sp["method"] == "psa"
+        assert sp["poplevel"] == 500.0
+
+    def test_simulate_psa_default_poplevel(self):
+        a = _FakeAction("simulate", {"method": "psa"})
+        sp = _parse_simulate_params(a)
+        assert sp["method"] == "psa"
+        assert sp["poplevel"] == 100.0
+
+    def test_simulate_nf(self):
+        a = _FakeAction("simulate_nf", {"t_end": "50", "n_steps": "200"})
+        sp = _parse_simulate_params(a)
+        assert sp["method"] == "nf"
+        assert sp["t_end"] == 50.0
+        assert sp["n_steps"] == 200
+
+    def test_gml_parsed(self):
+        a = _FakeAction("simulate_nf", {"gml": "100000"})
+        sp = _parse_simulate_params(a)
+        assert sp["gml"] == 100000
+
+    def test_sample_times_parsed(self):
+        a = _FakeAction("simulate_ode", {"sample_times": "[0,5,10,50,100]"})
+        sp = _parse_simulate_params(a)
+        assert sp["sample_times"] == [0.0, 5.0, 10.0, 50.0, 100.0]
+
+    def test_sample_times_suppressed_by_n_steps(self):
+        a = _FakeAction("simulate_ode", {
+            "sample_times": "[0,5,10,50,100]",
+            "n_steps": "50",
+        })
+        sp = _parse_simulate_params(a)
+        assert sp["sample_times"] is None
+        assert sp["n_steps"] == 50
+
+    def test_continue_flag(self):
+        a = _FakeAction("simulate_ode", {"continue": "1"})
+        sp = _parse_simulate_params(a)
+        assert sp["continue_flag"] is True
+
+    def test_tolerances_and_seed(self):
+        a = _FakeAction("simulate_ode", {
+            "atol": "1e-10", "rtol": "1e-8", "seed": "123",
+        })
+        sp = _parse_simulate_params(a)
+        assert sp["atol"] == 1e-10
+        assert sp["rtol"] == 1e-8
+        assert sp["seed"] == 123
+
+    def test_print_functions(self):
+        a = _FakeAction("simulate_ode", {"print_functions": "1"})
+        sp = _parse_simulate_params(a)
+        assert sp["print_functions"] is True
+
+    def test_stop_if(self):
+        a = _FakeAction("simulate_ode", {"stop_if": '"A > 100"'})
+        sp = _parse_simulate_params(a)
+        assert sp["stop_if"] == "A > 100"
+
+    def test_unrecognized_action_returns_none(self):
+        a = _FakeAction("parameter_scan", {"method": "ode"})
+        assert _parse_simulate_params(a) is None
+
+    def test_suffix(self):
+        a = _FakeAction("simulate_ode", {"suffix": '"my_run"'})
+        sp = _parse_simulate_params(a)
+        assert sp["suffix"] == "my_run"
