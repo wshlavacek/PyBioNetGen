@@ -296,6 +296,7 @@ def run_nfsim(
     seed=None,
     gml=None,
     model_name=None,
+    param_overrides=None,
 ):
     """Run a network-free simulation using BNGsim's NfsimSimulator.
 
@@ -318,6 +319,10 @@ def run_nfsim(
         Global molecule limit.
     model_name : str or None
         Base name for output files. Derived from xml_path if None.
+    param_overrides : dict or None
+        Parameter name → value overrides to apply via
+        ``NfsimSimulator.set_param()`` before initialization.
+        Used to propagate ``setParameter`` calls to NFsim.
 
     Returns
     -------
@@ -349,6 +354,15 @@ def run_nfsim(
         nfsim = NfsimSimulator(xml_path)
         if gml is not None:
             nfsim.set_molecule_limit(int(gml))
+
+        # Apply parameter overrides from setParameter actions
+        if param_overrides:
+            for pname, pval in param_overrides.items():
+                try:
+                    nfsim.set_param(pname, float(pval))
+                except Exception:
+                    pass  # param may not exist in NFsim model
+
         nfsim.initialize(seed)
         core_result = nfsim.simulate(t_span[0], t_span[1], n_points)
         result = bngsim.Result(core_result)
@@ -1049,6 +1063,7 @@ def _run_protocol(
 
 def _run_nfsim_scan(
     xml_path, action, output_dir, model_name, is_bifurcate=False,
+    param_overrides=None,
 ):
     """Execute a parameter_scan with NFsim: fresh NfsimSimulator per scan point.
 
@@ -1078,6 +1093,13 @@ def _run_nfsim_scan(
         try:
             if gml is not None:
                 nfsim.set_molecule_limit(gml)
+            # Apply parameter overrides from prior setParameter actions
+            if param_overrides:
+                for pname, pval in param_overrides.items():
+                    try:
+                        nfsim.set_param(pname, float(pval))
+                    except Exception:
+                        pass
             if param_name:
                 try:
                     nfsim.set_param(param_name, float(value))
@@ -1110,7 +1132,7 @@ def _run_nfsim_scan(
 def _run_parameter_scan_bngsim(
     bngsim_model, action, output_dir, model_name, is_bifurcate=False,
     codegen_so="", net_path=None, species_initializers=None,
-    protocol_lines=None, xml_path=None,
+    protocol_lines=None, xml_path=None, nf_param_overrides=None,
 ):
     """Execute a parameter_scan or bifurcate action via BNGsim.
 
@@ -1150,6 +1172,7 @@ def _run_parameter_scan_bngsim(
         return _run_nfsim_scan(
             xml_path, action, output_dir, model_name,
             is_bifurcate=is_bifurcate,
+            param_overrides=nf_param_overrides,
         )
 
     if is_protocol:
@@ -1303,6 +1326,10 @@ def _execute_bngsim_actions(
     current_poplevel = None
     # Track model time for continue=>1 support
     model_time = 0.0
+    # Track parameter overrides for NFsim propagation.
+    # NFsim loads from XML and doesn't share state with bngsim_model,
+    # so setParameter changes must be explicitly forwarded.
+    nf_param_overrides = {}
 
     # Codegen: compile ODE RHS once, reuse for all ODE simulations.
     # Set BIONETGEN_NO_CODEGEN=1 to disable.
@@ -1391,6 +1418,7 @@ def _execute_bngsim_actions(
                     seed=seed,
                     gml=gml,
                     model_name=out_name,
+                    param_overrides=nf_param_overrides or None,
                 )
             else:
                 # Rebuild simulator if method/poplevel changed, or if
@@ -1456,6 +1484,7 @@ def _execute_bngsim_actions(
                 is_bifurcate=False, codegen_so=codegen_so, net_path=net_path,
                 species_initializers=species_initializers,
                 protocol_lines=protocol_lines, xml_path=xml_path,
+                nf_param_overrides=nf_param_overrides or None,
             )
             continue
 
@@ -1466,17 +1495,21 @@ def _execute_bngsim_actions(
                 is_bifurcate=True, codegen_so=codegen_so, net_path=net_path,
                 species_initializers=species_initializers,
                 protocol_lines=protocol_lines, xml_path=xml_path,
+                nf_param_overrides=nf_param_overrides or None,
             )
             continue
 
         # ── setParameter ────────────────────────────────────────
         if atype == "setParameter":
             name, value = _extract_positional_args(action)
+            numeric_value = _eval_numeric(value)
             try:
-                bngsim_model.set_param(name, _eval_numeric(value))
+                bngsim_model.set_param(name, numeric_value)
                 logger.debug("setParameter(%s, %s)", name, value)
             except Exception as e:
                 logger.warning("setParameter(%s, %s) failed: %s", name, value, e)
+            # Track for NFsim propagation
+            nf_param_overrides[name] = numeric_value
             # Invalidate simulator cache — params changed
             current_sim = None
             current_method = None
@@ -1530,6 +1563,8 @@ def _execute_bngsim_actions(
                     bngsim_model.set_param(pname, pval)
                 except Exception:
                     pass
+            # Clear NFsim overrides — params restored to initial
+            nf_param_overrides.clear()
             # Invalidate simulator cache — params changed
             current_sim = None
             current_method = None
