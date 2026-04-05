@@ -234,25 +234,25 @@ class TestPublicAPI:
 class TestRoutingWithoutBngsim:
     def test_sbml_without_bngsim_raises(self):
         """SBML format should raise if BNGsim is not available."""
-        if BNGSIM_AVAILABLE:
-            pytest.skip("BNGsim is installed; this test is for when it's absent")
+        import unittest.mock as mock
         f = tempfile.NamedTemporaryFile(
             suffix=".xml", mode="w", delete=False
         )
         f.write('<sbml xmlns="http://www.sbml.org/"><model/></sbml>')
         f.close()
         try:
-            with pytest.raises(BNGSimError, match="BNGsim is required"):
-                run_with_bngsim(f.name, "/tmp/out", fmt=FORMAT_SBML)
+            with mock.patch("bionetgen.core.tools.bngsim_bridge.BNGSIM_AVAILABLE", False):
+                with pytest.raises(BNGSimError, match="BNGsim is required"):
+                    run_with_bngsim(f.name, "/tmp/out", fmt=FORMAT_SBML)
         finally:
             os.unlink(f.name)
 
     def test_antimony_without_bngsim_raises(self):
         """Antimony format should raise if BNGsim is not available."""
-        if BNGSIM_AVAILABLE:
-            pytest.skip("BNGsim is installed; this test is for when it's absent")
-        with pytest.raises(BNGSimError, match="BNGsim is required"):
-            run_with_bngsim("model.ant", "/tmp/out", fmt=FORMAT_ANTIMONY)
+        import unittest.mock as mock
+        with mock.patch("bionetgen.core.tools.bngsim_bridge.BNGSIM_AVAILABLE", False):
+            with pytest.raises(BNGSimError, match="BNGsim is required"):
+                run_with_bngsim("model.ant", "/tmp/out", fmt=FORMAT_ANTIMONY)
 
 
 # ─── Integration tests (require BNGsim) ───────────────────────────
