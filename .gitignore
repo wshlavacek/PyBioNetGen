@@ -13,3 +13,4 @@ Issues/rule_keywords/test_DeleteMolecules_changed.bngl
 dev/
 .venv312/
 .DS_Store
+test_sbml.xml
