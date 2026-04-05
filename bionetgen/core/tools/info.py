@@ -96,6 +96,24 @@ class BNGInfo:
         text = roadrunner.getVersionStr()
         self.info["libRoadRunner version"] = text[0:5]
 
+        # BNGsim availability
+        from bionetgen.core.tools.bngsim_bridge import (
+            BNGSIM_AVAILABLE,
+            BNGSIM_HAS_NFSIM,
+            BNGSIM_VERSION,
+        )
+
+        self.info[
+            "\nThe following are optional high-performance simulation backends"
+        ] = ""
+        if BNGSIM_AVAILABLE:
+            self.info["BNGsim version"] = f"{BNGSIM_VERSION} (installed)"
+            self.info["BNGsim NFsim support"] = (
+                "yes" if BNGSIM_HAS_NFSIM else "no"
+            )
+        else:
+            self.info["BNGsim"] = "not installed (pip install bngsim)"
+
         return self.info
 
     def messageGeneration(self):

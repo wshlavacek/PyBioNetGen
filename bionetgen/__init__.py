@@ -2,6 +2,7 @@ from .core.defaults import defaults
 from .modelapi import bngmodel
 from .modelapi.runner import run
 from .simulator import sim_getter
+from .core.tools.bngsim_bridge import BNGSIM_AVAILABLE, BNGSIM_VERSION
 
 # sympy is an expensive dependency to import. We delay importing the
 # SympyOdes helpers until they are actually accessed.
@@ -11,6 +12,8 @@ __all__ = [
     "bngmodel",
     "run",
     "sim_getter",
+    "BNGSIM_AVAILABLE",
+    "BNGSIM_VERSION",
     "SympyOdes",
     "export_sympy_odes",
 ]
