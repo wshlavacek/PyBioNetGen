@@ -1,0 +1,16 @@
+[run]
+source = bionetgen
+omit =
+    bionetgen/atomizer/*
+    bionetgen/modelapi/sympy_odes.py
+
+[report]
+fail_under = 80
+show_missing = true
+exclude_lines =
+    pragma: no cover
+    if __name__ == .__main__
+    raise NotImplementedError
+
+[html]
+directory = htmlcov
