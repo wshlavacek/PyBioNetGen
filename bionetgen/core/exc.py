@@ -93,3 +93,22 @@ class BNGCompileError(BNGError):
         self.model = model
         self.message = message
         super().__init__(self.message)
+
+
+class BNGFormatError(BNGError):
+    """Error related to input file format detection or disambiguation."""
+
+    def __init__(self, path=None, message=None):
+        self.path = path
+        if message is None:
+            message = f"Could not determine the format of input file: {path}"
+        self.message = message
+        super().__init__(self.message)
+
+
+class BNGSimError(BNGError):
+    """Error related to BNGsim simulation."""
+
+    def __init__(self, message="There was an issue running BNGsim simulation"):
+        self.message = message
+        super().__init__(self.message)
