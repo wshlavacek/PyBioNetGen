@@ -1248,18 +1248,57 @@ def _run_parameter_scan_bngsim(
         elif use_ss:
             # Steady-state scan: find equilibrium, then evaluate observables
             ss_sim = _make_sim(point_model)
-            ss_result = ss_sim.steady_state()
-            for j, sname in enumerate(ss_result.species_names):
-                point_model.set_concentration(sname, ss_result.concentrations[j])
-            point_model.save_concentrations()
-            point_model.reset()
-            # Brief evaluation run to compute observables and functions at SS
-            eval_kw = {}
-            if codegen_so and net_path:
-                eval_kw["codegen"] = True
-                eval_kw["net_path"] = net_path
-            eval_sim = bngsim.Simulator(point_model, method="ode", **eval_kw)
-            result = eval_sim.run(t_span=(0, 1e-10), n_points=2)
+            ss_ok = False
+            try:
+                ss_result = ss_sim.steady_state()
+                if ss_result.converged:
+                    for j, sname in enumerate(ss_result.species_names):
+                        point_model.set_concentration(sname, ss_result.concentrations[j])
+                    point_model.save_concentrations()
+                    point_model.reset()
+                    # Brief evaluation run to compute observables/functions at SS
+                    eval_kw = {}
+                    if codegen_so and net_path:
+                        eval_kw["codegen"] = True
+                        eval_kw["net_path"] = net_path
+                    eval_sim = bngsim.Simulator(point_model, method="ode", **eval_kw)
+                    result = eval_sim.run(t_span=(0, 1e-10), n_points=2)
+                    ss_ok = True
+                else:
+                    residual = getattr(ss_result, "residual", None)
+                    res_str = f" (residual={residual:.2e})" if residual is not None else ""
+                    logger.warning(
+                        "steady-state solver did not converge for %s=%s%s. "
+                        "Falling back to long time-course.",
+                        param_name, value, res_str,
+                    )
+            except Exception as exc:
+                logger.warning(
+                    "steady-state solver failed for %s=%s: %s. "
+                    "Falling back to long time-course.",
+                    param_name, value, exc,
+                )
+            if not ss_ok:
+                # Re-prepare the model from the saved base state
+                if reset_conc:
+                    point_model = bngsim_model.clone()
+                else:
+                    point_model = bngsim_model
+                if param_name:
+                    point_model.set_param(param_name, _eval_numeric(str(value)))
+                if species_initializers:
+                    _sync_species_concentrations(point_model, species_initializers)
+                if reset_conc:
+                    point_model.reset()
+                fallback_sim = _make_sim(point_model)
+                if sample_times is not None:
+                    result = fallback_sim.run(
+                        t_span=(sample_times[0], sample_times[-1]),
+                        n_points=len(sample_times),
+                        sample_times=sample_times,
+                    )
+                else:
+                    result = fallback_sim.run(t_span=(t_start, t_end), n_points=n_steps + 1)
         else:
             # Time-course scan: simulate to t_end
             sim = _make_sim(point_model)

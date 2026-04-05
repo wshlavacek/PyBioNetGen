@@ -1104,6 +1104,126 @@ class TestRunParameterScanBngsim:
             )
             mock_nfscan.assert_called_once()
 
+    def test_steady_state_converged(self):
+        """When steady_state converges, use equilibrium concentrations."""
+        from bionetgen.core.tools.bngsim_bridge import _run_parameter_scan_bngsim
+
+        action = _make_action("parameter_scan", {
+            "parameter": "k1", "par_min": "1.0", "par_max": "1.0",
+            "n_scan_pts": "1", "method": "ode", "t_end": "100",
+            "n_steps": "10", "steady_state": "1",
+        })
+
+        model = _make_mock_model()
+        clone = _make_mock_model()
+        model.clone.return_value = clone
+
+        # steady_state result: converged
+        ss_result = MagicMock()
+        ss_result.converged = True
+        ss_result.species_names = ["S1", "S2"]
+        ss_result.concentrations = [5.0, 10.0]
+
+        eval_result = _make_mock_result(
+            obs_names=["A"], obs_data=np.array([[1.0], [2.0]]), n_times=2,
+        )
+
+        mock_bngsim = MagicMock()
+        ss_sim = MagicMock()
+        ss_sim.steady_state.return_value = ss_result
+        eval_sim = MagicMock()
+        eval_sim.run.return_value = eval_result
+        # First Simulator call is for _make_sim (ss_sim), second for eval_sim
+        mock_bngsim.Simulator.side_effect = [ss_sim, eval_sim]
+
+        with patch(f"{BRIDGE}.bngsim", mock_bngsim), \
+             tempfile.TemporaryDirectory() as tmpdir:
+            _run_parameter_scan_bngsim(model, action, tmpdir, "test_model")
+            scan_file = os.path.join(tmpdir, "test_model_scan.scan")
+            assert os.path.isfile(scan_file)
+            # Verify steady_state was called
+            ss_sim.steady_state.assert_called_once()
+            # Verify concentrations were set on the clone
+            clone.set_concentration.assert_any_call("S1", 5.0)
+            clone.set_concentration.assert_any_call("S2", 10.0)
+
+    def test_steady_state_not_converged_falls_back(self):
+        """When steady_state doesn't converge, fall back to time-course."""
+        from bionetgen.core.tools.bngsim_bridge import _run_parameter_scan_bngsim
+
+        action = _make_action("parameter_scan", {
+            "parameter": "k1", "par_min": "1.0", "par_max": "1.0",
+            "n_scan_pts": "1", "method": "ode", "t_end": "100",
+            "n_steps": "10", "steady_state": "1",
+        })
+
+        model = _make_mock_model()
+        clone = _make_mock_model()
+        fallback_clone = _make_mock_model()
+        model.clone.side_effect = [clone, fallback_clone]
+
+        # steady_state result: NOT converged
+        ss_result = MagicMock()
+        ss_result.converged = False
+        ss_result.residual = 1.5e-2
+
+        fallback_result = _make_mock_result(
+            obs_names=["A"], obs_data=np.array([[1.0], [2.0]]), n_times=2,
+        )
+
+        mock_bngsim = MagicMock()
+        ss_sim = MagicMock()
+        ss_sim.steady_state.return_value = ss_result
+        fallback_sim = MagicMock()
+        fallback_sim.run.return_value = fallback_result
+        # First Simulator for ss_sim, second for fallback_sim
+        mock_bngsim.Simulator.side_effect = [ss_sim, fallback_sim]
+
+        with patch(f"{BRIDGE}.bngsim", mock_bngsim), \
+             tempfile.TemporaryDirectory() as tmpdir:
+            _run_parameter_scan_bngsim(model, action, tmpdir, "test_model")
+            scan_file = os.path.join(tmpdir, "test_model_scan.scan")
+            assert os.path.isfile(scan_file)
+            # Verify fallback sim was used
+            fallback_sim.run.assert_called_once()
+            call_kwargs = fallback_sim.run.call_args
+            assert call_kwargs[1]["t_span"] == (0, 100)
+
+    def test_steady_state_exception_falls_back(self):
+        """When steady_state raises, fall back to time-course."""
+        from bionetgen.core.tools.bngsim_bridge import _run_parameter_scan_bngsim
+
+        action = _make_action("parameter_scan", {
+            "parameter": "k1", "par_min": "1.0", "par_max": "1.0",
+            "n_scan_pts": "1", "method": "ode", "t_end": "100",
+            "n_steps": "10", "steady_state": "1",
+        })
+
+        model = _make_mock_model()
+        clone = _make_mock_model()
+        fallback_clone = _make_mock_model()
+        model.clone.side_effect = [clone, fallback_clone]
+
+        fallback_result = _make_mock_result(
+            obs_names=["A"], obs_data=np.array([[1.0], [2.0]]), n_times=2,
+        )
+
+        mock_bngsim = MagicMock()
+        ss_sim = MagicMock()
+        ss_sim.steady_state.side_effect = RuntimeError("solver blew up")
+        fallback_sim = MagicMock()
+        fallback_sim.run.return_value = fallback_result
+        # First Simulator for ss_sim, second for fallback_sim
+        mock_bngsim.Simulator.side_effect = [ss_sim, fallback_sim]
+
+        with patch(f"{BRIDGE}.bngsim", mock_bngsim), \
+             tempfile.TemporaryDirectory() as tmpdir:
+            _run_parameter_scan_bngsim(model, action, tmpdir, "test_model")
+            scan_file = os.path.join(tmpdir, "test_model_scan.scan")
+            assert os.path.isfile(scan_file)
+            # Verify fallback sim was used
+            fallback_sim.run.assert_called_once()
+
 
 # ─── _parse_tfun_args ────────────────────────────────────────────────
 
