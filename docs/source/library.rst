@@ -10,14 +10,67 @@ modifications of BNGL models.
 run
 ===
 
-This method allows you to do a simple run of a BNGL model and returns the results as 
+This method runs a simulation and returns the results as
 `numpy record arrays <https://numpy.org/doc/stable/reference/generated/numpy.recarray.html>`_.
+It supports BNGL, .net, SBML (.xml), BioNetGen XML, and Antimony (.ant) files.
 
 .. code-block:: python
 
    import bionetgen
    result = bionetgen.run("mymodel.bngl", out="myfolder")
    result["mymodel"] # this will contain the gdat results of the run
+
+When `BNGsim <https://github.com/RuleWorld/bngsim>`_ is installed (:code:`pip install bngsim`),
+it is used automatically for high-performance in-process simulation. You can check availability with
+:code:`bionetgen.BNGSIM_AVAILABLE`.
+
+Parameters
+----------
+
+.. code-block:: python
+
+   bionetgen.run(
+       inp,                    # Path to input file (.bngl, .net, .xml, .ant)
+       out=None,               # Output folder (default: temp directory)
+       suppress=False,         # Suppress BNG2.pl output
+       timeout=None,           # Timeout in seconds for BNG2.pl
+       simulator='auto',       # 'auto', 'bngsim', or 'subprocess'
+       format=None,            # Explicit format: 'bngl', 'net', 'sbml', 'bng-xml', 'antimony'
+       method='ode',           # Simulation method: 'ode', 'ssa', 'psa', 'nf'
+       t_span=None,            # Time span tuple (t_start, t_end), default (0, 100)
+       n_points=None,          # Number of output time points, default 101
+   )
+
+The :code:`simulator` parameter controls which backend is used:
+
+- :code:`'auto'` (default) — uses BNGsim if available, otherwise falls back to BNG2.pl subprocess
+- :code:`'bngsim'` — requires BNGsim, raises an error if not installed
+- :code:`'subprocess'` — forces the traditional BNG2.pl/run_network path
+
+For :code:`.xml` files, :code:`format` disambiguates between SBML and BioNetGen XML.
+If omitted, the format is auto-detected from file content.
+
+Examples
+--------
+
+.. code-block:: python
+
+   import bionetgen
+
+   # Run a BNGL model (auto-selects BNGsim if available)
+   result = bionetgen.run("mymodel.bngl", out="output/")
+
+   # Force subprocess path
+   result = bionetgen.run("mymodel.bngl", out="output/", simulator="subprocess")
+
+   # Run a .net file with SSA method via BNGsim
+   result = bionetgen.run("model.net", out="output/", method="ssa")
+
+   # Run an SBML file (requires BNGsim)
+   result = bionetgen.run("model.xml", out="output/", format="sbml")
+
+   # Run an Antimony file (requires BNGsim)
+   result = bionetgen.run("model.ant", out="output/")
 
 bngmodel
 ========

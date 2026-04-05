@@ -14,14 +14,46 @@ text with the command
 Run
 ===
 
-This subcommand simply runs a model:
+This subcommand runs a model. It supports BNGL, .net, SBML (.xml), BioNetGen XML, and Antimony (.ant) files.
+When `BNGsim <https://github.com/RuleWorld/bngsim>`_ is installed, it is used automatically for fast in-process
+simulation.
 
 .. code-block:: shell
-   
+
    bionetgen run -i mymodel.bngl -o output_folder
 
 This will run :code:`mymodel.bngl` under the folder :code:`output_folder`.
 If no output folder is specified, then the temporary folder used while running the subcommand will be deleted upon completion.
+
+Additional input formats (some require BNGsim):
+
+.. code-block:: shell
+
+   bionetgen run -i model.net -o output_folder           # .net file (BNGsim or run_network)
+   bionetgen run -i model.xml --format sbml -o output/   # SBML file (requires BNGsim)
+   bionetgen run -i model.xml --format bng-xml -o output/  # BNG XML for NFsim
+   bionetgen run -i model.ant -o output/                 # Antimony file (requires BNGsim)
+
+Options specific to the run subcommand:
+
+.. code-block:: shell
+
+   optional arguments:
+      -i INPUT, --input INPUT
+                              Path to input file (.bngl, .net, .xml, or .ant)
+      -o OUTPUT, --output OUTPUT
+                              Optional path to output folder (default: ".")
+      -l LOG, --log LOG       saves BNG2.pl log to a file given (default: None)
+      --format FORMAT         Explicit input format: bngl, net, sbml, bng-xml, antimony.
+                              If omitted, auto-detected from file extension and content.
+      --no-bngsim             Force subprocess path (BNG2.pl/run_network/NFsim)
+                              even when BNGsim is available.
+      --method METHOD         Simulation method: ode, ssa, psa, nf (default: ode).
+                              Only used when routing through BNGsim.
+
+For :code:`.xml` files, the format is auto-detected by inspecting the file content (SBML vs BioNetGen XML).
+If auto-detection is ambiguous, use :code:`--format` to specify explicitly. When both :code:`--format` and
+auto-detection are available, they are cross-checked and a conflict produces an error.
 
 Plot
 ====
