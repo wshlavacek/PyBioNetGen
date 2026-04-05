@@ -14,3 +14,5 @@ dev/
 .venv312/
 .DS_Store
 test_sbml.xml
+.coverage
+htmlcov/
