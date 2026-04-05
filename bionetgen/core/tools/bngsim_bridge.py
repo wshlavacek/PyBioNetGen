@@ -8,6 +8,7 @@ and routing simulation requests to BNGsim when available.
 
 import os
 import logging
+import concurrent.futures
 
 from bionetgen.core.exc import BNGFormatError, BNGSimError
 
@@ -1129,6 +1130,107 @@ def _run_nfsim_scan(
     _write_scan_file(scan_path, param_name or "scan_param", col_names, rows)
 
 
+def _prepare_scan_point(base_model, param_name, value, species_initializers):
+    """Clone the base model, apply the scan parameter, and refresh initials."""
+    point_model = base_model.clone()
+    if param_name:
+        point_model.set_param(param_name, _eval_numeric(str(value)))
+    if species_initializers:
+        _sync_species_concentrations(point_model, species_initializers)
+    point_model.reset()
+    return point_model
+
+
+def _run_ss_scan_threaded(
+    base_model, param_name, points, species_initializers,
+    make_sim_fn, codegen_so, net_path, t_start, t_end, print_funcs,
+):
+    """Run steady-state parameter scan with threaded parallelism.
+
+    Prepares all point models sequentially (species initializer sync is not
+    thread-safe), then submits steady_state() calls to a thread pool.
+    Falls back to long time-course per point on non-convergence or error.
+    """
+    n_workers = min(len(points), 4)
+    rows = []
+    obs_names = None
+    func_names = None
+
+    # Prepare models and simulators sequentially (not thread-safe)
+    point_models = []
+    point_sims = []
+    for value in points:
+        pm = _prepare_scan_point(base_model, param_name, value, species_initializers)
+        ps = make_sim_fn(pm)
+        point_models.append(pm)
+        point_sims.append(ps)
+
+    # Run steady_state() in parallel
+    def _solve_ss(idx):
+        try:
+            ss_result = point_sims[idx].steady_state()
+            return (idx, ss_result, None)
+        except Exception as exc:
+            return (idx, None, exc)
+
+    ss_outcomes = [None] * len(points)
+    with concurrent.futures.ThreadPoolExecutor(max_workers=n_workers) as pool:
+        futures = {pool.submit(_solve_ss, i): i for i in range(len(points))}
+        for fut in concurrent.futures.as_completed(futures):
+            idx, ss_result, exc = fut.result()
+            ss_outcomes[idx] = (ss_result, exc)
+
+    # Process results and handle fallbacks
+    for i, value in enumerate(points):
+        ss_result, exc = ss_outcomes[i]
+        ss_ok = False
+
+        if exc is not None:
+            logger.warning(
+                "steady-state solver failed for %s=%s: %s. "
+                "Falling back to long time-course.",
+                param_name, value, exc,
+            )
+        elif ss_result.converged:
+            point_model = point_models[i]
+            for j, sname in enumerate(ss_result.species_names):
+                point_model.set_concentration(sname, ss_result.concentrations[j])
+            point_model.save_concentrations()
+            point_model.reset()
+            eval_kw = {}
+            if codegen_so and net_path:
+                eval_kw["codegen"] = True
+                eval_kw["net_path"] = net_path
+            eval_sim = bngsim.Simulator(point_model, method="ode", **eval_kw)
+            result = eval_sim.run(t_span=(0, 1e-10), n_points=2)
+            ss_ok = True
+        else:
+            residual = getattr(ss_result, "residual", None)
+            res_str = f" (residual={residual:.2e})" if residual is not None else ""
+            logger.warning(
+                "steady-state solver did not converge for %s=%s%s. "
+                "Falling back to long time-course.",
+                param_name, value, res_str,
+            )
+
+        if not ss_ok:
+            fb_model = _prepare_scan_point(
+                base_model, param_name, value, species_initializers,
+            )
+            fb_sim = make_sim_fn(fb_model)
+            result = fb_sim.run(t_span=(t_start, t_end), n_points=2)
+
+        row, row_obs, row_funcs = _scan_result_to_row(
+            result, float(value), print_functions=print_funcs,
+        )
+        rows.append(row)
+        if obs_names is None:
+            obs_names = row_obs
+            func_names = row_funcs
+
+    return rows, obs_names, func_names
+
+
 def _run_parameter_scan_bngsim(
     bngsim_model, action, output_dir, model_name, is_bifurcate=False,
     codegen_so="", net_path=None, species_initializers=None,
@@ -1219,6 +1321,60 @@ def _run_parameter_scan_bngsim(
             kw["net_path"] = net_path
         return bngsim.Simulator(mdl, method=sim_method, **kw)
 
+    # ── Threaded steady-state path ──────────────────────────────────
+    if use_ss and not species_initializers and len(points) >= 4:
+        rows, obs_names, func_names = _run_ss_scan_threaded(
+            bngsim_model, param_name, points, species_initializers,
+            _make_sim, codegen_so, net_path, t_start, t_end, print_funcs,
+        )
+        col_names = (obs_names or []) + (func_names or [])
+        scan_path = os.path.join(output_dir, f"{model_name}_{suffix}.scan")
+        _write_scan_file(scan_path, param_name or "scan_param", col_names, rows)
+        return
+
+    # ── Batch time-course path ──────────────────────────────────────
+    use_batch = (
+        not use_ss
+        and not is_protocol
+        and reset_conc
+        and not species_initializers
+        and sample_times is None
+        and len(points) >= 4
+        and hasattr(bngsim.Simulator, "run_batch")
+    )
+    if use_batch:
+        params = [{param_name: float(v)} for v in points]
+        n_workers = min(len(points), 4)
+        batch_sim = _make_sim(bngsim_model)
+        try:
+            batch_results = batch_sim.run_batch(
+                t_span=(t_start, t_end),
+                n_points=2,
+                params=params,
+                num_processors=n_workers,
+            )
+        except Exception:
+            logger.warning(
+                "run_batch() failed; falling back to sequential scan.",
+                exc_info=True,
+            )
+            use_batch = False
+
+    if use_batch:
+        for i, value in enumerate(points):
+            row, row_obs, row_funcs = _scan_result_to_row(
+                batch_results[i], float(value), print_functions=print_funcs,
+            )
+            rows.append(row)
+            if obs_names is None:
+                obs_names = row_obs
+                func_names = row_funcs
+        col_names = (obs_names or []) + (func_names or [])
+        scan_path = os.path.join(output_dir, f"{model_name}_{suffix}.scan")
+        _write_scan_file(scan_path, param_name or "scan_param", col_names, rows)
+        return
+
+    # ── Sequential fallback (protocol, SS with few points, etc.) ────
     for value in points:
         if reset_conc:
             point_model = bngsim_model.clone()

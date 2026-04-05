@@ -1224,6 +1224,242 @@ class TestRunParameterScanBngsim:
             # Verify fallback sim was used
             fallback_sim.run.assert_called_once()
 
+    def test_threaded_ss_scan_converged(self):
+        """Threaded path used when >=4 points, no species_initializers."""
+        from bionetgen.core.tools.bngsim_bridge import _run_parameter_scan_bngsim
+
+        action = _make_action("parameter_scan", {
+            "parameter": "k1", "par_min": "1.0", "par_max": "4.0",
+            "n_scan_pts": "4", "method": "ode", "t_end": "100",
+            "n_steps": "10", "steady_state": "1",
+        })
+
+        model = _make_mock_model()
+
+        def make_clone():
+            c = _make_mock_model()
+            return c
+        model.clone.side_effect = [make_clone() for _ in range(4)]
+
+        # All 4 steady-state results converge
+        ss_results = []
+        for _ in range(4):
+            sr = MagicMock()
+            sr.converged = True
+            sr.species_names = ["S1", "S2"]
+            sr.concentrations = [5.0, 10.0]
+            ss_results.append(sr)
+
+        eval_result = _make_mock_result(
+            obs_names=["A"], obs_data=np.array([[1.0], [2.0]]), n_times=2,
+        )
+
+        mock_bngsim = MagicMock()
+        # 4 _make_sim calls (for SS), then 4 eval Simulator calls
+        ss_sims = []
+        for sr in ss_results:
+            s = MagicMock()
+            s.steady_state.return_value = sr
+            ss_sims.append(s)
+        eval_sims = [MagicMock(run=MagicMock(return_value=eval_result)) for _ in range(4)]
+        mock_bngsim.Simulator.side_effect = ss_sims + eval_sims
+
+        with patch(f"{BRIDGE}.bngsim", mock_bngsim), \
+             tempfile.TemporaryDirectory() as tmpdir:
+            _run_parameter_scan_bngsim(model, action, tmpdir, "test_model")
+            scan_file = os.path.join(tmpdir, "test_model_scan.scan")
+            assert os.path.isfile(scan_file)
+            # All 4 SS solvers should have been called
+            for s in ss_sims:
+                s.steady_state.assert_called_once()
+
+    def test_threaded_ss_scan_with_fallback(self):
+        """Threaded path falls back per-point when SS fails."""
+        from bionetgen.core.tools.bngsim_bridge import _run_parameter_scan_bngsim
+
+        action = _make_action("parameter_scan", {
+            "parameter": "k1", "par_min": "1.0", "par_max": "4.0",
+            "n_scan_pts": "4", "method": "ode", "t_end": "100",
+            "n_steps": "10", "steady_state": "1",
+        })
+
+        model = _make_mock_model()
+        model.clone.side_effect = [_make_mock_model() for _ in range(8)]
+
+        eval_result = _make_mock_result(
+            obs_names=["A"], obs_data=np.array([[1.0], [2.0]]), n_times=2,
+        )
+        fallback_result = _make_mock_result(
+            obs_names=["A"], obs_data=np.array([[3.0], [4.0]]), n_times=2,
+        )
+
+        # Points 0,2 converge; point 1 fails; point 3 doesn't converge
+        ss_results = []
+        for i in range(4):
+            sr = MagicMock()
+            if i == 1:
+                sr.steady_state = MagicMock(side_effect=RuntimeError("boom"))
+            elif i == 3:
+                sr.steady_state = MagicMock(return_value=MagicMock(converged=False, residual=0.1))
+            else:
+                res = MagicMock(converged=True, species_names=["S1"], concentrations=[5.0])
+                sr.steady_state = MagicMock(return_value=res)
+            ss_results.append(sr)
+
+        # Simulator calls: 4 for _make_sim (SS), 2 eval (converged), 2 fallback _make_sim,
+        # plus 2 fallback _prepare clones need _make_sim
+        mock_bngsim = MagicMock()
+        eval_sim = MagicMock(run=MagicMock(return_value=eval_result))
+        fb_sim = MagicMock(run=MagicMock(return_value=fallback_result))
+        mock_bngsim.Simulator.side_effect = (
+            ss_results           # 4 _make_sim for initial SS
+            + [eval_sim, eval_sim]  # 2 eval sims for converged points
+            + [fb_sim, fb_sim]      # 2 fallback sims
+        )
+
+        with patch(f"{BRIDGE}.bngsim", mock_bngsim), \
+             tempfile.TemporaryDirectory() as tmpdir:
+            _run_parameter_scan_bngsim(model, action, tmpdir, "test_model")
+            scan_file = os.path.join(tmpdir, "test_model_scan.scan")
+            assert os.path.isfile(scan_file)
+            # Fallback sims should have been used for points 1 and 3
+            assert fb_sim.run.call_count == 2
+
+    def test_threaded_ss_not_used_with_species_initializers(self):
+        """Sequential SS path when species_initializers present, even with >=4 points."""
+        from bionetgen.core.tools.bngsim_bridge import _run_parameter_scan_bngsim
+
+        action = _make_action("parameter_scan", {
+            "parameter": "k1", "par_min": "1.0", "par_max": "4.0",
+            "n_scan_pts": "4", "method": "ode", "t_end": "100",
+            "n_steps": "10", "steady_state": "1",
+        })
+
+        model = _make_mock_model()
+        model.clone.side_effect = [_make_mock_model() for _ in range(4)]
+
+        ss_result = MagicMock(converged=True, species_names=["S1"], concentrations=[5.0])
+        eval_result = _make_mock_result(
+            obs_names=["A"], obs_data=np.array([[1.0], [2.0]]), n_times=2,
+        )
+
+        mock_bngsim = MagicMock()
+        ss_sim = MagicMock(steady_state=MagicMock(return_value=ss_result))
+        eval_sim = MagicMock(run=MagicMock(return_value=eval_result))
+        mock_bngsim.Simulator.side_effect = [ss_sim, eval_sim] * 4
+
+        # Pass species_initializers — should force sequential path
+        species_inits = [("S1", "k1*10")]
+        with patch(f"{BRIDGE}.bngsim", mock_bngsim), \
+             patch(f"{BRIDGE}._sync_species_concentrations"), \
+             tempfile.TemporaryDirectory() as tmpdir:
+            _run_parameter_scan_bngsim(
+                model, action, tmpdir, "test_model",
+                species_initializers=species_inits,
+            )
+            scan_file = os.path.join(tmpdir, "test_model_scan.scan")
+            assert os.path.isfile(scan_file)
+            # Sequential: each point gets its own SS + eval sim pair
+            assert ss_sim.steady_state.call_count == 4
+
+    def test_batch_time_course_scan(self):
+        """Batch path used for time-course with >=4 points, no sample_times."""
+        from bionetgen.core.tools.bngsim_bridge import _run_parameter_scan_bngsim
+
+        action = _make_action("parameter_scan", {
+            "parameter": "k1", "par_min": "1.0", "par_max": "4.0",
+            "n_scan_pts": "4", "method": "ode", "t_end": "100",
+            "n_steps": "10",
+        })
+
+        model = _make_mock_model()
+
+        batch_results = [
+            _make_mock_result(obs_names=["A"], obs_data=np.array([[float(i)], [float(i)]]), n_times=2)
+            for i in range(4)
+        ]
+
+        mock_bngsim = MagicMock()
+        batch_sim = MagicMock()
+        batch_sim.run_batch.return_value = batch_results
+        mock_bngsim.Simulator.return_value = batch_sim
+        # Ensure run_batch is detected via hasattr
+        mock_bngsim.Simulator.run_batch = True
+
+        with patch(f"{BRIDGE}.bngsim", mock_bngsim), \
+             tempfile.TemporaryDirectory() as tmpdir:
+            _run_parameter_scan_bngsim(model, action, tmpdir, "test_model")
+            scan_file = os.path.join(tmpdir, "test_model_scan.scan")
+            assert os.path.isfile(scan_file)
+            batch_sim.run_batch.assert_called_once()
+            call_kwargs = batch_sim.run_batch.call_args[1]
+            assert call_kwargs["t_span"] == (0, 100)
+            assert call_kwargs["n_points"] == 2
+            assert len(call_kwargs["params"]) == 4
+
+    def test_batch_fallback_to_sequential(self):
+        """Batch path falls back to sequential on run_batch exception."""
+        from bionetgen.core.tools.bngsim_bridge import _run_parameter_scan_bngsim
+
+        action = _make_action("parameter_scan", {
+            "parameter": "k1", "par_min": "1.0", "par_max": "4.0",
+            "n_scan_pts": "4", "method": "ode", "t_end": "100",
+            "n_steps": "10",
+        })
+
+        model = _make_mock_model()
+        model.clone.side_effect = [_make_mock_model() for _ in range(4)]
+
+        seq_result = _make_mock_result(
+            obs_names=["A"], obs_data=np.array([[1.0], [2.0]]), n_times=2,
+        )
+
+        mock_bngsim = MagicMock()
+        # First Simulator call is for batch — run_batch fails
+        batch_sim = MagicMock()
+        batch_sim.run_batch.side_effect = RuntimeError("batch failed")
+        # Subsequent calls are sequential sims
+        seq_sim = MagicMock(run=MagicMock(return_value=seq_result))
+        mock_bngsim.Simulator.side_effect = [batch_sim] + [seq_sim] * 4
+        mock_bngsim.Simulator.run_batch = True
+
+        with patch(f"{BRIDGE}.bngsim", mock_bngsim), \
+             tempfile.TemporaryDirectory() as tmpdir:
+            _run_parameter_scan_bngsim(model, action, tmpdir, "test_model")
+            scan_file = os.path.join(tmpdir, "test_model_scan.scan")
+            assert os.path.isfile(scan_file)
+            # Batch was attempted then fell back
+            batch_sim.run_batch.assert_called_once()
+            assert seq_sim.run.call_count == 4
+
+    def test_batch_not_used_with_sample_times(self):
+        """Batch path not used when sample_times is specified."""
+        from bionetgen.core.tools.bngsim_bridge import _run_parameter_scan_bngsim
+
+        action = _make_action("parameter_scan", {
+            "parameter": "k1", "par_min": "1.0", "par_max": "4.0",
+            "n_scan_pts": "4", "method": "ode", "t_end": "100",
+            "sample_times": "[0, 25, 50, 75, 100]",
+        })
+
+        model = _make_mock_model()
+        model.clone.side_effect = [_make_mock_model() for _ in range(4)]
+
+        seq_result = _make_mock_result(
+            obs_names=["A"], obs_data=np.array([[1.0], [2.0]]), n_times=2,
+        )
+
+        mock_bngsim = MagicMock()
+        seq_sim = MagicMock(run=MagicMock(return_value=seq_result))
+        mock_bngsim.Simulator.side_effect = [seq_sim] * 4
+        mock_bngsim.Simulator.run_batch = True
+
+        with patch(f"{BRIDGE}.bngsim", mock_bngsim), \
+             tempfile.TemporaryDirectory() as tmpdir:
+            _run_parameter_scan_bngsim(model, action, tmpdir, "test_model")
+            # Sequential: each point gets its own sim.run call
+            assert seq_sim.run.call_count == 4
+
 
 # ─── _parse_tfun_args ────────────────────────────────────────────────
 
