@@ -179,6 +179,32 @@ def _is_nf_method(method):
     return method in ("nf", "nf_reject", "nfsim")
 
 
+def _normalize_method(method, poplevel=None):
+    """Normalize simulation method, matching BNG2.pl conventions.
+
+    BNG2.pl auto-promotes ``method=>"ssa"`` to PSA when ``poplevel`` is
+    defined. BNGsim also supports ``method=>"psa"`` directly. This
+    function handles both conventions.
+
+    Returns
+    -------
+    (method, poplevel) : (str, float or None)
+    """
+    method = method.strip().lower()
+
+    # BNG2.pl compat: ssa + poplevel → psa
+    if method == "ssa" and poplevel is not None:
+        return "psa", poplevel
+
+    # Direct psa: default poplevel to 100 if not specified (BNG2.pl default)
+    if method == "psa":
+        if poplevel is None or poplevel <= 1.0:
+            poplevel = 100.0
+        return "psa", poplevel
+
+    return method, poplevel
+
+
 def _write_bng_dat(path, time, data_2d, col_names):
     """Write a BNG-format data file (space-separated with # header).
 
@@ -714,7 +740,8 @@ def _parse_simulate_params(action):
     """Extract simulation parameters from a simulate_* Action.
 
     Returns dict with all simulation-relevant keys, or None if the
-    action type is not a recognized simulate variant.
+    action type is not a recognized simulate variant.  Applies
+    BNG2.pl-compatible method normalization (ssa + poplevel → psa).
     """
     atype = action.type
     args = action.args
@@ -725,13 +752,16 @@ def _parse_simulate_params(action):
     if atype == "simulate" and "method" in args:
         method = _strip_quotes(args["method"].strip())
 
+    poplevel = float(args["poplevel"]) if "poplevel" in args else None
+    method, poplevel = _normalize_method(method, poplevel)
+
     return {
         "method": method,
         "t_start": float(args.get("t_start", 0)),
         "t_end": float(args.get("t_end", 100)),
         "n_steps": int(float(args.get("n_steps", 100))),
         "suffix": _strip_quotes(args["suffix"].strip()) if "suffix" in args else None,
-        "poplevel": float(args["poplevel"]) if "poplevel" in args else None,
+        "poplevel": poplevel,
         "continue_flag": bool(int(float(args.get("continue", 0)))),
         "atol": float(args["atol"]) if "atol" in args else None,
         "rtol": float(args["rtol"]) if "rtol" in args else None,
@@ -739,6 +769,7 @@ def _parse_simulate_params(action):
         "print_functions": bool(int(float(args.get("print_functions", 0)))),
         "stop_if": _strip_quotes(args["stop_if"].strip()) if "stop_if" in args else None,
         "sample_times": _resolve_sample_times(args),
+        "gml": int(float(args["gml"])) if "gml" in args else None,
     }
 
 
@@ -944,8 +975,9 @@ def _run_protocol(
             if st_raw is not None:
                 sample_times = _resolve_sample_times({"sample_times": st_raw})
 
-            # Parse poplevel
+            # Parse poplevel and normalize method (ssa + poplevel → psa)
             poplevel = float(kvargs["poplevel"]) if "poplevel" in kvargs else None
+            method, poplevel = _normalize_method(method, poplevel)
 
             # Rebuild simulator if method changed
             if method == "psa":
@@ -1015,15 +1047,75 @@ def _run_protocol(
     return last_result
 
 
+def _run_nfsim_scan(
+    xml_path, action, output_dir, model_name, is_bifurcate=False,
+):
+    """Execute a parameter_scan with NFsim: fresh NfsimSimulator per scan point.
+
+    NFsim is stateless (no .net model to clone), so each scan point gets a
+    fresh simulator loaded from the BNG XML file.
+    """
+    import numpy as np
+    from bngsim._bngsim_core import NfsimSimulator
+
+    args = action.args
+    param_name = _strip_quotes(args.get("parameter", "").strip())
+    t_start = float(args.get("t_start", 0))
+    t_end = float(args.get("t_end", 100))
+    n_steps = int(float(args.get("n_steps", 100)))
+    suffix = _strip_quotes(args.get("suffix", "").strip()) or "scan"
+    print_funcs = bool(int(float(args.get("print_functions", 0))))
+    gml = int(float(args["gml"])) if "gml" in args else None
+    base_seed = int(float(args.get("seed", 42)))
+
+    points = _resolve_scan_points(args)
+    rows = []
+    obs_names = None
+    func_names = None
+
+    for i, value in enumerate(points):
+        nfsim = NfsimSimulator(xml_path)
+        try:
+            if gml is not None:
+                nfsim.set_molecule_limit(gml)
+            if param_name:
+                try:
+                    nfsim.set_param(param_name, float(value))
+                except Exception:
+                    logger.warning(
+                        "NFsim scan: could not set %s=%s", param_name, value
+                    )
+            nfsim.initialize((base_seed + i) % (2**31))
+            core_result = nfsim.simulate(t_start, t_end, n_steps + 1)
+            result = bngsim.Result(core_result)
+
+            row, row_obs, row_funcs = _scan_result_to_row(
+                result, float(value), print_functions=print_funcs,
+            )
+            rows.append(row)
+            if obs_names is None:
+                obs_names = row_obs
+                func_names = row_funcs
+        finally:
+            try:
+                nfsim.destroy_session()
+            except Exception:
+                pass
+
+    col_names = (obs_names or []) + (func_names or [])
+    scan_path = os.path.join(output_dir, f"{model_name}_{suffix}.scan")
+    _write_scan_file(scan_path, param_name or "scan_param", col_names, rows)
+
+
 def _run_parameter_scan_bngsim(
     bngsim_model, action, output_dir, model_name, is_bifurcate=False,
     codegen_so="", net_path=None, species_initializers=None,
-    protocol_lines=None,
+    protocol_lines=None, xml_path=None,
 ):
     """Execute a parameter_scan or bifurcate action via BNGsim.
 
     Supports time-course scans, steady-state scans (``steady_state=>1``),
-    and protocol scans (``method=>"protocol"``).
+    protocol scans (``method=>"protocol"``), and NFsim scans.
     Uses codegen for ODE acceleration and re-evaluates species initial
     concentrations when parameters change.
     """
@@ -1040,6 +1132,25 @@ def _run_parameter_scan_bngsim(
 
     method = _strip_quotes(args.get("method", "ode").strip())
     is_protocol = method == "protocol"
+
+    # Normalize method (ssa + poplevel → psa, psa default poplevel, etc.)
+    poplevel = float(args["poplevel"]) if "poplevel" in args else None
+    method, poplevel = _normalize_method(method, poplevel)
+
+    # NFsim parameter scan: entirely different path
+    if _is_nf_method(method):
+        if not BNGSIM_HAS_NFSIM:
+            raise BNGSimError(
+                "NFsim parameter_scan requires BNGsim with NFsim support."
+            )
+        if xml_path is None or not os.path.isfile(xml_path):
+            raise BNGSimError(
+                f"NFsim parameter_scan requires BNG XML but none found at {xml_path}"
+            )
+        return _run_nfsim_scan(
+            xml_path, action, output_dir, model_name,
+            is_bifurcate=is_bifurcate,
+        )
 
     if is_protocol:
         if not protocol_lines:
@@ -1061,7 +1172,6 @@ def _run_parameter_scan_bngsim(
         )
         use_ss = False
 
-    poplevel = float(args["poplevel"]) if "poplevel" in args else None
     print_funcs = bool(int(float(args.get("print_functions", 0))))
 
     # Resolve sample_times
@@ -1259,6 +1369,7 @@ def _execute_bngsim_actions(
             print_funcs = sp["print_functions"]
             stop_if = sp["stop_if"]
             sample_times = sp["sample_times"]
+            gml = sp["gml"]
             out_name = f"{model_name}_{suffix}" if suffix else model_name
 
             # continue=>1: use current model time as t_start
@@ -1278,6 +1389,7 @@ def _execute_bngsim_actions(
                     t_span=(t_start, t_end),
                     n_points=n_steps + 1,
                     seed=seed,
+                    gml=gml,
                     model_name=out_name,
                 )
             else:
@@ -1343,7 +1455,7 @@ def _execute_bngsim_actions(
                 bngsim_model, action, output_dir, model_name,
                 is_bifurcate=False, codegen_so=codegen_so, net_path=net_path,
                 species_initializers=species_initializers,
-                protocol_lines=protocol_lines,
+                protocol_lines=protocol_lines, xml_path=xml_path,
             )
             continue
 
@@ -1353,7 +1465,7 @@ def _execute_bngsim_actions(
                 bngsim_model, action, output_dir, model_name,
                 is_bifurcate=True, codegen_so=codegen_so, net_path=net_path,
                 species_initializers=species_initializers,
-                protocol_lines=protocol_lines,
+                protocol_lines=protocol_lines, xml_path=xml_path,
             )
             continue
 
@@ -1426,6 +1538,179 @@ def _execute_bngsim_actions(
         logger.warning("Unhandled action: %s", atype)
 
     return _make_bng_result(output_dir, method=current_method or "ode")
+
+
+# ─── Table function support ───────────────────────────────────────
+
+
+def _parse_table_functions(bngl_path):
+    """Parse table function definitions from a BNGL file's functions block.
+
+    Finds ``tfun(...)`` calls within the ``begin functions...end functions``
+    block and extracts the function name, data source (file path or inline
+    arrays), index variable, and interpolation method.
+
+    Parameters
+    ----------
+    bngl_path : str
+        Path to the .bngl file.
+
+    Returns
+    -------
+    list of dict
+        Each dict has keys: ``name``, and either ``file`` or
+        ``times``/``values``, plus ``index`` and ``method``.
+    """
+    import re
+
+    tfun_specs = []
+    bngl_dir = os.path.dirname(os.path.abspath(bngl_path))
+
+    in_functions = False
+    try:
+        with open(bngl_path, "r", errors="replace") as f:
+            for raw_line in f:
+                stripped = raw_line.strip()
+                # Strip comments for block detection
+                comment_idx = stripped.find("#")
+                clean = stripped[:comment_idx].strip() if comment_idx >= 0 else stripped
+
+                if re.match(r"begin\s+functions", clean):
+                    in_functions = True
+                    continue
+                if re.match(r"end\s+functions", clean):
+                    in_functions = False
+                    continue
+                if not in_functions:
+                    continue
+
+                # Look for: funcname(...) = ... tfun(...) ...
+                # or: funcname = ... tfun(...) ...
+                if "tfun(" not in clean:
+                    continue
+
+                # Extract function name (before '=')
+                eq_match = re.match(r"(\w+)\s*(?:\([^)]*\))?\s*=", clean)
+                if not eq_match:
+                    continue
+                func_name = eq_match.group(1)
+
+                # Extract the tfun(...) call arguments
+                tfun_match = re.search(r"tfun\((.+)\)", clean)
+                if not tfun_match:
+                    continue
+                tfun_body = tfun_match.group(1)
+
+                spec = _parse_tfun_args(func_name, tfun_body, bngl_dir)
+                if spec is not None:
+                    tfun_specs.append(spec)
+    except OSError:
+        pass
+
+    return tfun_specs
+
+
+def _parse_tfun_args(func_name, tfun_body, bngl_dir):
+    """Parse the arguments of a single ``tfun(...)`` call.
+
+    Handles two forms:
+    - File-based: ``tfun('filename.tfun', index_var)``
+    - Inline data: ``tfun([x1,x2,...], [y1,y2,...], index_var)``
+
+    Optional trailing ``method=>"linear|step"`` is supported.
+
+    Returns a dict with ``name``, ``index``, ``method``, and either
+    ``file`` or ``times``/``values``.
+    """
+    import re
+
+    # Default values
+    index = "time"
+    method = "linear"
+
+    # Extract method=>"..." if present
+    method_match = re.search(r'method\s*=>\s*"(\w+)"', tfun_body)
+    if method_match:
+        method = method_match.group(1).lower()
+        # Remove the method=>... from the body for simpler parsing
+        tfun_body = tfun_body[:method_match.start()] + tfun_body[method_match.end():]
+
+    # Clean up trailing commas/whitespace
+    tfun_body = tfun_body.strip().rstrip(",").strip()
+
+    # Check for inline array form: [x1,x2,...], [y1,y2,...], index
+    array_match = re.match(
+        r"\[([^\]]+)\]\s*,\s*\[([^\]]+)\](?:\s*,\s*(\w+))?",
+        tfun_body,
+    )
+    if array_match:
+        try:
+            times = [float(v.strip()) for v in array_match.group(1).split(",")]
+            values = [float(v.strip()) for v in array_match.group(2).split(",")]
+        except ValueError:
+            logger.warning("tfun: could not parse inline data for %s", func_name)
+            return None
+        if array_match.group(3):
+            index = array_match.group(3)
+        return {
+            "name": func_name,
+            "times": times,
+            "values": values,
+            "index": index,
+            "method": method,
+        }
+
+    # Check for file-based form: 'filename.tfun', index
+    # or: "filename.tfun", index
+    file_match = re.match(
+        r"""['"]([^'"]+)['"]\s*(?:,\s*(\w+))?""",
+        tfun_body,
+    )
+    if file_match:
+        tfun_file = file_match.group(1)
+        if file_match.group(2):
+            index = file_match.group(2)
+        # Resolve path relative to BNGL directory
+        if not os.path.isabs(tfun_file):
+            tfun_file = os.path.join(bngl_dir, tfun_file)
+        return {
+            "name": func_name,
+            "file": tfun_file,
+            "index": index,
+            "method": method,
+        }
+
+    logger.warning("tfun: could not parse arguments for %s: %s", func_name, tfun_body)
+    return None
+
+
+def _add_table_functions(bngsim_model, tfun_specs):
+    """Add parsed table function specifications to a BNGsim model.
+
+    Parameters
+    ----------
+    bngsim_model : bngsim.Model
+        The loaded model.
+    tfun_specs : list of dict
+        Table function specifications from ``_parse_table_functions``.
+    """
+    for spec in tfun_specs:
+        name = spec["name"]
+        index = spec.get("index", "time")
+        method = spec.get("method", "linear")
+        try:
+            if "file" in spec:
+                bngsim_model.add_table_function(
+                    name, file=spec["file"], index=index, method=method,
+                )
+            elif "times" in spec and "values" in spec:
+                bngsim_model.add_table_function(
+                    name, times=spec["times"], values=spec["values"],
+                    index=index, method=method,
+                )
+            logger.debug("Added table function: %s (index=%s, method=%s)", name, index, method)
+        except Exception as e:
+            logger.warning("Failed to add table function %s: %s", name, e)
 
 
 # ─── Protocol block parsing ───────────────────────────────────────
@@ -1533,10 +1818,10 @@ def run_bngl_with_bngsim(
     output_dir = os.path.abspath(output_dir)
     os.makedirs(output_dir, exist_ok=True)
 
-    # Step 0: Extract protocol block from the BNGL file before parsing.
-    # The bngmodel parser does not handle "begin protocol...end protocol"
-    # blocks, so we extract them here as raw lines.
+    # Step 0: Extract protocol block and table functions from the BNGL file
+    # before parsing. The bngmodel parser does not handle these constructs.
     protocol_lines = _parse_protocol_block(bngl_path)
+    tfun_specs = _parse_table_functions(bngl_path)
 
     # Step 1: Parse the BNGL file and save original actions
     import bionetgen.modelapi.model as mdl
@@ -1647,6 +1932,9 @@ def run_bngl_with_bngsim(
     # Load model for network-based actions
     if os.path.isfile(net_path):
         bngsim_model = bngsim.Model.from_net(net_path)
+        # Add table functions parsed from the original BNGL
+        if tfun_specs:
+            _add_table_functions(bngsim_model, tfun_specs)
     elif needs_network:
         raise BNGSimError(
             f"Expected .net file at {net_path} but it was not generated."

@@ -19,7 +19,9 @@ from bionetgen.core.tools.bngsim_bridge import (
     FORMAT_BNGL,
     FORMAT_NET,
     FORMAT_SBML,
+    _normalize_method,
     _parse_protocol_block,
+    _parse_table_functions,
     _resolve_sample_times,
     _sniff_xml_format,
     detect_input_format,
@@ -425,3 +427,174 @@ class TestParseProtocolBlock:
     def test_nonexistent_file(self):
         lines = _parse_protocol_block("/nonexistent/path/model.bngl")
         assert lines == []
+
+
+# ─── Method normalization (SSA/PSA) ──────────────────────────────
+
+
+class TestNormalizeMethod:
+    def test_ode_unchanged(self):
+        assert _normalize_method("ode") == ("ode", None)
+
+    def test_ssa_unchanged_without_poplevel(self):
+        assert _normalize_method("ssa") == ("ssa", None)
+
+    def test_ssa_promoted_to_psa_with_poplevel(self):
+        """BNG2.pl compat: ssa + poplevel → psa."""
+        method, poplevel = _normalize_method("ssa", poplevel=200.0)
+        assert method == "psa"
+        assert poplevel == 200.0
+
+    def test_psa_direct(self):
+        method, poplevel = _normalize_method("psa", poplevel=500.0)
+        assert method == "psa"
+        assert poplevel == 500.0
+
+    def test_psa_default_poplevel(self):
+        """PSA without poplevel should default to 100."""
+        method, poplevel = _normalize_method("psa")
+        assert method == "psa"
+        assert poplevel == 100.0
+
+    def test_psa_low_poplevel_gets_default(self):
+        """PSA with poplevel <= 1.0 should default to 100."""
+        method, poplevel = _normalize_method("psa", poplevel=0.5)
+        assert method == "psa"
+        assert poplevel == 100.0
+
+    def test_nf_unchanged(self):
+        assert _normalize_method("nf") == ("nf", None)
+
+    def test_case_insensitive(self):
+        assert _normalize_method("SSA", poplevel=100.0) == ("psa", 100.0)
+        assert _normalize_method("ODE") == ("ode", None)
+
+
+# ─── Table function parsing ──────────────────────────────────────
+
+
+class TestParseTableFunctions:
+    def _write_bngl(self, content):
+        f = tempfile.NamedTemporaryFile(
+            suffix=".bngl", mode="w", delete=False
+        )
+        f.write(content)
+        f.close()
+        return f.name
+
+    def test_file_based_tfun(self):
+        path = self._write_bngl(
+            "begin functions\n"
+            "  f_drive() = tfun('drive_data.tfun', time)\n"
+            "end functions\n"
+        )
+        try:
+            specs = _parse_table_functions(path)
+            assert len(specs) == 1
+            assert specs[0]["name"] == "f_drive"
+            assert specs[0]["file"].endswith("drive_data.tfun")
+            assert specs[0]["index"] == "time"
+            assert specs[0]["method"] == "linear"
+        finally:
+            os.unlink(path)
+
+    def test_inline_tfun(self):
+        path = self._write_bngl(
+            "begin functions\n"
+            "  f_simple() = tfun([0,1,2], [1,2,4], time)\n"
+            "end functions\n"
+        )
+        try:
+            specs = _parse_table_functions(path)
+            assert len(specs) == 1
+            assert specs[0]["name"] == "f_simple"
+            assert specs[0]["times"] == [0.0, 1.0, 2.0]
+            assert specs[0]["values"] == [1.0, 2.0, 4.0]
+            assert specs[0]["index"] == "time"
+        finally:
+            os.unlink(path)
+
+    def test_step_method(self):
+        path = self._write_bngl(
+            "begin functions\n"
+            '  f_step() = tfun(\'data.tfun\', time, method=>"step")\n'
+            "end functions\n"
+        )
+        try:
+            specs = _parse_table_functions(path)
+            assert len(specs) == 1
+            assert specs[0]["method"] == "step"
+        finally:
+            os.unlink(path)
+
+    def test_custom_index_variable(self):
+        path = self._write_bngl(
+            "begin functions\n"
+            "  f_dose() = tfun('dose.tfun', drug_conc)\n"
+            "end functions\n"
+        )
+        try:
+            specs = _parse_table_functions(path)
+            assert len(specs) == 1
+            assert specs[0]["index"] == "drug_conc"
+        finally:
+            os.unlink(path)
+
+    def test_no_functions_block(self):
+        path = self._write_bngl(
+            "begin model\nend model\n"
+            "simulate({method=>\"ode\"})\n"
+        )
+        try:
+            specs = _parse_table_functions(path)
+            assert specs == []
+        finally:
+            os.unlink(path)
+
+    def test_non_tfun_functions_ignored(self):
+        path = self._write_bngl(
+            "begin functions\n"
+            "  f_rate() = k1 * A_tot\n"
+            "  f_drive() = tfun([0,1,2], [10,20,30], time)\n"
+            "end functions\n"
+        )
+        try:
+            specs = _parse_table_functions(path)
+            assert len(specs) == 1
+            assert specs[0]["name"] == "f_drive"
+        finally:
+            os.unlink(path)
+
+    def test_multiple_tfuns(self):
+        path = self._write_bngl(
+            "begin functions\n"
+            "  f1() = tfun([0,1], [0,10], time)\n"
+            "  f2() = tfun('other.tfun', time)\n"
+            "end functions\n"
+        )
+        try:
+            specs = _parse_table_functions(path)
+            assert len(specs) == 2
+            assert specs[0]["name"] == "f1"
+            assert specs[1]["name"] == "f2"
+        finally:
+            os.unlink(path)
+
+    def test_file_path_resolved_relative_to_bngl(self):
+        """File paths in tfun should be resolved relative to the BNGL directory."""
+        path = self._write_bngl(
+            "begin functions\n"
+            "  f() = tfun('subdir/data.tfun', time)\n"
+            "end functions\n"
+        )
+        try:
+            specs = _parse_table_functions(path)
+            bngl_dir = os.path.dirname(os.path.abspath(path))
+            expected = os.path.join(bngl_dir, "subdir/data.tfun")
+            assert specs[0]["file"] == expected
+        finally:
+            os.unlink(path)
+
+    def test_nonexistent_file(self):
+        specs = _parse_table_functions("/nonexistent/path/model.bngl")
+        assert specs == []
