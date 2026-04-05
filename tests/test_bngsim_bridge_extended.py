@@ -246,6 +246,67 @@ class TestRunNfsim:
             run_nfsim(xml_path, tmpdir, param_overrides={"k1": 5.0})
             mock_nfsim_inst.set_param.assert_called_with("k1", 5.0)
 
+    def test_conc_overrides_add_molecules(self):
+        """conc_overrides should call get_molecule_count + add_molecules."""
+        from bionetgen.core.tools.bngsim_bridge import run_nfsim
+
+        mock_nfsim_cls = MagicMock()
+        mock_nfsim_inst = MagicMock()
+        mock_nfsim_cls.return_value = mock_nfsim_inst
+        mock_core_result = MagicMock()
+        mock_nfsim_inst.simulate.return_value = mock_core_result
+        # Current count is 50, target is 200 → add 150
+        mock_nfsim_inst.get_molecule_count.return_value = 50
+
+        mock_result = _make_mock_result()
+        mock_bngsim = MagicMock()
+        mock_bngsim.Result.return_value = mock_result
+
+        with patch(f"{BRIDGE}.BNGSIM_AVAILABLE", True), \
+             patch(f"{BRIDGE}.BNGSIM_HAS_NFSIM", True), \
+             patch(f"{BRIDGE}.bngsim", mock_bngsim), \
+             patch.dict("sys.modules", {"bngsim._bngsim_core": MagicMock(NfsimSimulator=mock_nfsim_cls)}), \
+             tempfile.TemporaryDirectory() as tmpdir:
+
+            xml_path = os.path.join(tmpdir, "model.xml")
+            with open(xml_path, "w") as f:
+                f.write("<model/>")
+
+            run_nfsim(xml_path, tmpdir, conc_overrides={"A(b)": 200})
+            mock_nfsim_inst.get_molecule_count.assert_called_with("A")
+            mock_nfsim_inst.add_molecules.assert_called_with("A", 150)
+
+    def test_conc_overrides_cannot_decrease(self):
+        """conc_overrides should warn and skip when target < current."""
+        from bionetgen.core.tools.bngsim_bridge import run_nfsim
+
+        mock_nfsim_cls = MagicMock()
+        mock_nfsim_inst = MagicMock()
+        mock_nfsim_cls.return_value = mock_nfsim_inst
+        mock_core_result = MagicMock()
+        mock_nfsim_inst.simulate.return_value = mock_core_result
+        # Current count is 200, target is 50 → cannot decrease
+        mock_nfsim_inst.get_molecule_count.return_value = 200
+
+        mock_result = _make_mock_result()
+        mock_bngsim = MagicMock()
+        mock_bngsim.Result.return_value = mock_result
+
+        with patch(f"{BRIDGE}.BNGSIM_AVAILABLE", True), \
+             patch(f"{BRIDGE}.BNGSIM_HAS_NFSIM", True), \
+             patch(f"{BRIDGE}.bngsim", mock_bngsim), \
+             patch.dict("sys.modules", {"bngsim._bngsim_core": MagicMock(NfsimSimulator=mock_nfsim_cls)}), \
+             tempfile.TemporaryDirectory() as tmpdir:
+
+            xml_path = os.path.join(tmpdir, "model.xml")
+            with open(xml_path, "w") as f:
+                f.write("<model/>")
+
+            run_nfsim(xml_path, tmpdir, conc_overrides={"A(b)": 50})
+            mock_nfsim_inst.get_molecule_count.assert_called_with("A")
+            # add_molecules should NOT have been called
+            mock_nfsim_inst.add_molecules.assert_not_called()
+
     def test_defaults(self):
         """Test default t_span, n_points, seed."""
         from bionetgen.core.tools.bngsim_bridge import run_nfsim
@@ -694,6 +755,70 @@ class TestExecuteBngsimActions:
         result, model, mock_bngsim, mock_sim = self._run([action], model=model)
         model.set_concentration.assert_called_with("S1", 150.0)
 
+    def test_set_concentration_propagates_to_nfsim(self):
+        """setConcentration before simulate_nf should forward conc_overrides."""
+        from bionetgen.core.tools.bngsim_bridge import _execute_bngsim_actions
+
+        set_conc = _make_action("setConcentration", {'"A(b)"': None, '200': None})
+        sim_nf = _make_action("simulate_nf", {"t_end": "10", "n_steps": "10"})
+
+        model = _make_mock_model()
+        mock_bngsim = MagicMock()
+        mock_sim = MagicMock()
+        mock_bngsim.Simulator.return_value = mock_sim
+
+        with patch(f"{BRIDGE}.bngsim", mock_bngsim), \
+             patch(f"{BRIDGE}.BNGSIM_AVAILABLE", True), \
+             patch(f"{BRIDGE}.BNGSIM_HAS_NFSIM", True), \
+             patch(f"{BRIDGE}._try_prepare_codegen", return_value=""), \
+             patch(f"{BRIDGE}._parse_net_species_initializers", return_value=[]), \
+             patch(f"{BRIDGE}.run_nfsim") as mock_run_nfsim, \
+             tempfile.TemporaryDirectory() as tmpdir:
+            xml_path = os.path.join(tmpdir, "model.xml")
+            with open(xml_path, "w") as f:
+                f.write("<model/>")
+            _execute_bngsim_actions(
+                [set_conc, sim_nf], model, tmpdir, "test_model",
+                xml_path=xml_path,
+            )
+            mock_run_nfsim.assert_called_once()
+            call_kwargs = mock_run_nfsim.call_args
+            conc_ov = call_kwargs[1].get("conc_overrides") or call_kwargs.kwargs.get("conc_overrides")
+            assert conc_ov == {"A(b)": 200}
+
+    def test_reset_concentrations_clears_nf_conc_overrides(self):
+        """resetConcentrations should clear nf_conc_overrides."""
+        from bionetgen.core.tools.bngsim_bridge import _execute_bngsim_actions
+
+        set_conc = _make_action("setConcentration", {'"A(b)"': None, '200': None})
+        reset_conc = _make_action("resetConcentrations", {})
+        sim_nf = _make_action("simulate_nf", {"t_end": "10", "n_steps": "10"})
+
+        model = _make_mock_model()
+        mock_bngsim = MagicMock()
+        mock_sim = MagicMock()
+        mock_bngsim.Simulator.return_value = mock_sim
+
+        with patch(f"{BRIDGE}.bngsim", mock_bngsim), \
+             patch(f"{BRIDGE}.BNGSIM_AVAILABLE", True), \
+             patch(f"{BRIDGE}.BNGSIM_HAS_NFSIM", True), \
+             patch(f"{BRIDGE}._try_prepare_codegen", return_value=""), \
+             patch(f"{BRIDGE}._parse_net_species_initializers", return_value=[]), \
+             patch(f"{BRIDGE}.run_nfsim") as mock_run_nfsim, \
+             tempfile.TemporaryDirectory() as tmpdir:
+            xml_path = os.path.join(tmpdir, "model.xml")
+            with open(xml_path, "w") as f:
+                f.write("<model/>")
+            _execute_bngsim_actions(
+                [set_conc, reset_conc, sim_nf], model, tmpdir, "test_model",
+                xml_path=xml_path,
+            )
+            mock_run_nfsim.assert_called_once()
+            call_kwargs = mock_run_nfsim.call_args
+            conc_ov = call_kwargs[1].get("conc_overrides") or call_kwargs.kwargs.get("conc_overrides")
+            # Should be None (empty dict is falsy, passed as None)
+            assert not conc_ov
+
     def test_save_reset_concentrations(self):
         save_action = _make_action("saveConcentrations", {})
         reset_action = _make_action("resetConcentrations", {})
@@ -1033,6 +1158,36 @@ class TestRunProtocol:
             # Simulator created 3 times: initial ODE, then ODE sim, then SSA sim
             # Actually: initial + rebuild for SSA = at least 2
             assert mock_bngsim.Simulator.call_count >= 2
+
+    def test_save_reset_parameters_in_protocol(self):
+        from bionetgen.core.tools.bngsim_bridge import _run_protocol
+
+        model = _make_mock_model()
+        # get_param returns different values before/after setParameter
+        param_vals = {"k1": 0.1, "k2": 0.5}
+        model.get_param.side_effect = lambda n: param_vals.get(n, 0.0)
+
+        mock_bngsim = MagicMock()
+        mock_sim = MagicMock()
+        mock_bngsim.Simulator.return_value = mock_sim
+
+        lines = [
+            'saveParameters()',
+            'setParameter("k1", 99.0)',
+            'resetParameters()',
+        ]
+
+        with patch(f"{BRIDGE}.bngsim", mock_bngsim):
+            _run_protocol(model, lines)
+            # setParameter should be called with 99.0, then resetParameters
+            # restores k1 to 0.1
+            set_calls = model.set_param.call_args_list
+            # First call: setParameter("k1", 99.0)
+            assert set_calls[0] == (("k1", 99.0),)
+            # resetParameters restores both k1=0.1 and k2=0.5
+            restore_calls = {c[0][0]: c[0][1] for c in set_calls[1:]}
+            assert restore_calls["k1"] == 0.1
+            assert restore_calls["k2"] == 0.5
 
 
 # ─── _run_parameter_scan_bngsim ──────────────────────────────────────

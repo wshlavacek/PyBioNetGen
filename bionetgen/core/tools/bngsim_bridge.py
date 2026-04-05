@@ -298,6 +298,7 @@ def run_nfsim(
     gml=None,
     model_name=None,
     param_overrides=None,
+    conc_overrides=None,
 ):
     """Run a network-free simulation using BNGsim's NfsimSimulator.
 
@@ -324,6 +325,11 @@ def run_nfsim(
         Parameter name → value overrides to apply via
         ``NfsimSimulator.set_param()`` before initialization.
         Used to propagate ``setParameter`` calls to NFsim.
+    conc_overrides : dict or None
+        Species pattern → absolute molecule count overrides to apply
+        after initialization via ``NfsimSimulator.add_molecules()``.
+        Used to propagate ``setConcentration``/``addConcentration``
+        calls to NFsim.
 
     Returns
     -------
@@ -365,6 +371,29 @@ def run_nfsim(
                     pass  # param may not exist in NFsim model
 
         nfsim.initialize(seed)
+
+        # Apply concentration overrides from setConcentration/addConcentration.
+        # Must happen after initialize() so molecule counts are available.
+        if conc_overrides:
+            for species_pattern, target_count in conc_overrides.items():
+                mol_type = species_pattern.split("(")[0]
+                try:
+                    current = nfsim.get_molecule_count(mol_type)
+                    to_add = target_count - current
+                    if to_add > 0:
+                        nfsim.add_molecules(mol_type, to_add)
+                    elif to_add < 0:
+                        logger.warning(
+                            "NFsim: cannot decrease %s from %d to %d; "
+                            "leaving count unchanged",
+                            mol_type, current, target_count,
+                        )
+                except Exception as e:
+                    logger.warning(
+                        "NFsim: conc override for %s failed: %s",
+                        species_pattern, e,
+                    )
+
         core_result = nfsim.simulate(t_span[0], t_span[1], n_points)
         result = bngsim.Result(core_result)
 
@@ -938,6 +967,14 @@ def _run_protocol(
     current_time = 0.0
     last_result = None
 
+    # Manual parameter save/restore for protocol context
+    saved_params = {}
+    for pname in bngsim_model.param_names:
+        try:
+            saved_params[pname] = bngsim_model.get_param(pname)
+        except Exception:
+            pass
+
     # Simple regex parsers for protocol action lines
     _sim_re = re.compile(
         r"simulate(?:_(\w+))?\s*\(\s*\{(.*)\}\s*\)", re.DOTALL
@@ -950,6 +987,8 @@ def _run_protocol(
     )
     _resetconc_re = re.compile(r"resetConcentrations\s*\(")
     _saveconc_re = re.compile(r"saveConcentrations\s*\(")
+    _saveparam_re = re.compile(r"saveParameters\s*\(")
+    _resetparam_re = re.compile(r"resetParameters\s*\(")
 
     def _parse_kvargs(argstr):
         """Parse ``key=>value, key=>value`` into a dict."""
@@ -1055,6 +1094,27 @@ def _run_protocol(
         # ── saveConcentrations ──
         if _saveconc_re.search(line):
             bngsim_model.save_concentrations()
+            continue
+
+        # ── saveParameters ──
+        if _saveparam_re.search(line):
+            saved_params = {}
+            for pname in bngsim_model.param_names:
+                try:
+                    saved_params[pname] = bngsim_model.get_param(pname)
+                except Exception:
+                    pass
+            continue
+
+        # ── resetParameters ──
+        if _resetparam_re.search(line):
+            for pname, pval in saved_params.items():
+                try:
+                    bngsim_model.set_param(pname, pval)
+                except Exception:
+                    pass
+            # Invalidate simulator — params changed
+            sim = bngsim.Simulator(bngsim_model, method=current_method, **codegen_kw)
             continue
 
         logger.debug("protocol: skipping unrecognized command: %s", line)
@@ -1525,6 +1585,11 @@ def _execute_bngsim_actions(
     # NFsim loads from XML and doesn't share state with bngsim_model,
     # so setParameter changes must be explicitly forwarded.
     nf_param_overrides = {}
+    # Track concentration overrides for NFsim propagation.
+    # setConcentration/addConcentration modify the .net model but NFsim
+    # loads from XML, so concentration changes must be forwarded separately.
+    # Keys are species patterns (e.g. "A(b)"), values are absolute counts.
+    nf_conc_overrides = {}
 
     # Codegen: compile ODE RHS once, reuse for all ODE simulations.
     # Set BIONETGEN_NO_CODEGEN=1 to disable.
@@ -1614,6 +1679,7 @@ def _execute_bngsim_actions(
                     gml=gml,
                     model_name=out_name,
                     param_overrides=nf_param_overrides or None,
+                    conc_overrides=nf_conc_overrides or None,
                 )
             else:
                 # Rebuild simulator if method/poplevel changed, or if
@@ -1713,11 +1779,14 @@ def _execute_bngsim_actions(
         # ── setConcentration ────────────────────────────────────
         if atype == "setConcentration":
             name, value = _extract_positional_args(action)
+            numeric_value = _eval_numeric(value)
             try:
-                bngsim_model.set_concentration(name, _eval_numeric(value))
+                bngsim_model.set_concentration(name, numeric_value)
                 logger.debug("setConcentration(%s, %s)", name, value)
             except Exception as e:
                 logger.warning("setConcentration(%s, %s) failed: %s", name, value, e)
+            # Track for NFsim propagation (absolute count)
+            nf_conc_overrides[name] = int(round(numeric_value))
             continue
 
         # ── addConcentration ────────────────────────────────────
@@ -1725,8 +1794,11 @@ def _execute_bngsim_actions(
             name, value = _extract_positional_args(action)
             try:
                 current = bngsim_model.get_concentration(name)
-                bngsim_model.set_concentration(name, current + _eval_numeric(value))
+                new_val = current + _eval_numeric(value)
+                bngsim_model.set_concentration(name, new_val)
                 logger.debug("addConcentration(%s, %s)", name, value)
+                # Track for NFsim propagation (absolute count)
+                nf_conc_overrides[name] = int(round(new_val))
             except Exception as e:
                 logger.warning("addConcentration(%s, %s) failed: %s", name, value, e)
             continue
@@ -1739,6 +1811,7 @@ def _execute_bngsim_actions(
         # ── resetConcentrations ─────────────────────────────────
         if atype == "resetConcentrations":
             bngsim_model.reset()
+            nf_conc_overrides.clear()
             continue
 
         # ── saveParameters ──────────────────────────────────────
