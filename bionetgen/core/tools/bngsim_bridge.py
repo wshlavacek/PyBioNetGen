@@ -298,9 +298,9 @@ def run_nfsim(
     param_overrides=None,
     conc_overrides=None,
 ):
-    """Run a network-free simulation using BNGsim's NfsimSimulator.
+    """Run a network-free simulation using BNGsim's NfsimSession.
 
-    Uses the low-level NfsimSimulator directly with a BioNetGen XML file.
+    Uses the public NfsimSession API with a BioNetGen XML file.
     No .net file or Model object is needed.
 
     Parameters
@@ -321,11 +321,11 @@ def run_nfsim(
         Base name for output files. Derived from xml_path if None.
     param_overrides : dict or None
         Parameter name → value overrides to apply via
-        ``NfsimSimulator.set_param()`` before initialization.
+        ``NfsimSession.set_param()`` before initialization.
         Used to propagate ``setParameter`` calls to NFsim.
     conc_overrides : dict or None
         Species pattern → absolute molecule count overrides to apply
-        after initialization via ``NfsimSimulator.add_molecules()``.
+        after initialization via ``NfsimSession.add_molecules()``.
         Used to propagate ``setConcentration``/``addConcentration``
         calls to NFsim.
 
@@ -354,53 +354,42 @@ def run_nfsim(
         model_name = os.path.splitext(os.path.basename(xml_path))[0]
 
     try:
-        from bngsim._bngsim_core import NfsimSimulator
+        with bngsim.NfsimSession(xml_path, molecule_limit=gml) as nfsim:
+            # Apply parameter overrides from setParameter actions
+            if param_overrides:
+                for pname, pval in param_overrides.items():
+                    try:
+                        nfsim.set_param(pname, float(pval))
+                    except Exception:
+                        pass  # param may not exist in NFsim model
 
-        nfsim = NfsimSimulator(xml_path)
-        if gml is not None:
-            nfsim.set_molecule_limit(int(gml))
+            nfsim.initialize(seed)
 
-        # Apply parameter overrides from setParameter actions
-        if param_overrides:
-            for pname, pval in param_overrides.items():
-                try:
-                    nfsim.set_param(pname, float(pval))
-                except Exception:
-                    pass  # param may not exist in NFsim model
-
-        nfsim.initialize(seed)
-
-        # Apply concentration overrides from setConcentration/addConcentration.
-        # Must happen after initialize() so molecule counts are available.
-        if conc_overrides:
-            for species_pattern, target_count in conc_overrides.items():
-                mol_type = species_pattern.split("(")[0]
-                try:
-                    current = nfsim.get_molecule_count(mol_type)
-                    to_add = target_count - current
-                    if to_add > 0:
-                        nfsim.add_molecules(mol_type, to_add)
-                    elif to_add < 0:
+            # Apply concentration overrides from setConcentration/addConcentration.
+            # Must happen after initialize() so molecule counts are available.
+            if conc_overrides:
+                for species_pattern, target_count in conc_overrides.items():
+                    mol_type = species_pattern.split("(")[0]
+                    try:
+                        current = nfsim.get_molecule_count(mol_type)
+                        to_add = target_count - current
+                        if to_add > 0:
+                            nfsim.add_molecules(mol_type, to_add)
+                        elif to_add < 0:
+                            logger.warning(
+                                "NFsim: cannot decrease %s from %d to %d; "
+                                "leaving count unchanged",
+                                mol_type, current, target_count,
+                            )
+                    except Exception as e:
                         logger.warning(
-                            "NFsim: cannot decrease %s from %d to %d; "
-                            "leaving count unchanged",
-                            mol_type, current, target_count,
+                            "NFsim: conc override for %s failed: %s",
+                            species_pattern, e,
                         )
-                except Exception as e:
-                    logger.warning(
-                        "NFsim: conc override for %s failed: %s",
-                        species_pattern, e,
-                    )
 
-        core_result = nfsim.simulate(t_span[0], t_span[1], n_points)
-        result = bngsim.Result(core_result)
+            result = nfsim.simulate(t_span[0], t_span[1], n_points)
 
         _write_bngsim_results(result, output_dir, model_name)
-
-        try:
-            nfsim.destroy_session()
-        except Exception:
-            pass
 
         return _make_bng_result(output_dir, method="nf")
 
@@ -1124,13 +1113,11 @@ def _run_nfsim_scan(
     xml_path, action, output_dir, model_name, is_bifurcate=False,
     param_overrides=None,
 ):
-    """Execute a parameter_scan with NFsim: fresh NfsimSimulator per scan point.
+    """Execute a parameter_scan with NFsim: fresh NfsimSession per scan point.
 
     NFsim is stateless (no .net model to clone), so each scan point gets a
-    fresh simulator loaded from the BNG XML file.
+    fresh session loaded from the BNG XML file.
     """
-    from bngsim._bngsim_core import NfsimSimulator
-
     args = action.args
     param_name = _strip_quotes(args.get("parameter", "").strip())
     t_start = float(args.get("t_start", 0))
@@ -1147,10 +1134,7 @@ def _run_nfsim_scan(
     func_names = None
 
     for i, value in enumerate(points):
-        nfsim = NfsimSimulator(xml_path)
-        try:
-            if gml is not None:
-                nfsim.set_molecule_limit(gml)
+        with bngsim.NfsimSession(xml_path, molecule_limit=gml) as nfsim:
             # Apply parameter overrides from prior setParameter actions
             if param_overrides:
                 for pname, pval in param_overrides.items():
@@ -1166,8 +1150,7 @@ def _run_nfsim_scan(
                         "NFsim scan: could not set %s=%s", param_name, value
                     )
             nfsim.initialize((base_seed + i) % (2**31))
-            core_result = nfsim.simulate(t_start, t_end, n_steps + 1)
-            result = bngsim.Result(core_result)
+            result = nfsim.simulate(t_start, t_end, n_steps + 1)
 
             row, row_obs, row_funcs = _scan_result_to_row(
                 result, float(value), print_functions=print_funcs,
@@ -1176,11 +1159,6 @@ def _run_nfsim_scan(
             if obs_names is None:
                 obs_names = row_obs
                 func_names = row_funcs
-        finally:
-            try:
-                nfsim.destroy_session()
-            except Exception:
-                pass
 
     col_names = (obs_names or []) + (func_names or [])
     scan_path = os.path.join(output_dir, f"{model_name}_{suffix}.scan")
