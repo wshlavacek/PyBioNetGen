@@ -40,7 +40,7 @@ The library side provides a simple BNGL model runner as well as a model object t
 
 **Atomizer (optional):** PyBioNetGen includes a heavily updated version of [Atomizer](https://github.com/RuleWorld/atomizer) for conversion of SBML models into BNGL format. Atomizer can also automatically infer the internal structure of SBML species during conversion; see [here](https://pybionetgen.readthedocs.io/en/latest/atomizer.html) for more information. Install with `pip install bionetgen[atomizer]`. Please note that this version of Atomizer is the main supported version and the version distributed with BioNetGen will eventually be deprecated. 
 
-The model object requires a system call to BioNetGen so the initialization can be relatively costly, in case you would like to use it for parallel applications, use the [libRoadRunner](http://libroadrunner.org/) simulator or BNGsim instead, unless you are doing NFSim simulations.
+The model object requires a system call to BioNetGen so the initialization can be relatively costly. For parallel applications, use [libRoadRunner](http://libroadrunner.org/) or BNGsim instead.
 
 ### Usage 
 
