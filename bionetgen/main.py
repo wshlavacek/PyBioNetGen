@@ -9,7 +9,6 @@ from .core.main import (
     graphDiff,
     plotDAT,
     printInfo,
-    runAtomizeTool,
     runCLI,
     visualizeModel,
 )
@@ -652,6 +651,7 @@ class BNGBase(cement.Controller):
         ],
     )
     def atomize(self):
+        from .core.main import runAtomizeTool
         runAtomizeTool(self.app)
 
 

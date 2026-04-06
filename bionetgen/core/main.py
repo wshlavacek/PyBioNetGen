@@ -90,7 +90,13 @@ def runAtomizeTool(app):
     # pull args/config
     args = app.pargs
     # run AtomizeTool
-    from bionetgen.atomizer import AtomizeTool
+    try:
+        from bionetgen.atomizer import AtomizeTool
+    except ImportError as exc:
+        raise SystemExit(
+            "The atomizer module requires additional dependencies.\n"
+            "Install them with:  pip install bionetgen[atomizer]"
+        ) from exc
 
     app.log.debug("Instantiating AtomizeTool object", f"{__file__} : runAtomizeTool()")
     a = AtomizeTool(parser_namespace=args, app=app)

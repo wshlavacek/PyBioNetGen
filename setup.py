@@ -196,11 +196,15 @@ setup(
         "seaborn",
         "libroadrunner",
         "sympy",
-        "lxml",
-        "networkx",
-        "python-libsbml",
         "pylru",
         "pyparsing",
         "packaging",
     ],
+    extras_require={
+        "atomizer": [
+            "python-libsbml",
+            "lxml",
+            "networkx",
+        ],
+    },
 )
