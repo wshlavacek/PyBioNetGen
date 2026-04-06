@@ -1,0 +1,109 @@
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+exclude = ["bionetgen/atomizer/", "bionetgen/assets/*.ipynb"]
+
+[tool.ruff.lint]
+select = [
+    "E",      # pycodestyle errors
+    "W",      # pycodestyle warnings
+    "F",      # pyflakes
+    "I",      # isort
+    "UP",     # pyupgrade
+    "B",      # flake8-bugbear
+    "SIM",    # flake8-simplify
+    "RUF",    # ruff-specific rules
+    "C4",     # flake8-comprehensions
+    "PIE",    # flake8-pie
+    "RET",    # flake8-return
+    "TRY",    # tryceratops
+    "PERF",   # perflint
+    "PLC",    # pylint convention
+    "PLE",    # pylint error
+    "PLW",    # pylint warning
+]
+ignore = [
+    "E501",     # line too long (let formatter handle it)
+    "E722",     # bare except (too many to fix now, revisit later)
+    "TRY003",   # long exception messages
+    "TRY300",   # try-consider-else
+    "TRY301",   # raise within try
+    "RET504",   # unnecessary assignment before return
+    "RET505",   # unnecessary else after return
+    "SIM108",   # ternary operator (readability preference)
+    "SIM105",   # use contextlib.suppress (style preference)
+    "SIM115",   # open-file-with-context-handler (many valid uses)
+    "PLW2901",  # overwriting loop variable
+    "PLC0415",  # import-outside-top-level (lazy imports used intentionally)
+    "PLE1205",  # logging-too-many-args (false positives with cement logger)
+    "UP015",    # unnecessary open mode (redundant but harmless)
+    "RUF059",   # unused unpacked variable (intentional unpacking)
+    "RUF005",   # collection-literal-concatenation (style preference)
+    "SIM117",   # multiple-with-statements (readability preference)
+    "SIM102",   # collapsible-if (readability preference)
+    "SIM201",   # negate-equal-op (style preference)
+    "SIM118",   # in-dict-keys (auto-fix available but unsafe)
+    "RUF012",   # mutable-class-default (ClassVar annotations not worth it yet)
+    "B006",     # mutable-argument-default (too many to fix safely now)
+    "B007",     # unused-loop-control-variable (noisy)
+    "B008",     # function-call-in-default-argument (intentional patterns)
+    "TRY201",   # verbose-raise (style preference)
+    "TRY400",   # error-instead-of-exception (style preference)
+    "UP031",    # printf-string-formatting (legacy code)
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["bionetgen"]
+
+[tool.mypy]
+python_version = "3.12"
+exclude = [
+    "bionetgen/atomizer/",
+    "setup\\.py",
+    "tests/models/",
+]
+warn_return_any = true
+warn_unused_configs = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+no_implicit_optional = true
+strict_equality = true
+extra_checks = true
+
+# Gradual typing: don't require annotations or check inside untyped functions yet.
+# Turn these on incrementally as the codebase gains type coverage.
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
+check_untyped_defs = false
+
+# Third-party libraries without stubs
+[[tool.mypy.overrides]]
+module = [
+    "cement.*",
+    "pynauty",
+    "sympy.*",
+    "yaml",
+    "xmltodict",
+    "lxml.*",
+    "libsbml",
+    "roadrunner",
+    "seaborn",
+    "colorlog",
+    "pylru",
+    "pyparsing",
+    "pandas",
+    "networkx",
+    "bngsim.*",
+    "pyyed",
+]
+ignore_missing_imports = true
+
+# Atomizer is excluded from checking entirely
+[[tool.mypy.overrides]]
+module = "bionetgen.atomizer.*"
+ignore_errors = true
+
+# distutils removed in 3.12
+[[tool.mypy.overrides]]
+module = "distutils.*"
+ignore_missing_imports = true
