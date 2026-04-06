@@ -1,5 +1,3 @@
-import os
-import numpy as np
 from bionetgen.core.tools import BNGResult
 from bionetgen.core.utils.logging import BNGLogger
 
@@ -71,8 +69,8 @@ class BNGPlotter:
             f"Plotting .gdat/.cdat/.scan file {self.result.file_name}",
             loc=f"{__file__} : BNGPlotter._datplot()",
         )
-        import seaborn as sbrn
         import matplotlib.pyplot as plt
+        import seaborn as sbrn
 
         # get the data out of result object
         self.data = self.result[self.result.file_name]
@@ -88,9 +86,7 @@ class BNGPlotter:
             ax = sbrn.lineplot(x=self.data[x_name], y=self.data[name], label=name)
             ctr += 1
         # TODO: Transition to BNGErrors and logging
-        assert ax is not None, "No data columns are found in file {}".format(
-            self.result.direct_path
-        )
+        assert ax is not None, f"No data columns are found in file {self.result.direct_path}"
 
         fax = ax.get_figure().gca()
         if not self.kwargs.get("legend", False):

@@ -1,4 +1,5 @@
-import os, subprocess
+import os
+
 from bionetgen.core.exc import BNGRunError
 from bionetgen.core.utils.logging import BNGLogger
 
@@ -114,14 +115,6 @@ class BNGCLI:
 
         from bionetgen.core.utils.utils import run_command
 
-        try:
-            stdout_loc = getattr(subprocess, self.stdout)
-        except:
-            stdout_loc = subprocess.PIPE
-        try:
-            stderr_loc = getattr(subprocess, self.stderr)
-        except:
-            stderr_loc = subprocess.STDOUT
         # run BNG2.pl
         if self.is_bngmodel:
             self.logger.debug(

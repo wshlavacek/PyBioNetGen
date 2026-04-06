@@ -3,13 +3,11 @@
 import copy
 import json
 import os
-import tempfile
 
 import pytest
 import xmltodict
 
 from bionetgen.core.tools.gdiff import BNGGdiff
-
 
 # ---------------------------------------------------------------------------
 # Helper: minimal graphml dicts that mirror what xmltodict.parse produces
@@ -161,12 +159,12 @@ def _make_gdiff(p1, p2, **kwargs):
     # Replicate __init__ logic but with force_list parsing
     from bionetgen.core.utils.logging import BNGLogger
 
-    obj.app = kwargs.get("app", None)
+    obj.app = kwargs.get("app")
     obj.logger = BNGLogger(app=obj.app)
     obj.input = p1
     obj.input2 = p2
-    obj.output = kwargs.get("out", None)
-    obj.output2 = kwargs.get("out2", None)
+    obj.output = kwargs.get("out")
+    obj.output2 = kwargs.get("out2")
 
     colors = kwargs.get("colors", {
         "g1": ["#dadbfd", "#e6e7fe", "#f3f3ff"],
@@ -386,7 +384,7 @@ class TestRecolorGraph:
         result = gdiff_obj._recolor_graph(g, color_list)
         # The original should not be modified (deepcopy inside _recolor_graph)
         orig_mol = g["graphml"]["graph"]["node"][0]
-        orig_color = gdiff_obj._get_node_color(orig_mol)
+        _orig_color = gdiff_obj._get_node_color(orig_mol)
         # The result should have new molecule color (color_id 0 -> index 0)
         mol_color = gdiff_obj._get_node_color(result["graphml"]["graph"]["node"][0])
         assert mol_color == "#AA0000"

@@ -23,12 +23,14 @@ class BNGInfo:
         """
         Gathers information about relevant versions and paths into a dictionary.
         """
-        import subprocess
         import os
-        import bionetgen
+        import subprocess
+
         import numpy
         import pandas
         import roadrunner
+
+        import bionetgen
 
         self.logger.debug("Gathering info", loc=f"{__file__} : BNGInfo.gatherInfo()")
 
@@ -56,7 +58,7 @@ class BNGInfo:
         self.logger.debug("Perl info", loc=f"{__file__} : BNGInfo.gatherInfo()")
         # Get Perl version
         # Read in CLI text
-        result = subprocess.run(["perl", "-v"], stdout=subprocess.PIPE)
+        result = subprocess.run(["perl", "-v"], stdout=subprocess.PIPE, check=False)
         text = str(result.stdout)
         # Find start & end indices
         num_start = text.find("(v") + 2
@@ -134,7 +136,7 @@ class BNGInfo:
             text = str(key + ": " + self.info[key] + "\n")
             message_lines.append(text)
         # Join lines to create entire message
-        self.message = "".join((message_lines))
+        self.message = "".join(message_lines)
 
         return self.message
 

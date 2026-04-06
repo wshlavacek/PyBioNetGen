@@ -57,6 +57,8 @@ class Pattern:
         for more information
     """
 
+    __hash__ = None  # type: ignore[assignment]
+
     def __init__(
         self, molecules=[], bonds=None, compartment=None, label=None, canonicalize=False
     ):
@@ -86,7 +88,7 @@ class Pattern:
             import pynauty
         except ImportError:
             logger.warning(
-                f"Importing pynauty failed, cannot canonicalize. Pattern equality checking is not guaranteed to work for highly symmetrical species.",
+                "Importing pynauty failed, cannot canonicalize. Pattern equality checking is not guaranteed to work for highly symmetrical species.",
                 loc=loc,
             )
             return
@@ -103,7 +105,7 @@ class Pattern:
         grpIds = {}
         # also pointers to each object
         node_ptrs = {}
-        bond_node_ptrs = {}
+        _bond_node_ptrs = {}
         # we'll need to seutp coloring
         colors = {}
         currId = 0
@@ -116,7 +118,7 @@ class Pattern:
             if color_id in colors:
                 colors[color_id].add(currId)
             else:
-                colors[color_id] = set([currId])
+                colors[color_id] = {currId}
             # saving IDs
             parent_id = (molec.name, None, mCopyId, cCopyId)
             if parent_id in grpIds:
@@ -135,7 +137,7 @@ class Pattern:
                 if comp_color_id in colors:
                     colors[comp_color_id].add(currId)
                 else:
-                    colors[comp_color_id] = set([currId])
+                    colors[comp_color_id] = {currId}
                 chid_id = (molec.name, comp.name, mCopyId, cCopyId)
                 # connecting the component to the molecule
                 G.connect_vertex(grpIds[parent_id], [currId])
@@ -152,17 +154,17 @@ class Pattern:
                 # saving bonds
                 if len(comp._bonds) != 0:
                     for bond in comp._bonds:
-                        if bond not in bond_dict.keys():
+                        if bond not in bond_dict:
                             bond_dict[bond] = [chid_id]
                         else:
                             bond_dict[bond].append(chid_id)
         # now we got everything, we implement it in the graph
-        for bond in bond_dict:
+        for bond, endpoints in bond_dict.items():
             # check if each of our bonds have exactly two end points
-            if len(bond_dict[bond]) == 2:
-                id1 = bond_dict[bond][0]
+            if len(endpoints) == 2:
+                id1 = endpoints[0]
                 id1 = grpIds[id1]
-                id2 = bond_dict[bond][1]
+                id2 = endpoints[1]
                 id2 = grpIds[id2]
                 G.connect_vertex(id1, [id2])
             else:
@@ -186,13 +188,13 @@ class Pattern:
             node_ptrs[ordr].canonical_order = iordr
         # relabeling bonds
         relabeling_bond_dict = {}
-        for bond in bond_dict:
+        for bond, endpoints in bond_dict.items():
             # check if each of our bonds have exactly two end points
-            if len(bond_dict[bond]) == 2:
-                id1 = bond_dict[bond][0]
+            if len(endpoints) == 2:
+                id1 = endpoints[0]
                 id1 = grpIds[id1]
                 comp1 = node_ptrs[id1]
-                id2 = bond_dict[bond][1]
+                id2 = endpoints[1]
                 id2 = grpIds[id2]
                 comp2 = node_ptrs[id2]
                 parent_order = min(
@@ -232,14 +234,14 @@ class Pattern:
         canon_label = ""
         # we first deal with the pattern compartment
         if self.compartment is not None:
-            canon_label += "@{}".format(self.compartment)
+            canon_label += f"@{self.compartment}"
         if self.label is not None:
-            canon_label += "%{}".format(self.label)
+            canon_label += f"%{self.label}"
         if self.label is not None or self.compartment is not None:
             canon_label += ":"
         # now loop over all molecules in canonical order
         canon_ords = [m.canonical_order for m in self.molecules]
-        canon_ord_pairs = zip(range(len(self.molecules)), canon_ords)
+        canon_ord_pairs = zip(range(len(self.molecules)), canon_ords, strict=False)
         sorted_canon_ord_pairs = sorted(canon_ord_pairs, key=lambda x: x[1])
         for imol, mol in enumerate(sorted_canon_ord_pairs):
             mol_id = mol[0]
@@ -346,9 +348,9 @@ class Pattern:
         sstr = ""
         # we first deal with the pattern compartment
         if self.compartment is not None:
-            sstr += "@{}".format(self.compartment)
+            sstr += f"@{self.compartment}"
         if self.label is not None:
-            sstr += "%{}".format(self.label)
+            sstr += f"%{self.label}"
         if self.label is not None or self.compartment is not None:
             sstr += ":"
         # now loop over all molecules
@@ -402,6 +404,8 @@ class Molecule:
         (for molecule types) "states"
     """
 
+    __hash__ = None  # type: ignore[assignment]
+
     def __init__(self, name="0", components=[], compartment=None, label=None):
         self._name = name
         self._components = components
@@ -448,6 +452,7 @@ class Molecule:
     def __getitem__(self, key):
         if isinstance(key, int):
             return self.components[key]
+        return None
 
     def __iter__(self):
         return self.components.__iter__()
@@ -471,9 +476,9 @@ class Molecule:
         if not self.name == "0":
             mol_str += ")"
         if self.compartment is not None:
-            mol_str += "@{}".format(self.compartment)
+            mol_str += f"@{self.compartment}"
         if self.label is not None:
-            mol_str += "%{}".format(self.label)
+            mol_str += f"%{self.label}"
         return mol_str
 
     def print_canonical(self):
@@ -490,7 +495,7 @@ class Molecule:
         # especially for extension highlighting
         if len(self.components) > 0:
             canon_ords = [c.canonical_order for c in self.components]
-            canon_ord_pairs = zip(range(len(self.components)), canon_ords)
+            canon_ord_pairs = zip(range(len(self.components)), canon_ords, strict=False)
             sorted_canon_ord_pairs = sorted(canon_ord_pairs, key=lambda x: x[1])
             for icomp, comp in enumerate(sorted_canon_ord_pairs):
                 comp_id = comp[0]
@@ -501,9 +506,9 @@ class Molecule:
         if not self.name == "0":
             canon_label += ")"
         if self.compartment is not None:
-            canon_label += "@{}".format(self.compartment)
+            canon_label += f"@{self.compartment}"
         if self.label is not None:
-            canon_label += "%{}".format(self.label)
+            canon_label += f"%{self.label}"
         return canon_label
 
     ### PROPERTIES ###
@@ -588,6 +593,8 @@ class Component:
         to an existing component
     """
 
+    __hash__ = None  # type: ignore[assignment]
+
     def __init__(self):
         self._name = ""
         self._label = None
@@ -644,15 +651,15 @@ class Component:
         # only for molecule types
         if len(self.states) > 0:
             for istate, state in enumerate(self.states):
-                comp_str += "~{}".format(state)
+                comp_str += f"~{state}"
         # for any other pattern
         if self.state is not None:
-            comp_str += "~{}".format(self.state)
+            comp_str += f"~{self.state}"
         if self.label is not None:
-            comp_str += "%{}".format(self.label)
+            comp_str += f"%{self.label}"
         if len(self.bonds) > 0:
             for bond in self.bonds:
-                comp_str += "!{}".format(bond)
+                comp_str += f"!{bond}"
         return comp_str
 
     def print_canonical(self):
@@ -663,15 +670,15 @@ class Component:
         # only for molecule types
         if len(self.states) > 0:
             for istate, state in enumerate(self.states):
-                comp_str += "~{}".format(state)
+                comp_str += f"~{state}"
         # for any other pattern
         if self.state is not None:
-            comp_str += "~{}".format(self.state)
+            comp_str += f"~{self.state}"
         if self.label is not None:
-            comp_str += "%{}".format(self.label)
+            comp_str += f"%{self.label}"
         if self.canonical_bonds is not None:
             for bond in self.canonical_bonds:
-                comp_str += "!{}".format(bond)
+                comp_str += f"!{bond}"
         return comp_str
 
     ### PROPERTIES ###

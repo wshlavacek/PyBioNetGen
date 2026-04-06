@@ -1,10 +1,15 @@
-from .blocks import ParameterBlock, CompartmentBlock, ObservableBlock
-from .blocks import SpeciesBlock, MoleculeTypeBlock
-from .blocks import FunctionBlock, RuleBlock
-from .blocks import EnergyPatternBlock, PopulationMapBlock
-
-from .pattern import Pattern, Molecule, Component
-
+from .blocks import (
+    CompartmentBlock,
+    EnergyPatternBlock,
+    FunctionBlock,
+    MoleculeTypeBlock,
+    ObservableBlock,
+    ParameterBlock,
+    PopulationMapBlock,
+    RuleBlock,
+    SpeciesBlock,
+)
+from .pattern import Component, Molecule, Pattern
 from .rulemod import RuleMod
 
 
@@ -179,7 +184,7 @@ class PatternXML(XMLObj):
                 f = float(quantity)
                 if n == f:
                     pattern.quantity = quantity
-            except ValueError as e:
+            except ValueError:
                 print("Quantity needs to be an integer")
         # check for either list of molecules or single molecule, add if exist
         mols = xml["ListOfMolecules"]["Molecule"]
@@ -512,11 +517,8 @@ class FunctionBlockXML(XMLObj):
         return block
 
     def get_arguments(self, xml) -> list:
-        args = []
         if isinstance(xml, list):
-            for arg in xml:
-                args.append(arg["@id"])
-            return args
+            return [arg["@id"] for arg in xml]
         else:
             return [xml["@id"]]
 
@@ -656,7 +658,8 @@ class RuleBlockXML(XMLObj):
                 sl.append(PatternXML(side).parsed_obj)
             return sl
         else:
-            print("Can't parse rule XML {}".format(xml))
+            print(f"Can't parse rule XML {xml}")
+        return None
 
     def get_operations(self, xml):
         # TODO: create working operations class

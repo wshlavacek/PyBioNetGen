@@ -1,15 +1,20 @@
-import ctypes, os, tempfile, bionetgen
-import numpy as np
+import ctypes
+import os
+import tempfile
 
+import numpy as np
 from distutils import ccompiler
-from .bngsimulator import BNGSimulator
-from bionetgen.main import BioNetGen
+
+import bionetgen
 from bionetgen.core.exc import BNGCompileError
+from bionetgen.main import BioNetGen
+
+from .bngsimulator import BNGSimulator
 
 # This allows access to the CLIs config setup
 app = BioNetGen()
 app.setup()
-conf = app.config["bionetgen"]
+conf = app.config["bionetgen"]  # type: ignore[index]
 def_bng_path = conf["bngpath"]
 
 
@@ -234,7 +239,7 @@ class CSimulator(BNGSimulator):
                 num_spec_init=len(self.model.species),
             )
         except:
-            raise BNGCompileError(self.model)
+            raise BNGCompileError(self.model) from None
 
     def simulate(self, t_start=0, t_end=10, n_steps=10):
         # set parameters and initial species values

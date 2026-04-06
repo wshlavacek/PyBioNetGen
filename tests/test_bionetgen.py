@@ -1,5 +1,8 @@
-import os, glob
+import glob
+import os
+
 from pytest import raises
+
 import bionetgen as bng
 from bionetgen.main import BioNetGenTest
 
@@ -48,7 +51,7 @@ def test_bionetgen_plot():
 def test_bionetgen_model():
     fpath = os.path.join(tfold, "test.bngl")
     fpath = os.path.abspath(fpath)
-    m = bng.bngmodel(fpath)
+    _m = bng.bngmodel(fpath)
 
 
 def test_bionetgen_visualize():
@@ -76,9 +79,9 @@ def test_bionetgen_visualize():
             # gmls = glob.glob("*.gml")
             graphmls = glob.glob(os.path.join(tfold, "viz") + os.sep + "*.graphml")
             if vis_name == "atom_rule":
-                assert any(["regulatory" in i for i in graphmls])
+                assert any("regulatory" in i for i in graphmls)
             elif not vis_name == "all":
-                assert any([vis_name in i for i in graphmls])
+                assert any(vis_name in i for i in graphmls)
             else:
                 assert len(graphmls) == 4
 
@@ -93,18 +96,18 @@ def test_bionetgen_all_model_loading():
     fails = 0
     for model in models:
         try:
-            m = bng.bngmodel(model)
+            _m = bng.bngmodel(model)
             success += 1
-            mstr = str(m)
+            _mstr = str(_m)
             succ.append(model)
         except Exception as e:
             print(e)
-            print("can't load model {}".format(model))
+            print(f"can't load model {model}")
             fails += 1
             fail.append(model)
-    print("succ: {}".format(success))
+    print(f"succ: {success}")
     print(sorted(succ))
-    print("fail: {}".format(fails))
+    print(f"fail: {fails}")
     print(sorted(fail))
     assert fails == 0
 
@@ -158,14 +161,14 @@ def test_model_running_CLI():
             succ.append(model)
         except Exception as e:
             print(e)
-            print("can't run model {}".format(model))
+            print(f"can't run model {model}")
             fails += 1
             model = os.path.split(model)
             model = model[1]
             fail.append(model)
-    print("succ: {}".format(success))
+    print(f"succ: {success}")
     print(sorted(succ))
-    print("fail: {}".format(fails))
+    print(f"fail: {fails}")
     print(sorted(fail))
     assert fails == 0
 
@@ -189,14 +192,14 @@ def test_model_running_lib():
             succ.append(model)
         except Exception as e:
             print(e)
-            print("can't run model {}".format(model))
+            print(f"can't run model {model}")
             fails += 1
             model = os.path.split(model)
             model = model[1]
             fail.append(model)
-    print("succ: {}".format(success))
+    print(f"succ: {success}")
     print(sorted(succ))
-    print("fail: {}".format(fails))
+    print(f"fail: {fails}")
     print(sorted(fail))
     assert fails == 0
 
@@ -243,7 +246,7 @@ def test_network_parse():
     from bionetgen.network.network import Network
 
     try:
-        net = Network(netfile)
+        _net = Network(netfile)
         res = True
     except:
         res = False
@@ -276,7 +279,7 @@ def test_pattern_canonicalization():
         assert True is True
     # if pynauty is uninstalled, skip the test
     try:
-        import pynauty
+        import pynauty  # noqa: F401
     except ImportError:
         assert True is True
         return

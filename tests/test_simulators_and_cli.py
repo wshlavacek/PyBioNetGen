@@ -3,9 +3,9 @@ Tests for BNGSimulator base class, sim_getter, BNGCLI, and BNGInfo.
 """
 
 import os
-import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
+import pytest
 
 # ---------------------------------------------------------------------------
 # 1. BNGSimulator base class

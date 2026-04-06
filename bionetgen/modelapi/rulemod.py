@@ -12,7 +12,7 @@ class RuleMod:
         if self.type is None:
             return ""
         else:
-            return self.type
+            return self.type  # type: ignore[no-any-return]
 
     def __repr__(self) -> str:
         return f"Rule modifier of type {self.type}"

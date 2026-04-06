@@ -1,4 +1,5 @@
 import os
+
 from cement.utils.version import get_version as cement_get_version
 
 # Find VERSION file
@@ -12,7 +13,7 @@ for iv, ver in enumerate(v.split()):
     try:
         vtuple[iv] = int(ver)
     except:
-        vtuple[iv] = ver
+        vtuple[iv] = ver  # type: ignore[call-overload]
 
 VERSION = tuple(vtuple)
 

@@ -1,20 +1,31 @@
-import xmltodict, re
-
-from bionetgen.main import BioNetGen
-from bionetgen.core.exc import BNGParseError, BNGModelError
+import re
 from tempfile import TemporaryFile
 
-from .bngfile import BNGFile
-from .xmlparsers import ParameterBlockXML, CompartmentBlockXML, ObservableBlockXML
-from .xmlparsers import SpeciesBlockXML, MoleculeTypeBlockXML, FunctionBlockXML
-from .xmlparsers import RuleBlockXML, EnergyPatternBlockXML, PopulationMapBlockXML
-from .blocks import ActionBlock
+import xmltodict
+
+from bionetgen.core.exc import BNGModelError, BNGParseError
 from bionetgen.core.utils.utils import ActionList
+from bionetgen.main import BioNetGen
+
+from .blocks import ActionBlock
+from .bngfile import BNGFile
+from .xmlparsers import (
+    CompartmentBlockXML,
+    EnergyPatternBlockXML,
+    FunctionBlockXML,
+    MoleculeTypeBlockXML,
+    ObservableBlockXML,
+    ParameterBlockXML,
+    PopulationMapBlockXML,
+    RuleBlockXML,
+    SpeciesBlockXML,
+    XMLObj,
+)
 
 # This allows access to the CLIs config setup
 app = BioNetGen()
 app.setup()
-conf = app.config["bionetgen"]
+conf = app.config["bionetgen"]  # type: ignore[index]
 def_bng_path = conf["bngpath"]
 
 
@@ -99,7 +110,7 @@ class BNGParser:
             model_obj.reset_compilation_tags()
         else:
             raise NotImplementedError(
-                "The extension of {} is not supported".format(model_file)
+                f"The extension of {model_file} is not supported"
             )
 
     def parse_actions(self, model_obj):
@@ -111,7 +122,7 @@ class BNGParser:
             ablock = ActionBlock()
             # we have actions in file, let's get them
             # import ipdb;ipdb.set_trace()
-            left = []
+            _left = []
             for action in self.bngfile.parsed_actions:
                 # some cleanup, first we remove comments
                 action = re.sub(r"\#.*", "", action)
@@ -126,7 +137,7 @@ class BNGParser:
                 except Exception as e:
                     raise BNGParseError(
                         self.bngfile.path, f"Failed to parse action {action}"
-                    )
+                    ) from e
                 # we could have ";" in the action, so we need to remove it
                 if action_list[-1] == ";":
                     _ = action_list.pop(-1)
@@ -148,7 +159,7 @@ class BNGParser:
                         # this is of the form action("argument")
                         ablock.add_action(atype, {action_list[0]: None})
                         continue
-                    elif len(action_list) == 3:
+                    if len(action_list) == 3:
                         # TODO: Error checking here!
                         if action_list[1] == ",":
                             # this is of the form action(argument, value)
@@ -265,7 +276,7 @@ class BNGParser:
                     "Input model is invalid. Please ensure model is in proper BNGL or BNG-XML format",
                 )
         model_obj.xml_dict = xml_dict
-        first_key = list(xml_dict.keys())[0]
+        first_key = next(iter(xml_dict))
         xml_model = xml_dict[first_key]["model"]
         model_obj.model_name = xml_model["@id"]
         for listkey in xml_model.keys():
@@ -273,7 +284,7 @@ class BNGParser:
                 param_list = xml_model[listkey]
                 if param_list is not None:
                     params = param_list["Parameter"]
-                    xml_parser = ParameterBlockXML(params)
+                    xml_parser: XMLObj = ParameterBlockXML(params)
                     model_obj.add_block(xml_parser.parsed_obj)
             elif listkey == "ListOfObservables":
                 obs_list = xml_model[listkey]

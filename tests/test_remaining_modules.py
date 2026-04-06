@@ -11,14 +11,12 @@ Tests for remaining uncovered modules:
 """
 
 import os
-import re
 import tempfile
 import textwrap
 from unittest import mock
 
-import pytest
 import numpy as np
-
+import pytest
 
 # ---------------------------------------------------------------------------
 # 1. sympy_odes.py — internal helpers and extract_odes_from_mexfile
@@ -242,9 +240,8 @@ class TestSympyOdes:
             assert result.endswith(".c")
 
     def test_find_mex_c_file_not_found(self):
-        with tempfile.TemporaryDirectory() as td:
-            with pytest.raises(FileNotFoundError):
-                self.so._find_mex_c_file(td, mex_suffix="mex")
+        with tempfile.TemporaryDirectory() as td, pytest.raises(FileNotFoundError):
+            self.so._find_mex_c_file(td, mex_suffix="mex")
 
     def test_find_mex_c_file_no_suffix(self):
         with tempfile.TemporaryDirectory() as td:
@@ -344,8 +341,9 @@ class TestSympyOdes:
 
     # -- SympyOdes dataclass --
     def test_sympy_odes_dataclass(self):
-        from bionetgen.modelapi.sympy_odes import SympyOdes
         import sympy as sp
+
+        from bionetgen.modelapi.sympy_odes import SympyOdes
         t = sp.Symbol("t")
         s = [sp.Symbol("s0")]
         p = [sp.Symbol("p0")]
@@ -360,8 +358,9 @@ class TestSympyOdes:
 
     # -- export_sympy_odes (mocked) --
     def test_export_sympy_odes_mocked(self):
-        from bionetgen.modelapi.sympy_odes import SympyOdes
         import sympy as sp
+
+        from bionetgen.modelapi.sympy_odes import SympyOdes
         dummy_result = SympyOdes(
             t=sp.Symbol("t"), species=[], params=[], odes=[],
             species_names=[], param_names=[], source_path="/tmp/x.c"
@@ -371,7 +370,7 @@ class TestSympyOdes:
         mock_model.actions.before_model = []
         # Patch bngmodel so isinstance check passes for our mock
         with mock.patch("bionetgen.modelapi.model.bngmodel", new=type(mock_model)), \
-             mock.patch("bionetgen.modelapi.runner.run") as mock_run, \
+             mock.patch("bionetgen.modelapi.runner.run") as _mock_run, \
              mock.patch.object(self.so, '_find_mex_c_file', return_value="/tmp/x.c"), \
              mock.patch.object(self.so, 'extract_odes_from_mexfile', return_value=dummy_result):
             result = self.so.export_sympy_odes(mock_model, out_dir="/tmp/test_out", keep_files=True)
@@ -923,7 +922,7 @@ class TestCoreMain:
         }}
         # bionetgen is imported locally inside generate_notebook; patch the bngmodel it uses
         with mock.patch("bionetgen.core.main.BNGNotebook") as MockNB, \
-             mock.patch("bionetgen.bngmodel") as mock_bngmodel:
+             mock.patch("bionetgen.bngmodel") as _mock_bngmodel:
             mock_nb = mock.MagicMock()
             MockNB.return_value = mock_nb
             generate_notebook(mock_app)
@@ -954,16 +953,17 @@ class TestMainCLI:
             assert app._meta.label == "bionetgen"
 
     def test_require_action_init(self):
-        from bionetgen.main import requireAction
         import argparse
+
+        from bionetgen.main import requireAction
         parser = argparse.ArgumentParser()
         parser.add_argument("--require", action=requireAction, type=str, default=None)
         args = parser.parse_args([])
         assert args.require is None
 
     def test_require_action_nargs_raises(self):
+
         from bionetgen.main import requireAction
-        import argparse
         with pytest.raises(ValueError, match="nargs not allowed"):
             requireAction(["--test"], "test", nargs="+")
 
@@ -997,7 +997,6 @@ class TestCSimulator:
         assert "species" in field_names
 
     def test_csim_wrapper_init(self):
-        import ctypes
         # Create a mock shared lib
         mock_lib = mock.MagicMock()
         with mock.patch("ctypes.CDLL", return_value=mock_lib):

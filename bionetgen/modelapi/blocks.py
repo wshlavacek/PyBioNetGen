@@ -1,16 +1,27 @@
+from typing import Any
+
 try:
-    from typing import OrderedDict
+    from collections import OrderedDict
 except ImportError:
     from collections import OrderedDict
-from .structs import Parameter, Compartment, Observable
-from .structs import MoleculeType, Species, Function
-from .structs import Rule, Action
-from .structs import EnergyPattern, PopulationMap
 from bionetgen.core.utils.utils import ActionList
+
+from .structs import (
+    Action,
+    Compartment,
+    EnergyPattern,
+    Function,
+    MoleculeType,
+    Observable,
+    Parameter,
+    PopulationMap,
+    Rule,
+    Species,
+)
 
 # this import fails on some python versions
 try:
-    from typing import OrderedDict
+    from collections import OrderedDict
 except ImportError:
     from collections import OrderedDict
 
@@ -58,9 +69,9 @@ class ModelBlock:
     def __init__(self) -> None:
         self.name = "ModelBlock"
         self.comment = (None, None)
-        self._changes = OrderedDict()
+        self._changes: dict[str, Any] = OrderedDict()
         self._recompile = False
-        self.items = OrderedDict()
+        self.items: OrderedDict = OrderedDict()
 
     def __str__(self) -> str:
         return self.gen_string()
@@ -72,9 +83,7 @@ class ModelBlock:
         # overwrites what the class representation
         # shows the items in the model block in
         # say ipython
-        repr_str = "{} block with {} item(s): {}".format(
-            self.name, len(self.items), list([i.name for i in self.items.values()])
-        )
+        repr_str = f"{self.name} block with {len(self.items)} item(s): {[i.name for i in self.items.values()]}"
         return repr_str
 
     def __getitem__(self, key):
@@ -90,7 +99,7 @@ class ModelBlock:
         if key in self.items:
             self.items.pop(key)
         else:
-            print("Item {} not found".format(key))
+            print(f"Item {key} not found")
 
     def __iter__(self):
         return self.items.keys().__iter__()
@@ -121,17 +130,17 @@ class ModelBlock:
         """
         # each block can have a comment at the start
         if self.comment[0] is not None:
-            block_lines = ["\nbegin {} #{}".format(self.name, self.comment[0])]
+            block_lines = [f"\nbegin {self.name} #{self.comment[0]}"]
         else:
-            block_lines = ["\nbegin {}".format(self.name)]
+            block_lines = [f"\nbegin {self.name}"]
         # now we just loop over lines
         for item in self.items.keys():
             block_lines.append(self.items[item].print_line())
         # each block can have a comment at the start
         if self.comment[1] is not None:
-            block_lines.append("end {} #{}\n".format(self.name, self.comment[1]))
+            block_lines.append(f"end {self.name} #{self.comment[1]}\n")
         else:
-            block_lines.append("end {}\n".format(self.name))
+            block_lines.append(f"end {self.name}\n")
         # join everything with new lines
         return "\n".join(block_lines)
 
@@ -167,8 +176,7 @@ class ModelBlock:
             try:
                 setattr(self, name, value)
             except:
-                print("can't set {} to {}".format(name, value))
-                pass
+                print(f"can't set {name} to {value}")
         # we just added an item to a block, let's assume we need
         # to recompile if we have a compiled simulator
         self._recompile = True
@@ -577,8 +585,8 @@ class ActionBlock(ModelBlock):
         self.name = "actions"
         self.AList = ActionList()
         self._action_list = self.AList.possible_types
-        self.items = []
-        self.before_model = []
+        self.items: list = []  # type: ignore[assignment]
+        self.before_model: list = []
 
     def __setattr__(self, name, value) -> None:
         self.__dict__[name] = value
@@ -596,9 +604,7 @@ class ActionBlock(ModelBlock):
         # overwrites what the class representation
         # shows the items in the model block in
         # say ipython
-        repr_str = "{} block with {} item(s): {}".format(
-            self.name, len(self.items), self.items
-        )
+        repr_str = f"{self.name} block with {len(self.items)} item(s): {self.items}"
         return repr_str
 
     def __getitem__(self, key):
@@ -609,10 +615,10 @@ class ActionBlock(ModelBlock):
 
     def __delitem__(self, key) -> None:
         try:
-            return self.items.pop(key)
+            return self.items.pop(key)  # type: ignore[no-any-return]
         # TODO: more specific except statements
         except:
-            print("Item {} not found".format(key))
+            print(f"Item {key} not found")
 
     def __iter__(self):
         return range(len(self.items)).__iter__()
@@ -630,17 +636,14 @@ class ActionBlock(ModelBlock):
             self.add_item((action_type, a))
         else:
             print(
-                "Action type {} is not recognized as a BNGL action".format(action_type)
+                f"Action type {action_type} is not recognized as a BNGL action"
             )
 
     def clear_actions(self) -> None:
         self.items.clear()
 
     def gen_string(self) -> str:
-        block_lines = []
-        # we just loop over lines for actions
-        for item in self.items:
-            block_lines.append(item.print_line())
+        block_lines = [item.print_line() for item in self.items]
         # join everything with new lines
         return "\n".join(block_lines)
 

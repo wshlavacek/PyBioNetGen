@@ -1,14 +1,21 @@
 try:
-    from typing import OrderedDict
+    from collections import OrderedDict
 except ImportError:
     from collections import OrderedDict
-from .structs import NetworkParameter, NetworkCompartment, NetworkGroup
-from .structs import NetworkSpecies, NetworkFunction, NetworkReaction
-from .structs import NetworkEnergyPattern, NetworkPopulationMap
+from .structs import (
+    NetworkCompartment,
+    NetworkEnergyPattern,
+    NetworkFunction,
+    NetworkGroup,
+    NetworkParameter,
+    NetworkPopulationMap,
+    NetworkReaction,
+    NetworkSpecies,
+)
 
 # this import fails on some python versions
 try:
-    from typing import OrderedDict
+    from collections import OrderedDict
 except ImportError:
     from collections import OrderedDict
 
@@ -42,7 +49,8 @@ class NetworkBlock:
     def __init__(self) -> None:
         self.name = "NetworkBlock"
         self.comment = (None, None)
-        self.items = OrderedDict()
+        self._changes: dict = {}
+        self.items: OrderedDict = OrderedDict()
 
     def __str__(self) -> str:
         return self.gen_string()
@@ -54,9 +62,7 @@ class NetworkBlock:
         # overwrites what the class representation
         # shows the items in the model block in
         # say ipython
-        repr_str = "{} block with {} item(s): {}".format(
-            self.name, len(self.items), list([i.name for i in self.items.values()])
-        )
+        repr_str = f"{self.name} block with {len(self.items)} item(s): {[i.name for i in self.items.values()]}"
         return repr_str
 
     def __getitem__(self, key):
@@ -72,7 +78,7 @@ class NetworkBlock:
         if key in self.items:
             self.items.pop(key)
         else:
-            print("Item {} not found".format(key))
+            print(f"Item {key} not found")
 
     def __iter__(self):
         return self.items.keys().__iter__()
@@ -100,17 +106,17 @@ class NetworkBlock:
     def gen_string(self) -> str:
         # each block can have a comment at the start
         if self.comment[0] is not None:
-            block_lines = ["\nbegin {} #{}".format(self.name, self.comment[0])]
+            block_lines = [f"\nbegin {self.name} #{self.comment[0]}"]
         else:
-            block_lines = ["\nbegin {}".format(self.name)]
+            block_lines = [f"\nbegin {self.name}"]
         # now we just loop over lines
         for item in self.items.keys():
             block_lines.append(self.items[item].print_line())
         # each block can have a comment at the start
         if self.comment[1] is not None:
-            block_lines.append("end {} #{}\n".format(self.name, self.comment[1]))
+            block_lines.append(f"end {self.name} #{self.comment[1]}\n")
         else:
-            block_lines.append("end {}\n".format(self.name))
+            block_lines.append(f"end {self.name}\n")
         # join everything with new lines
         return "\n".join(block_lines)
 

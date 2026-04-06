@@ -1,4 +1,7 @@
-import time, json, urllib, sys
+import json
+import sys
+import time
+import urllib
 import urllib.request
 
 # GH API has rate exceeded issues if more than 60

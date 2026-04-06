@@ -1,26 +1,28 @@
-import copy, tempfile, shutil
+import copy
+import shutil
+import tempfile
 
-from bionetgen.main import BioNetGen
 from bionetgen.core.exc import BNGModelError
+from bionetgen.main import BioNetGen
 
-from .bngparser import BNGParser
 from .blocks import (
     ActionBlock,
     CompartmentBlock,
+    EnergyPatternBlock,
     FunctionBlock,
     MoleculeTypeBlock,
     ObservableBlock,
     ParameterBlock,
+    PopulationMapBlock,
     RuleBlock,
     SpeciesBlock,
-    EnergyPatternBlock,
-    PopulationMapBlock,
 )
+from .bngparser import BNGParser
 
 # This allows access to the CLIs config setup
 app = BioNetGen()
 app.setup()
-conf = app.config["bionetgen"]
+conf = app.config["bionetgen"]  # type: ignore[index]
 def_bng_path = conf["bngpath"]
 
 
@@ -132,7 +134,7 @@ class bngmodel:
         model_str = ""
         # gotta check for "before model" type actions
         if hasattr(self, "actions"):
-            ablock = getattr(self, "actions")
+            ablock = self.actions
             if len(ablock.before_model) > 0:
                 for baction in ablock.before_model:
                     model_str += str(baction) + "\n"
@@ -177,7 +179,7 @@ class bngmodel:
         # TODO: fix this exception
         if bname == "reaction_rules":
             bname = "rules"
-        block_adder = getattr(self, "add_{}_block".format(bname))
+        block_adder = getattr(self, f"add_{bname}_block")
         block_adder(block)
 
     def add_empty_block(self, block_name):
@@ -189,7 +191,7 @@ class bngmodel:
         # TODO: fix this exception
         if bname == "reaction_rules":
             bname = "rules"
-        block_adder = getattr(self, "add_{}_block".format(bname))
+        block_adder = getattr(self, f"add_{bname}_block")
         block_adder()
 
     def add_parameters_block(self, block=None):
@@ -393,7 +395,7 @@ class bngmodel:
 
                 self.simulator = bng.sim_getter(model_file=sbml_name, sim_type=sim_type)
                 # let's deal with observables here
-                selections = ["time"] + [obs for obs in self.observables]
+                selections = ["time"] + list(self.observables)
                 self.simulator.simulator.timeCourseSelections = selections
             finally:
                 shutil.rmtree(tmp_folder)
@@ -405,9 +407,9 @@ class bngmodel:
             self.simulator = bng.sim_getter(model_file=self, sim_type=sim_type)
             return self.simulator
         else:
-            print('Sim type {} is not recognized, only libroadrunner \
+            print(f'Sim type {sim_type} is not recognized, only libroadrunner \
                    is supported currently by passing "libRR" to \
-                   sim_type keyword argument'.format(sim_type))
+                   sim_type keyword argument')
             return None
         # for now we return the underlying simulator
         return self.simulator.simulator

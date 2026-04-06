@@ -1,9 +1,8 @@
-import subprocess, os, sys
-from bionetgen.core.tools import BNGInfo
-from bionetgen.core.tools import BNGVisualize
-from bionetgen.core.tools import BNGCLI
-from bionetgen.core.tools import BNGGdiff
+import os
+import sys
+
 from bionetgen.core.notebook import BNGNotebook
+from bionetgen.core.tools import BNGCLI, BNGGdiff, BNGInfo, BNGVisualize
 from bionetgen.core.utils.utils import run_command
 
 
@@ -74,7 +73,7 @@ def plotDAT(app):
     if out == ".":
         path, fname = os.path.split(inp)
         fnoext, ext = os.path.splitext(fname)
-        out = os.path.join(path, "{}.png".format(fnoext))
+        out = os.path.join(path, f"{fnoext}.png")
     # use the plotter object to get the plot
     from bionetgen.core.tools import BNGPlotter
 
@@ -90,7 +89,6 @@ def runAtomizeTool(app):
     """
     # pull args/config
     args = app.pargs
-    config = app.config
     # run AtomizeTool
     from bionetgen.atomizer import AtomizeTool
 
@@ -207,7 +205,7 @@ def generate_notebook(app):
             str(m)
         except:
             app.log.error("Failed to load model", f"{__file__} : notebook()")
-            raise RuntimeError(f"Couldn't import given model: {args.input}!")
+            raise RuntimeError(f"Couldn't import given model: {args.input}!") from None
         notebook = BNGNotebook(
             app.config["bionetgen"]["notebook"]["template"],
             INPUT_ARG=args.input,
@@ -238,8 +236,6 @@ def generate_notebook(app):
         f"Attempting to open notebook {fname} with nbopen",
         f"{__file__} : notebook()",
     )
-    stdout = getattr(subprocess, app.config["bionetgen"]["stdout"])
-    stderr = getattr(subprocess, app.config["bionetgen"]["stderr"])
     if args.open:
         command = ["nbopen", fname]
         rc, _ = run_command(command)

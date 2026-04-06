@@ -1,15 +1,18 @@
 import cement
-import bionetgen as bng
 from cement.core.exc import CaughtSignal
-from .core.exc import BNGError
-from .core.exc import BNGVersionError
-from .core.main import runCLI
-from .core.main import plotDAT
-from .core.main import runAtomizeTool
-from .core.main import printInfo
-from .core.main import visualizeModel
-from .core.main import graphDiff
-from .core.main import generate_notebook
+
+import bionetgen as bng
+
+from .core.exc import BNGError, BNGVersionError
+from .core.main import (
+    generate_notebook,
+    graphDiff,
+    plotDAT,
+    printInfo,
+    runAtomizeTool,
+    runCLI,
+    visualizeModel,
+)
 from .core.utils.utils import test_perl
 
 # pull defaults defined in core/defaults
@@ -17,8 +20,10 @@ CONF = bng.defaults
 VERSION_BANNER = bng.defaults.banner
 
 # require version argparse action
-import argparse, sys
-from packaging import version as packaging_version
+import argparse  # noqa: E402
+import sys  # noqa: E402
+
+from packaging import version as packaging_version  # noqa: E402
 
 
 class requireAction(argparse.Action):
@@ -68,12 +73,12 @@ class BNGBase(cement.Controller):
         help = "bionetgen"
         arguments = [
             # TODO: Auto-load in BioNetGen version here
-            (["-v", "--version"], dict(action="version", version=VERSION_BANNER)),
+            (["-v", "--version"], {"action": "version", "version": VERSION_BANNER}),
             # (['-s','--sedml'],dict(type=str,
             #                        default=CONF.config['bionetgen']['bngpath'],
             #                        help="Optional path to SED-ML file, if available the simulation \
             #                              protocol described in SED-ML will be ran")),
-            (["-req", "--require"], dict(action=requireAction, type=str, default=None)),
+            (["-req", "--require"], {"action": requireAction, "type": str, "default": None}),
             (
                 ["-ll", "--log-level"],
                 {
@@ -168,9 +173,9 @@ class BNGBase(cement.Controller):
         from bionetgen.core.tools.bngsim_bridge import (
             BNGSIM_AVAILABLE,
             BNGSIM_REQUIRED_FORMATS,
+            FORMAT_BNG_XML,
             FORMAT_BNGL,
             FORMAT_NET,
-            FORMAT_BNG_XML,
             detect_input_format,
             run_bngl_with_bngsim,
             run_with_bngsim,
@@ -701,7 +706,7 @@ class BioNetGen(cement.App):
         config_file_suffix = ".conf"
 
         # add current folder to the list of config dirs
-        config_files = ["./.{}.conf".format(label)]
+        config_files = [f"./.{label}.conf"]
 
         # set the log handler
         log_handler = "colorlog"

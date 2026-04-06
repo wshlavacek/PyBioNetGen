@@ -1,4 +1,5 @@
 import os
+
 import numpy as np
 
 from bionetgen.core.utils.logging import BNGLogger
@@ -98,7 +99,7 @@ class BNGResult:
             return self._load_scan(fpath)
         else:
             self.logger.info(
-                "BNGResult doesn't know the file type of {}".format(fpath),
+                f"BNGResult doesn't know the file type of {fpath}",
                 loc=f"{__file__} : BNGResult.load()",
             )
             return None

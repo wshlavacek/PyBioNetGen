@@ -1,30 +1,28 @@
 """Tests for bionetgen.network.structs and bionetgen.network.blocks."""
 
-import pytest
 
-from bionetgen.network.structs import (
-    NetworkObj,
-    NetworkParameter,
-    NetworkCompartment,
-    NetworkGroup,
-    NetworkSpecies,
-    NetworkFunction,
-    NetworkReaction,
-    NetworkEnergyPattern,
-    NetworkPopulationMap,
-)
 from bionetgen.network.blocks import (
     NetworkBlock,
-    NetworkParameterBlock,
     NetworkCompartmentBlock,
-    NetworkGroupBlock,
-    NetworkSpeciesBlock,
-    NetworkFunctionBlock,
-    NetworkReactionBlock,
     NetworkEnergyPatternBlock,
+    NetworkFunctionBlock,
+    NetworkGroupBlock,
+    NetworkParameterBlock,
     NetworkPopulationMapBlock,
+    NetworkReactionBlock,
+    NetworkSpeciesBlock,
 )
-
+from bionetgen.network.structs import (
+    NetworkCompartment,
+    NetworkEnergyPattern,
+    NetworkFunction,
+    NetworkGroup,
+    NetworkObj,
+    NetworkParameter,
+    NetworkPopulationMap,
+    NetworkReaction,
+    NetworkSpecies,
+)
 
 # ===== NetworkObj base class =====
 

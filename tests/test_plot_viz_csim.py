@@ -1,9 +1,8 @@
 """Tests for plot.py, visualize.py, csimulator.py, and other remaining gaps."""
 import os
-import pytest
-import numpy as np
 from unittest import mock
 
+import pytest
 
 # ── BNGPlotter tests ──────────────────────────────────────────────
 
@@ -176,8 +175,8 @@ class TestVisResult:
 
 class TestCSimWrapper:
     def test_result_struct_fields(self):
+
         from bionetgen.simulator.csimulator import RESULT
-        import ctypes
         # Verify struct fields exist
         field_names = [f[0] for f in RESULT._fields_]
         assert "status" in field_names
@@ -238,7 +237,7 @@ class TestLibRRSimulator:
         sim = libRRSimulator.__new__(libRRSimulator)
         sim._simulator = mock.MagicMock()
         sim._simulator.simulate.return_value = "result"
-        result = sim.simulate(t_start=0, t_end=10, n_steps=5)
+        _result = sim.simulate(t_start=0, t_end=10, n_steps=5)
         sim._simulator.simulate.assert_called_once_with(t_start=0, t_end=10, n_steps=5)
 
     def test_sbml_property(self):
@@ -258,5 +257,5 @@ class TestLibRRSimulator:
         from bionetgen.simulator.librrsimulator import libRRSimulator
         mock_rr = mock.MagicMock()
         with mock.patch.dict("sys.modules", {"roadrunner": mock_rr}):
-            sim = libRRSimulator(model_file="/fake/model.bngl")
+            _sim = libRRSimulator(model_file="/fake/model.bngl")
             mock_rr.RoadRunner.assert_called()

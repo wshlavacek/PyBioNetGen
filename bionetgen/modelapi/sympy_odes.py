@@ -5,7 +5,7 @@ import os
 import re
 import tempfile
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Tuple, cast
+from typing import cast
 
 import sympy as sp
 from sympy.parsing.sympy_parser import parse_expr, standard_transformations
@@ -14,11 +14,11 @@ from sympy.parsing.sympy_parser import parse_expr, standard_transformations
 @dataclass
 class SympyOdes:
     t: sp.Symbol
-    species: List[sp.Symbol]
-    params: List[sp.Symbol]
-    odes: List[sp.Expr]
-    species_names: List[str]
-    param_names: List[str]
+    species: list[sp.Symbol]
+    params: list[sp.Symbol]
+    odes: list[sp.Expr]
+    species_names: list[str]
+    param_names: list[str]
     source_path: str
 
 
@@ -34,10 +34,10 @@ _PARAM_ARRAY_PATTERNS = [
 
 def export_sympy_odes(
     model_or_path,
-    out_dir: Optional[str] = None,
+    out_dir: str | None = None,
     mex_suffix: str = "mex",
     keep_files: bool = False,
-    timeout: Optional[int] = None,
+    timeout: int | None = None,
     suppress: bool = True,
 ) -> SympyOdes:
     """Generate a mex C file with BNG2.pl and parse ODEs into SymPy.
@@ -127,7 +127,7 @@ def extract_odes_from_mexfile(mex_c_path: str) -> SympyOdes:
     param_symbols = [sp.Symbol(name) for name in param_symbol_names]
     t = sp.Symbol("t")
 
-    local_dict: Dict[str, object] = {s.name: s for s in species_symbols}
+    local_dict: dict[str, object] = {s.name: s for s in species_symbols}
     local_dict.update({p.name: p for p in param_symbols})
     local_dict.update(
         {
@@ -142,7 +142,7 @@ def extract_odes_from_mexfile(mex_c_path: str) -> SympyOdes:
         }
     )
 
-    odes: List[sp.Expr] = [sp.Integer(0) for _ in range(max_idx + 1)]
+    odes: list[sp.Expr] = [sp.Integer(0) for _ in range(max_idx + 1)]
     for idx, expr in eq_map.items():
         cleaned = _normalize_expr(expr)
         cleaned = _replace_indexed_symbols(
@@ -209,7 +209,7 @@ def _extract_odes_from_cvode_mex(text: str, mex_c_path: str) -> SympyOdes:
     obs_syms = [sp.Symbol(f"o{i}") for i in range(n_obs)]
     rate_syms = [sp.Symbol(f"r{i}") for i in range(n_rate)]
 
-    local_dict: Dict[str, object] = {s.name: s for s in species_symbols}
+    local_dict: dict[str, object] = {s.name: s for s in species_symbols}
     local_dict.update({p.name: p for p in param_symbols})
     local_dict.update({e.name: e for e in expr_syms})
     local_dict.update({o.name: o for o in obs_syms})
@@ -248,7 +248,7 @@ def _extract_odes_from_cvode_mex(text: str, mex_c_path: str) -> SympyOdes:
         )
 
     # Build expressions with intra-expression substitution (expressions can depend on earlier entries)
-    expr_exprs: List[sp.Expr] = [sp.Integer(0) for _ in range(n_expr)]
+    expr_exprs: list[sp.Expr] = [sp.Integer(0) for _ in range(n_expr)]
     for idx in sorted(expr_map.keys()):
         val = _parse_rhs(expr_map[idx])
         if idx > 0:
@@ -257,12 +257,12 @@ def _extract_odes_from_cvode_mex(text: str, mex_c_path: str) -> SympyOdes:
             )
         expr_exprs[idx] = cast(sp.Expr, val)
 
-    obs_exprs: List[sp.Expr] = [sp.Integer(0) for _ in range(n_obs)]
+    obs_exprs: list[sp.Expr] = [sp.Integer(0) for _ in range(n_obs)]
     expr_sub = {expr_syms[i]: expr_exprs[i] for i in range(n_expr)}
     for idx in sorted(obs_map.keys()):
         obs_exprs[idx] = cast(sp.Expr, _parse_rhs(obs_map[idx]).subs(expr_sub))
 
-    rate_exprs: List[sp.Expr] = [sp.Integer(0) for _ in range(n_rate)]
+    rate_exprs: list[sp.Expr] = [sp.Integer(0) for _ in range(n_rate)]
     obs_sub = {obs_syms[i]: obs_exprs[i] for i in range(n_obs)}
     for idx in sorted(rate_map.keys()):
         rate_exprs[idx] = cast(
@@ -271,7 +271,7 @@ def _extract_odes_from_cvode_mex(text: str, mex_c_path: str) -> SympyOdes:
         )
 
     rate_sub = {rate_syms[i]: rate_exprs[i] for i in range(n_rate)}
-    odes: List[sp.Expr] = [sp.Integer(0) for _ in range(n_species)]
+    odes: list[sp.Expr] = [sp.Integer(0) for _ in range(n_species)]
     for idx in range(n_species):
         if idx in deriv_map:
             odes[idx] = cast(sp.Expr, _parse_rhs(deriv_map[idx]).subs(rate_sub))
@@ -289,7 +289,7 @@ def _extract_odes_from_cvode_mex(text: str, mex_c_path: str) -> SympyOdes:
     )
 
 
-def _extract_define_int(text: str, define_name: str) -> Optional[int]:
+def _extract_define_int(text: str, define_name: str) -> int | None:
     m = re.search(
         rf"^\s*#define\s+{re.escape(define_name)}\s+(\d+)\s*$", text, flags=re.M
     )
@@ -310,10 +310,10 @@ def _extract_function_body(text: str, func_name: str) -> str:
     return m.group(1)
 
 
-def _extract_nv_assignments(body: str, lhs_var: str) -> Dict[int, str]:
+def _extract_nv_assignments(body: str, lhs_var: str) -> dict[int, str]:
     if not body:
         return {}
-    eq_map: Dict[int, str] = {}
+    eq_map: dict[int, str] = {}
     pattern = rf"NV_Ith_S\s*\(\s*{re.escape(lhs_var)}\s*,\s*(\d+)\s*\)\s*=\s*(.*?);"
     for match in re.finditer(pattern, body, flags=re.S):
         idx = int(match.group(1))
@@ -321,7 +321,7 @@ def _extract_nv_assignments(body: str, lhs_var: str) -> Dict[int, str]:
     return eq_map
 
 
-def _replace_parameters_brackets(expr: str, param_names: List[str]) -> str:
+def _replace_parameters_brackets(expr: str, param_names: list[str]) -> str:
     def repl(match: re.Match[str]) -> str:
         idx = int(match.group(1))
         if idx >= len(param_names):
@@ -333,10 +333,10 @@ def _replace_parameters_brackets(expr: str, param_names: List[str]) -> str:
 
 def _replace_nv_ith_s(
     expr: str,
-    species_symbol_names: List[str],
-    expr_syms: List[sp.Symbol],
-    obs_syms: List[sp.Symbol],
-    rate_syms: List[sp.Symbol],
+    species_symbol_names: list[str],
+    expr_syms: list[sp.Symbol],
+    obs_syms: list[sp.Symbol],
+    rate_syms: list[sp.Symbol],
 ) -> str:
     def repl(match: re.Match[str]) -> str:
         var = match.group(1)
@@ -361,15 +361,15 @@ def _replace_nv_ith_s(
     return re.sub(r"NV_Ith_S\s*\(\s*(\w+)\s*,\s*(\d+)\s*\)", repl, expr)
 
 
-def _max_bracket_index(text: str, array_name: str) -> Optional[int]:
-    max_idx: Optional[int] = None
+def _max_bracket_index(text: str, array_name: str) -> int | None:
+    max_idx: int | None = None
     for m in re.finditer(rf"\b{re.escape(array_name)}\s*\[\s*(\d+)\s*\]", text):
         idx = int(m.group(1))
         max_idx = idx if max_idx is None else max(max_idx, idx)
     return max_idx
 
 
-def _extract_name_array(text: str, patterns: List[str]) -> List[str]:
+def _extract_name_array(text: str, patterns: list[str]) -> list[str]:
     for pattern in patterns:
         match = re.search(pattern, text, flags=re.S)
         if match:
@@ -377,8 +377,8 @@ def _extract_name_array(text: str, patterns: List[str]) -> List[str]:
     return []
 
 
-def _extract_ode_assignments(text: str) -> Dict[int, str]:
-    eq_map: Dict[int, str] = {}
+def _extract_ode_assignments(text: str) -> dict[int, str]:
+    eq_map: dict[int, str] = {}
     patterns = [
         r"NV_Ith_S\s*\(\s*ydot\s*,\s*(\d+)\s*\)\s*=\s*(.*?);",
         r"\b(?:ydot|dydt)\s*\[\s*(\d+)\s*\]\s*=\s*(.*?);",
@@ -404,7 +404,7 @@ def _normalize_expr(expr: str) -> str:
 
 
 def _replace_indexed_symbols(
-    expr: str, species_names: List[str], param_names: List[str]
+    expr: str, species_names: list[str], param_names: list[str]
 ) -> str:
     def repl_species(match: re.Match[str]) -> str:
         idx = int(match.group(1))
@@ -427,13 +427,13 @@ def _replace_indexed_symbols(
 
 
 def _build_symbol_names(
-    names: List[str], expected_len: Optional[int], prefix: str
-) -> Tuple[List[str], List[str]]:
+    names: list[str], expected_len: int | None, prefix: str
+) -> tuple[list[str], list[str]]:
     if expected_len is None:
         expected_len = len(names)
 
-    cleaned: List[str] = []
-    final_names: List[str] = list(names)
+    cleaned: list[str] = []
+    final_names: list[str] = list(names)
     seen = set()
 
     for idx in range(expected_len):
@@ -449,13 +449,12 @@ def _build_symbol_names(
         seen.add(base)
 
     if expected_len > len(final_names):
-        for idx in range(len(final_names), expected_len):
-            final_names.append(f"{prefix}{idx}")
+        final_names.extend(f"{prefix}{idx}" for idx in range(len(final_names), expected_len))
 
     return cleaned, final_names
 
 
-def _max_indexed_param(expressions) -> Optional[int]:
+def _max_indexed_param(expressions) -> int | None:
     max_idx = None
     for expr in expressions:
         for match in re.finditer(r"\b(?:params|param|p)\s*\[\s*(\d+)\s*\]", expr):

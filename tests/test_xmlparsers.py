@@ -1,36 +1,36 @@
 """Tests for bionetgen/modelapi/xmlparsers.py"""
 
-import pytest
 from collections import OrderedDict
 
-from bionetgen.modelapi.xmlparsers import (
-    XMLObj,
-    BondsXML,
-    PatternXML,
-    PatternListXML,
-    ParameterBlockXML,
-    CompartmentBlockXML,
-    ObservableBlockXML,
-    SpeciesBlockXML,
-    MoleculeTypeBlockXML,
-    FunctionBlockXML,
-    RuleBlockXML,
-    EnergyPatternBlockXML,
-    PopulationMapBlockXML,
-)
-from bionetgen.modelapi.pattern import Pattern, Molecule, Component
-from bionetgen.modelapi.blocks import (
-    ParameterBlock,
-    CompartmentBlock,
-    ObservableBlock,
-    SpeciesBlock,
-    MoleculeTypeBlock,
-    FunctionBlock,
-    RuleBlock,
-    EnergyPatternBlock,
-    PopulationMapBlock,
-)
+import pytest
 
+from bionetgen.modelapi.blocks import (
+    CompartmentBlock,
+    EnergyPatternBlock,
+    FunctionBlock,
+    MoleculeTypeBlock,
+    ObservableBlock,
+    ParameterBlock,
+    PopulationMapBlock,
+    RuleBlock,
+    SpeciesBlock,
+)
+from bionetgen.modelapi.pattern import Molecule, Pattern
+from bionetgen.modelapi.xmlparsers import (
+    BondsXML,
+    CompartmentBlockXML,
+    EnergyPatternBlockXML,
+    FunctionBlockXML,
+    MoleculeTypeBlockXML,
+    ObservableBlockXML,
+    ParameterBlockXML,
+    PatternListXML,
+    PatternXML,
+    PopulationMapBlockXML,
+    RuleBlockXML,
+    SpeciesBlockXML,
+    XMLObj,
+)
 
 # ---- Helpers to build XML-like OrderedDicts ----
 
@@ -72,7 +72,7 @@ def _simple_pattern_xml(molecules, bonds=None, compartment=None, label=None,
         pat["@quantity"] = quantity
     if bonds is not None:
         pat["ListOfBonds"] = OrderedDict([("Bond", bonds)])
-    mol_data = molecules if isinstance(molecules, list) else molecules
+    mol_data = molecules
     pat["ListOfMolecules"] = OrderedDict([("Molecule", mol_data)])
     return pat
 

@@ -3,32 +3,30 @@
 import pytest
 
 from bionetgen.core.exc import (
-    BNGError,
-    BNGVersionError,
-    BNGPerlError,
-    BNGParseError,
-    BNGFileError,
-    BNGModelError,
-    BNGRunError,
     BNGCompileError,
+    BNGError,
+    BNGFileError,
     BNGFormatError,
+    BNGModelError,
+    BNGParseError,
+    BNGPerlError,
+    BNGRunError,
     BNGSimError,
-)
-from bionetgen.modelapi.structs import (
-    ModelObj,
-    Parameter,
-    Compartment,
-    Observable,
-    MoleculeType,
-    Species,
-    Function,
-    Action,
-    Rule,
-    EnergyPattern,
-    PopulationMap,
+    BNGVersionError,
 )
 from bionetgen.modelapi.rulemod import RuleMod
-
+from bionetgen.modelapi.structs import (
+    Action,
+    Compartment,
+    EnergyPattern,
+    Function,
+    MoleculeType,
+    Observable,
+    Parameter,
+    PopulationMap,
+    Rule,
+    Species,
+)
 
 # ---------------------------------------------------------------------------
 # Helpers / stubs
@@ -299,7 +297,7 @@ class TestObservable:
 
     def test_species_type_clears_match_once(self):
         p = FakePattern("A()", match_once=True)
-        obs = Observable("obs1", "Species", [p])
+        _obs = Observable("obs1", "Species", [p])
         assert p.MatchOnce is False
 
     def test_add_pattern_species_clears_match_once(self):
@@ -371,11 +369,11 @@ class TestAction:
         assert s == "saveConcentrations([])"
 
     def test_invalid_action_type_raises(self):
-        with pytest.raises(Exception):
+        with pytest.raises(BNGParseError):
             Action(action_type="not_a_real_action", action_args={})
 
     def test_invalid_arg_raises(self):
-        with pytest.raises(Exception):
+        with pytest.raises(BNGParseError):
             Action(action_type="simulate", action_args={"bogus_arg_xyz": "1"})
 
     def test_print_line(self):

@@ -23,6 +23,9 @@ class NetworkObj:
         self._comment = ""
         self._line_label = None
 
+    def gen_string(self) -> str:
+        raise NotImplementedError("Subclasses must implement gen_string()")
+
     def __str__(self) -> str:
         return self.gen_string()
 
@@ -42,7 +45,7 @@ class NetworkObj:
         delattr(self, key)
 
     @property
-    def comment(self) -> None:
+    def comment(self):
         return self._comment
 
     @comment.setter
@@ -60,7 +63,7 @@ class NetworkObj:
             self._comment = None
 
     @property
-    def line_label(self) -> str:
+    def line_label(self):
         return self._line_label
 
     @line_label.setter
@@ -68,9 +71,9 @@ class NetworkObj:
         # TODO: specific error handling
         try:
             ll = int(val)
-            self._line_label = "{} ".format(ll)
+            self._line_label = f"{ll} "
         except:
-            self._line_label = "{}: ".format(val)
+            self._line_label = f"{val}: "
 
     def print_line(self) -> str:
         s = "  "
@@ -80,7 +83,7 @@ class NetworkObj:
         # start building the rest of the string
         s += str(self)
         if self.comment is not None:
-            s += " #{}".format(self.comment)
+            s += f" #{self.comment}"
         return s
 
 
@@ -109,7 +112,7 @@ class NetworkParameter(NetworkObj):
         self.comment = comment
 
     def gen_string(self) -> str:
-        s = "{} {}".format(self.name, self.value)
+        s = f"{self.name} {self.value}"
         return s
 
 
@@ -141,9 +144,9 @@ class NetworkCompartment(NetworkObj):
         self.outside = outside
 
     def gen_string(self) -> str:
-        s = "{} {} {}".format(self.name, self.dim, self.size)
+        s = f"{self.name} {self.dim} {self.size}"
         if self.outside is not None:
-            s += " {}".format(self.outside)
+            s += f" {self.outside}"
         return s
 
 
@@ -202,7 +205,7 @@ class NetworkSpecies(NetworkObj):
         self.comment = comment
 
     def gen_string(self) -> str:
-        s = "{} {}".format(self.name, self.count)
+        s = f"{self.name} {self.count}"
         return s
 
 
@@ -232,7 +235,7 @@ class NetworkFunction(NetworkObj):
 
     def gen_string(self) -> str:
         if self.args is None:
-            s = "{} = {}".format(self.name, self.expr)
+            s = f"{self.name} = {self.expr}"
         else:
             s = "{}({}) = {}".format(self.name, ",".join(self.args), self.expr)
         return s
@@ -303,7 +306,7 @@ class NetworkEnergyPattern(NetworkObj):
         self.expression = expression
 
     def gen_string(self) -> str:
-        s = "{} {}".format(self.pattern, self.expression)
+        s = f"{self.pattern} {self.expression}"
         return s
 
 
@@ -335,5 +338,5 @@ class NetworkPopulationMap(NetworkObj):
         self.rate = rate
 
     def gen_string(self) -> str:
-        s = "{} -> {} {}".format(self.species, self.population, self.rate)
+        s = f"{self.species} -> {self.population} {self.rate}"
         return s

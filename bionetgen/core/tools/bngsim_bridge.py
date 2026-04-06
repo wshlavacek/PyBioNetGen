@@ -6,9 +6,9 @@ This module handles availability detection, input format detection,
 and routing simulation requests to BNGsim when available.
 """
 
-import os
-import logging
 import concurrent.futures
+import logging
+import os
 
 from bionetgen.core.exc import BNGFormatError, BNGSimError
 
@@ -74,7 +74,7 @@ def _sniff_xml_format(file_path):
         with open(file_path, "r", errors="replace") as f:
             head = f.read(4096)
     except OSError as e:
-        raise BNGFormatError(file_path, f"Could not read file for format detection: {e}")
+        raise BNGFormatError(file_path, f"Could not read file for format detection: {e}") from e
 
     head_lower = head.lower()
 
@@ -220,7 +220,6 @@ def _write_bng_dat(path, time, data_2d, col_names):
     col_names : list of str
         Column names (excluding 'time').
     """
-    import numpy as np
 
     headers = ["time"] + list(col_names)
     with open(path, "w") as f:
@@ -609,9 +608,9 @@ def _eval_numeric(expr_str, extra_ns=None):
         pass
     try:
         ns = _safe_math_namespace(extra_ns)
-        return float(eval(expr_str, ns))  # noqa: S307
+        return float(eval(expr_str, ns))
     except Exception:
-        raise ValueError(f"Cannot evaluate numeric expression: {expr_str!r}")
+        raise ValueError(f"Cannot evaluate numeric expression: {expr_str!r}") from None
 
 
 # ─── Species initializer re-evaluation ─────────────────────────────
@@ -673,7 +672,7 @@ def _sync_species_concentrations(bngsim_model, initializers):
 
     for species_name, expr_text in initializers:
         try:
-            value = float(eval(expr_text, ns))  # noqa: S307
+            value = float(eval(expr_text, ns))
         except Exception:
             continue
         try:
@@ -1131,7 +1130,6 @@ def _run_nfsim_scan(
     NFsim is stateless (no .net model to clone), so each scan point gets a
     fresh simulator loaded from the BNG XML file.
     """
-    import numpy as np
     from bngsim._bngsim_core import NfsimSimulator
 
     args = action.args
@@ -1303,7 +1301,6 @@ def _run_parameter_scan_bngsim(
     Uses codegen for ODE acceleration and re-evaluates species initial
     concentrations when parameters change.
     """
-    import numpy as np
 
     args = action.args
     param_name = _strip_quotes(args.get("parameter", "").strip())
@@ -1390,7 +1387,7 @@ def _run_parameter_scan_bngsim(
         col_names = (obs_names or []) + (func_names or [])
         scan_path = os.path.join(output_dir, f"{model_name}_{suffix}.scan")
         _write_scan_file(scan_path, param_name or "scan_param", col_names, rows)
-        return
+        return None
 
     # ── Batch time-course path ──────────────────────────────────────
     use_batch = (
@@ -1432,7 +1429,7 @@ def _run_parameter_scan_bngsim(
         col_names = (obs_names or []) + (func_names or [])
         scan_path = os.path.join(output_dir, f"{model_name}_{suffix}.scan")
         _write_scan_file(scan_path, param_name or "scan_param", col_names, rows)
-        return
+        return None
 
     # ── Sequential fallback (protocol, SS with few points, etc.) ────
     for value in points:
@@ -1539,6 +1536,7 @@ def _run_parameter_scan_bngsim(
     col_names = (obs_names or []) + (func_names or [])
     scan_path = os.path.join(output_dir, f"{model_name}_{suffix}.scan")
     _write_scan_file(scan_path, param_name or "scan_param", col_names, rows)
+    return None
 
 
 def _execute_bngsim_actions(
@@ -1786,7 +1784,7 @@ def _execute_bngsim_actions(
             except Exception as e:
                 logger.warning("setConcentration(%s, %s) failed: %s", name, value, e)
             # Track for NFsim propagation (absolute count)
-            nf_conc_overrides[name] = int(round(numeric_value))
+            nf_conc_overrides[name] = round(numeric_value)
             continue
 
         # ── addConcentration ────────────────────────────────────
@@ -1798,7 +1796,7 @@ def _execute_bngsim_actions(
                 bngsim_model.set_concentration(name, new_val)
                 logger.debug("addConcentration(%s, %s)", name, value)
                 # Track for NFsim propagation (absolute count)
-                nf_conc_overrides[name] = int(round(new_val))
+                nf_conc_overrides[name] = round(new_val)
             except Exception as e:
                 logger.warning("addConcentration(%s, %s) failed: %s", name, value, e)
             continue

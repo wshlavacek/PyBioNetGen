@@ -2,20 +2,23 @@
 
 import os
 import subprocess
-from unittest.mock import MagicMock, patch, PropertyMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
+from bionetgen.core.exc import BNGPerlError
+from bionetgen.core.utils.logging import BNGLogger
 from bionetgen.core.utils.utils import (
     ActionList,
     find_BNG_path,
     run_command,
+)
+from bionetgen.core.utils.utils import (
     test_bngexec as check_bngexec,
+)
+from bionetgen.core.utils.utils import (
     test_perl as check_perl,
 )
-from bionetgen.core.utils.logging import BNGLogger
-from bionetgen.core.exc import BNGPerlError
-
 
 # ======================================================================
 # ActionList tests

@@ -1,5 +1,5 @@
-from .librrsimulator import libRRSimulator
 from .csimulator import CSimulator
+from .librrsimulator import libRRSimulator
 
 
 def sim_getter(model_file=None, model_str=None, sim_type="libRR"):
@@ -41,11 +41,13 @@ def sim_getter(model_file=None, model_str=None, sim_type="libRR"):
             elif sim_type == "cpy":
                 return CSimulator(model_file=model_file, generate_network=True)
             else:
-                print("simulator type {} not supported".format(sim_type))
+                print(f"simulator type {sim_type} not supported")
+            return None
     if model_file is not None:
         if sim_type == "libRR":
             return libRRSimulator(model_file=model_file)
         elif sim_type == "cpy":
             return CSimulator(model_file=model_file, generate_network=True)
         else:
-            print("simulator type {} not supported".format(sim_type))
+            print(f"simulator type {sim_type} not supported")
+    return None

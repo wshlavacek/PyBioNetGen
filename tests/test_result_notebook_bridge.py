@@ -1,29 +1,27 @@
 """Tests for BNGResult, BNGNotebook, and bngsim_bridge pure-function helpers."""
 
-import os
 import math
 
 import numpy as np
 import pytest
 
-from bionetgen.core.tools.result import BNGResult
 from bionetgen.core.notebook import BNGNotebook
 from bionetgen.core.tools.bngsim_bridge import (
-    _strip_quotes,
-    _safe_math_namespace,
-    _eval_numeric,
-    _parse_net_species_initializers,
-    _resolve_scan_points,
-    _write_scan_file,
-    _write_bng_dat,
-    _actions_need_network,
-    _actions_need_xml,
-    _extract_positional_args,
     _BNG2PL_ACTIONS,
     _SIMULATE_METHOD_MAP,
+    _actions_need_network,
+    _actions_need_xml,
+    _eval_numeric,
+    _extract_positional_args,
+    _parse_net_species_initializers,
+    _resolve_scan_points,
+    _safe_math_namespace,
+    _strip_quotes,
+    _write_bng_dat,
+    _write_scan_file,
 )
+from bionetgen.core.tools.result import BNGResult
 from bionetgen.modelapi.structs import Action
-
 
 # ── Helpers ───────────────────────────────────────────────────────────
 

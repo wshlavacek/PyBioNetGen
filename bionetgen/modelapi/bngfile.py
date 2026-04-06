@@ -1,16 +1,17 @@
 import glob
-import os, re
+import os
+import re
 import shutil
 import tempfile
 
-from bionetgen.main import BioNetGen
 from bionetgen.core.exc import BNGFileError
-from bionetgen.core.utils.utils import find_BNG_path, run_command, ActionList
+from bionetgen.core.utils.utils import ActionList, find_BNG_path, run_command
+from bionetgen.main import BioNetGen
 
 # This allows access to the CLIs config setup
 app = BioNetGen()
 app.setup()
-conf = app.config["bionetgen"]
+conf = app.config["bionetgen"]  # type: ignore[index]
 def_bng_path = conf["bngpath"]
 
 
@@ -53,7 +54,7 @@ class BNGFile:
         BNGPATH, bngexec = find_BNG_path(BNGPATH)
         self.BNGPATH = BNGPATH
         self.bngexec = bngexec
-        self.parsed_actions = []
+        self.parsed_actions: list = []
 
     def generate_xml(self, xml_file, model_file=None) -> bool:
         """
@@ -155,11 +156,11 @@ class BNGFile:
             # to another line, so we can just remove the action lines
             mstr = re.sub(r"\\\n", "", mstr)
             mlines = mstr.split("\n")
-            stripped_lines = list(filter(lambda x: self._not_action(x), mlines))
+            stripped_lines = list(filter(self._not_action, mlines))
             # remove spaces, actions don't allow them
             self.parsed_actions = [
                 x.replace(" ", "")
-                for x in filter(lambda x: not self._not_action(x), mlines)
+                for x in mlines if not self._not_action(x)
             ]
             # let's remove begin/end actions, rarely used but should be removed
             remove_from = -1
@@ -189,13 +190,10 @@ class BNGFile:
         stripped_lines = [x + "\n" for x in stripped_lines]
         with open(stripped_model, "w", encoding="UTF-8") as sf:
             sf.writelines(stripped_lines)
-        return stripped_model
+        return stripped_model  # type: ignore[no-any-return]
 
     def _not_action(self, line) -> bool:
-        for action in self._action_list:
-            if action in line:
-                return False
-        return True
+        return all(action not in line for action in self._action_list)
 
     def write_xml(self, open_file, xml_type="bngxml", bngl_str=None) -> bool:
         """
@@ -252,7 +250,7 @@ class BNGFile:
                     open_file.seek(0)
                     return True
             else:
-                print("XML type {} not recognized".format(xml_type))
+                print(f"XML type {xml_type} not recognized")
                 return False
         finally:
             os.chdir(cur_dir)

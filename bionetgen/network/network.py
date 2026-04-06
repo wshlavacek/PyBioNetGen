@@ -1,20 +1,16 @@
 from bionetgen.main import BioNetGen
-from bionetgen.network.networkparser import BNGNetworkParser
 from bionetgen.network.blocks import (
     NetworkGroupBlock,
     NetworkParameterBlock,
     NetworkReactionBlock,
     NetworkSpeciesBlock,
-    NetworkCompartmentBlock,
-    NetworkFunctionBlock,
-    NetworkEnergyPatternBlock,
-    NetworkPopulationMapBlock,
 )
+from bionetgen.network.networkparser import BNGNetworkParser
 
 # This allows access to the CLIs config setup
 app = BioNetGen()
 app.setup()
-conf = app.config["bionetgen"]
+conf = app.config["bionetgen"]  # type: ignore[index]
 def_bng_path = conf["bngpath"]
 
 
@@ -111,13 +107,13 @@ class Network:
     def add_block(self, block):
         bname = block.name.replace(" ", "_")
         # TODO: fix this exception
-        block_adder = getattr(self, "add_{}_block".format(bname))
+        block_adder = getattr(self, f"add_{bname}_block")
         block_adder(block)
 
     def add_empty_block(self, block_name):
         bname = block_name.replace(" ", "_")
         # TODO: fix this exception
-        block_adder = getattr(self, "add_{}_block".format(bname))
+        block_adder = getattr(self, f"add_{bname}_block")
         block_adder()
 
     def add_parameters_block(self, block=None):

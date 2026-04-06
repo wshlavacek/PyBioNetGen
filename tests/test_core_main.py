@@ -1,7 +1,7 @@
 """Tests for bionetgen/core/main.py — thin wrappers around tool classes."""
-import os
-import pytest
 from unittest import mock
+
+import pytest
 
 
 class TestRunCLI:

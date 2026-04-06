@@ -6,13 +6,11 @@ without a real BioNetGen installation.
 """
 
 import os
-import re
 import tempfile
 import textwrap
 from collections import OrderedDict
 from io import StringIO
-from unittest import mock
-from unittest.mock import MagicMock, patch, mock_open, PropertyMock, call
+from unittest.mock import MagicMock, mock_open, patch
 
 import pytest
 
@@ -22,17 +20,15 @@ import pytest
 from bionetgen.modelapi.blocks import (
     ActionBlock,
     CompartmentBlock,
+    EnergyPatternBlock,
     FunctionBlock,
     MoleculeTypeBlock,
     ObservableBlock,
     ParameterBlock,
+    PopulationMapBlock,
     RuleBlock,
     SpeciesBlock,
-    EnergyPatternBlock,
-    PopulationMapBlock,
 )
-from bionetgen.modelapi.structs import Action
-
 
 # ============================================================================
 # Helpers
@@ -229,8 +225,8 @@ class TestBNGFile:
 
     @patch("bionetgen.modelapi.bngfile.find_BNG_path", return_value=("/fake", "/fake/BNG2.pl"))
     def test_strip_actions_unmatched_begin_actions_raises(self, mock_find):
-        from bionetgen.modelapi.bngfile import BNGFile
         from bionetgen.core.exc import BNGFileError
+        from bionetgen.modelapi.bngfile import BNGFile
 
         bf = BNGFile("/some/model.bngl")
         bngl_bad = "begin model\nend model\nbegin actions\nsimulate({method=>\"ode\"})\n"
@@ -246,8 +242,8 @@ class TestBNGFile:
 
     @patch("bionetgen.modelapi.bngfile.find_BNG_path", return_value=("/fake", "/fake/BNG2.pl"))
     def test_strip_actions_unmatched_end_actions_raises(self, mock_find):
-        from bionetgen.modelapi.bngfile import BNGFile
         from bionetgen.core.exc import BNGFileError
+        from bionetgen.modelapi.bngfile import BNGFile
 
         bf = BNGFile("/some/model.bngl")
         bngl_bad = "begin model\nend model\nend actions\n"
@@ -547,8 +543,8 @@ class TestBNGParser:
 
     @patch("bionetgen.modelapi.bngparser.BNGFile")
     def test_parse_model_xml_generation_fails(self, MockBNGFile):
-        from bionetgen.modelapi.bngparser import BNGParser
         from bionetgen.core.exc import BNGModelError
+        from bionetgen.modelapi.bngparser import BNGParser
 
         mock_bf = MagicMock()
         mock_bf.path = "/some/model.bngl"

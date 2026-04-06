@@ -1,6 +1,8 @@
-import os, bionetgen, glob
+import glob
+import os
 from tempfile import TemporaryDirectory
 
+import bionetgen
 from bionetgen.core.utils.logging import BNGLogger
 
 
@@ -22,9 +24,9 @@ class VisResult:
         self.vtype = vtype
         self.rc = None
         self.out = None
-        self.files = []
-        self.file_strs = {}
-        self.file_graphs = {}
+        self.files: list[str] = []
+        self.file_strs: dict[str, str] = {}
+        self.file_graphs: dict[str, object] = {}
         self._load_files()
 
     def _load_files(self) -> None:
@@ -42,16 +44,16 @@ class VisResult:
                 self.files.append(gfile)
                 # now load into string
                 with open(gfile, "r") as f:
-                    l = f.read()
-                self.file_strs[gfile] = l
+                    content = f.read()
+                self.file_strs[gfile] = content
             else:
                 # pull GMLs that contain the name
                 if self.name in gfile:
                     self.files.append(gfile)
                     # now load into string
                     with open(gfile, "r") as f:
-                        l = f.read()
-                    self.file_strs[gfile] = l
+                        content = f.read()
+                    self.file_strs[gfile] = content
 
     def _dump_files(self, folder) -> None:
         self.logger.debug(
@@ -133,7 +135,7 @@ class BNGVisualize:
 
     def run(self) -> VisResult:
         self.logger.debug("Running", loc=f"{__file__} : BNGVisualize.run()")
-        return self._normal_mode()
+        return self._normal_mode()  # type: ignore[no-any-return]
 
     def _normal_mode(self):
         self.logger.debug(
@@ -162,7 +164,7 @@ class BNGVisualize:
                 model.add_action(
                     "visualize",
                     action_args={
-                        "type": f"'regulatory'",
+                        "type": "'regulatory'",
                         "background": 1,
                         "ruleNames": 1,
                     },

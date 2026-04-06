@@ -1,6 +1,6 @@
-import os, glob
-from pytest import raises
-import bionetgen as bng
+import glob
+import os
+
 from bionetgen.main import BioNetGenTest
 
 tfold = os.path.dirname(__file__)
@@ -31,9 +31,9 @@ def test_bionetgen_visualize():
             # gmls = glob.glob("*.gml")
             graphmls = glob.glob(os.path.join(tfold, "viz") + os.sep + "*.graphml")
             if vis_name == "atom_rule":
-                assert any(["regulatory" in i for i in graphmls])
+                assert any("regulatory" in i for i in graphmls)
             elif not vis_name == "all":
-                assert any([vis_name in i for i in graphmls])
+                assert any(vis_name in i for i in graphmls)
             else:
                 assert len(graphmls) == 4
 

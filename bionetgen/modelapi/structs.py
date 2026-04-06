@@ -1,7 +1,7 @@
+from bionetgen.core.exc import BNGParseError
+from bionetgen.core.utils.utils import ActionList
 from bionetgen.modelapi.pattern import Molecule, Pattern
 from bionetgen.modelapi.rulemod import RuleMod
-from bionetgen.core.utils.utils import ActionList
-from bionetgen.core.exc import BNGParseError
 
 
 class ModelObj:
@@ -29,6 +29,9 @@ class ModelObj:
         self._comment = None
         self._line_label = None
 
+    def gen_string(self) -> str:
+        raise NotImplementedError("Subclasses must implement gen_string()")
+
     def __str__(self) -> str:
         return self.gen_string()
 
@@ -48,7 +51,7 @@ class ModelObj:
         delattr(self, key)
 
     @property
-    def comment(self) -> None:
+    def comment(self):
         return self._comment
 
     @comment.setter
@@ -60,7 +63,7 @@ class ModelObj:
             self._comment = val
 
     @property
-    def line_label(self) -> str:
+    def line_label(self):
         return self._line_label
 
     @line_label.setter
@@ -68,9 +71,9 @@ class ModelObj:
         # TODO: specific error handling
         try:
             ll = int(val)
-            self._line_label = "{} ".format(ll)
+            self._line_label = f"{ll} "
         except:
-            self._line_label = "{}: ".format(val)
+            self._line_label = f"{val}: "
 
     def print_line(self) -> str:
         s = "  "
@@ -80,7 +83,7 @@ class ModelObj:
         # start building the rest of the string
         s += str(self)
         if self.comment is not None:
-            s += " #{}".format(self.comment)
+            s += f" #{self.comment}"
         return s
 
 
@@ -108,7 +111,7 @@ class Parameter(ModelObj):
         self.value = value
 
     def gen_string(self) -> str:
-        return "{} {}".format(self.name, self.value)
+        return f"{self.name} {self.value}"
 
 
 class Compartment(ModelObj):
@@ -142,9 +145,9 @@ class Compartment(ModelObj):
         self.outside = outside
 
     def gen_string(self) -> str:
-        s = "{} {} {}".format(self.name, self.dim, self.size)
+        s = f"{self.name} {self.dim} {self.size}"
         if self.outside is not None:
-            s += " {}".format(self.outside)
+            s += f" {self.outside}"
         return s
 
 
@@ -183,7 +186,7 @@ class Observable(ModelObj):
         self.patterns = patterns
 
     def gen_string(self) -> str:
-        s = "{} {} ".format(self.type, self.name)
+        s = f"{self.type} {self.name} "
         for ipat, pat in enumerate(self.patterns):
             if ipat > 0:
                 s += ","
@@ -247,7 +250,7 @@ class Species(ModelObj):
         self.name = str(self.pattern)
 
     def gen_string(self) -> str:
-        s = "{} {}".format(self.pattern, self.count)
+        s = f"{self.pattern} {self.count}"
         return s
 
 
@@ -281,7 +284,7 @@ class Function(ModelObj):
 
     def gen_string(self) -> str:
         if self.args is None:
-            s = "{} = {}".format(self.name, self.expr)
+            s = f"{self.name} = {self.expr}"
         else:
             s = "{}({}) = {}".format(self.name, ",".join(self.args), self.expr)
         return s
@@ -343,7 +346,7 @@ class Action(ModelObj):
         # TODO: figure out every argument that has special
         # requirements, e.g. method requires the value to
         # be a string
-        action_str = "{}(".format(self.type)
+        action_str = f"{self.type}("
         # we can skip curly if we don't have arguments
         # and we NEED to skip it for some actions
         if self.type in self.normal_types and not len(self.args) == 0:
@@ -378,7 +381,7 @@ class Action(ModelObj):
         # start building the rest of the string
         s += str(self)
         if self.comment is not None:
-            s += " #{}".format(self.comment)
+            s += f" #{self.comment}"
         return s
 
 
@@ -442,22 +445,9 @@ class Rule(ModelObj):
 
     def gen_string(self):
         if self.bidirectional:
-            return "{}: {} <-> {} {},{} {}".format(
-                self.name,
-                self.side_string(self.reactants),
-                self.side_string(self.products),
-                self.rate_constants[0],
-                self.rate_constants[1],
-                str(self.rule_mod),
-            )
+            return f"{self.name}: {self.side_string(self.reactants)} <-> {self.side_string(self.products)} {self.rate_constants[0]},{self.rate_constants[1]} {self.rule_mod!s}"
         else:
-            return "{}: {} -> {} {} {}".format(
-                self.name,
-                self.side_string(self.reactants),
-                self.side_string(self.products),
-                self.rate_constants[0],
-                str(self.rule_mod),
-            )
+            return f"{self.name}: {self.side_string(self.reactants)} -> {self.side_string(self.products)} {self.rate_constants[0]} {self.rule_mod!s}"
 
     def side_string(self, patterns):
         side_str = ""
@@ -492,7 +482,7 @@ class EnergyPattern(ModelObj):
         self.expression = expression
 
     def gen_string(self) -> str:
-        s = "{} {}".format(self.pattern, self.expression)
+        s = f"{self.pattern} {self.expression}"
         return s
 
 
@@ -523,5 +513,5 @@ class PopulationMap(ModelObj):
         self.rate = rate
 
     def gen_string(self) -> str:
-        s = "{} -> {} {}".format(self.species, self.population, self.rate)
+        s = f"{self.species} -> {self.population} {self.rate}"
         return s

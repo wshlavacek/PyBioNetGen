@@ -1,7 +1,9 @@
-import os, subprocess
-from bionetgen.core.exc import BNGPerlError
+import os
+import subprocess
+
 from distutils import spawn
 
+from bionetgen.core.exc import BNGPerlError
 from bionetgen.core.utils.logging import BNGLogger
 
 
@@ -459,9 +461,7 @@ class ActionList:
         self.irregular_args["opts"] = "list"
 
     def is_before_model(self, action_name):
-        if action_name in self.before_model:
-            return True
-        return False
+        return action_name in self.before_model
 
     def define_parser(self):
         ## Define action grammar
@@ -484,7 +484,7 @@ class ActionList:
         arg_type_expr = pp.Word(
             pp.nums + "." + "+" + "-" + "e" + "E" + "(" + ")" + "/" + "*" + "^"
         )
-        arg_type_list = "[" + pp.delimitedList((quote_word ^ arg_type_float)) + "]"
+        arg_type_list = "[" + pp.delimitedList(quote_word ^ arg_type_float) + "]"
         arg_type_string = quote_word
         #
         curly_arg_token = quote_word + "=>" + arg_type_int
@@ -502,7 +502,7 @@ class ActionList:
         )
         #
         one_arg = quote_word
-        two_arg = quote_word + "," + (arg_type_expr ^ quote_word)
+        _two_arg = quote_word + "," + (arg_type_expr ^ quote_word)
         #
         single_arg = base_name + "=>" + arg_types
         #
@@ -639,10 +639,7 @@ def test_bngexec(bngexec):
     """
     command = ["perl", bngexec]
     rc, _ = run_command(command)
-    if rc == 0:
-        return True
-    else:
-        return False
+    return rc == 0
 
 
 def run_command(command, suppress=True, timeout=None, cwd=None):
@@ -663,11 +660,12 @@ def run_command(command, suppress=True, timeout=None, cwd=None):
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
                 cwd=cwd,
+                check=False,
             )
             return rc.returncode, rc
         else:
             # I am unsure how to do both timeout and the live polling of stdo
-            rc = subprocess.run(command, timeout=timeout, capture_output=True, cwd=cwd)
+            rc = subprocess.run(command, timeout=timeout, capture_output=True, cwd=cwd, check=False)
             return rc.returncode, rc
     else:
         if suppress:

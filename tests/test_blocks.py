@@ -1,32 +1,31 @@
 """Tests for bionetgen/modelapi/blocks.py block classes."""
 
-import pytest
 from collections import OrderedDict
 
 from bionetgen.modelapi.blocks import (
-    ModelBlock,
-    ParameterBlock,
-    CompartmentBlock,
-    ObservableBlock,
-    SpeciesBlock,
-    MoleculeTypeBlock,
-    FunctionBlock,
-    RuleBlock,
     ActionBlock,
+    CompartmentBlock,
     EnergyPatternBlock,
+    FunctionBlock,
+    ModelBlock,
+    MoleculeTypeBlock,
+    ObservableBlock,
+    ParameterBlock,
     PopulationMapBlock,
+    RuleBlock,
+    SpeciesBlock,
 )
 from bionetgen.modelapi.structs import (
-    Parameter,
-    Compartment,
-    Observable,
-    Species,
-    Function,
     Action,
-    Rule,
+    Compartment,
     EnergyPattern,
-    PopulationMap,
+    Function,
     MoleculeType,
+    Observable,
+    Parameter,
+    PopulationMap,
+    Rule,
+    Species,
 )
 
 

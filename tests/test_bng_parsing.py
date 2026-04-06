@@ -1,7 +1,4 @@
-import os, glob
-from pytest import raises
-import bionetgen as bng
-from bionetgen.main import BioNetGenTest
+import os
 
 tfold = os.path.dirname(__file__)
 
@@ -11,7 +8,7 @@ def test_network_parse():
     from bionetgen.network.network import Network
 
     try:
-        net = Network(netfile)
+        _net = Network(netfile)
         res = True
     except:
         res = False
@@ -44,7 +41,7 @@ def test_pattern_canonicalization():
         assert True is True
     # if pynauty is uninstalled, skip the test
     try:
-        import pynauty
+        import pynauty  # noqa: F401
     except ImportError:
         assert True is True
         return

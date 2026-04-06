@@ -7,15 +7,13 @@ BNGsim installed.
 import os
 import tempfile
 import textwrap
-from types import SimpleNamespace
-from unittest.mock import MagicMock, patch, PropertyMock
+from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
 
 from bionetgen.core.exc import BNGSimError
 from bionetgen.modelapi.structs import Action
-
 
 # ─── Helpers ──────────────────────────────────────────────────────────
 
@@ -1937,7 +1935,7 @@ class TestRunBnglWithBngsim:
                  patch("bionetgen.core.tools.cli.BNGCLI", return_value=mock_cli), \
                  patch(f"{BRIDGE}._execute_bngsim_actions", mock_execute):
 
-                result = run_bngl_with_bngsim(
+                _result = run_bngl_with_bngsim(
                     bngl_path, tmpdir, "/bngpath", method="ode",
                 )
                 mock_execute.assert_called_once()
@@ -1966,7 +1964,7 @@ class TestRunBnglWithBngsim:
                  patch(f"{BRIDGE}._parse_table_functions", return_value=[]), \
                  patch("bionetgen.core.tools.cli.BNGCLI", return_value=mock_cli):
 
-                with pytest.raises(BNGSimError, match="BNG2.pl failed"):
+                with pytest.raises(BNGSimError, match=r"BNG2\.pl failed"):
                     run_bngl_with_bngsim(bngl_path, tmpdir, "/bngpath")
 
     def test_net_not_generated_raises(self):
@@ -1996,7 +1994,7 @@ class TestRunBnglWithBngsim:
                  patch(f"{BRIDGE}._parse_table_functions", return_value=[]), \
                  patch("bionetgen.core.tools.cli.BNGCLI", return_value=mock_cli):
 
-                with pytest.raises(BNGSimError, match="Expected .net file"):
+                with pytest.raises(BNGSimError, match=r"Expected \.net file"):
                     run_bngl_with_bngsim(bngl_path, tmpdir, "/bngpath")
 
     def test_table_functions_added(self):

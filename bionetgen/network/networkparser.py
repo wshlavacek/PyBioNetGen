@@ -1,20 +1,18 @@
-import re, os
+import os
+import re
+
 from bionetgen.main import BioNetGen
 from bionetgen.network.blocks import (
     NetworkGroupBlock,
     NetworkParameterBlock,
     NetworkReactionBlock,
     NetworkSpeciesBlock,
-    NetworkCompartmentBlock,
-    NetworkFunctionBlock,
-    NetworkEnergyPatternBlock,
-    NetworkPopulationMapBlock,
 )
 
 # This allows access to the CLIs config setup
 app = BioNetGen()
 app.setup()
-conf = app.config["bionetgen"]
+conf = app.config["bionetgen"]  # type: ignore[index]
 def_bng_path = conf["bngpath"]
 
 
@@ -79,12 +77,12 @@ class BNGNetworkParser:
             param_block = NetworkParameterBlock()
             for iline in range(pblock[0] + 1, pblock[1]):
                 m = re.match("([^#]*)(#.*)?", self.network_lines[iline])
-                if m.group(1).strip() != "":
-                    splt = m.group(1).split()
+                if m.group(1).strip() != "":  # type: ignore[union-attr]
+                    splt = m.group(1).split()  # type: ignore[union-attr]
                     pid = splt[0]
                     pname = splt[1]
                     pvalue = splt[2]
-                    comment = m.group(2)
+                    comment = m.group(2)  # type: ignore[union-attr]
                     param_block.add_parameter(pid, pname, pvalue, comment=comment)
             network_obj.add_block(param_block)
         # add species
@@ -92,8 +90,8 @@ class BNGNetworkParser:
             spec_block = NetworkSpeciesBlock()
             for iline in range(sblock[0] + 1, sblock[1]):
                 m = re.match("([^#]*)(#.*)?", self.network_lines[iline])
-                if m.group(1).strip() != "":
-                    splt = m.group(1).split()
+                if m.group(1).strip() != "":  # type: ignore[union-attr]
+                    splt = m.group(1).split()  # type: ignore[union-attr]
                     sid = splt[0]
                     name = splt[1]
                     try:
@@ -109,13 +107,13 @@ class BNGNetworkParser:
             rxns_block = NetworkReactionBlock()
             for iline in range(rblock[0] + 1, rblock[1]):
                 m = re.match("([^#]*)(#.*)?", self.network_lines[iline])
-                if m.group(1).strip() != "":
-                    splt = m.group(1).split()
+                if m.group(1).strip() != "":  # type: ignore[union-attr]
+                    splt = m.group(1).split()  # type: ignore[union-attr]
                     rid = splt[0]
                     reactants = splt[1].split(",")
                     products = splt[2].split(",")
                     rate_constant = splt[3]
-                    comment = m.group(2)
+                    comment = m.group(2)  # type: ignore[union-attr]
                     rxns_block.add_reaction(
                         rid,
                         reactants=reactants,
@@ -129,12 +127,12 @@ class BNGNetworkParser:
             grps_block = NetworkGroupBlock()
             for iline in range(gblock[0] + 1, gblock[1]):
                 m = re.match("([^#]*)(#.*)?", self.network_lines[iline])
-                if m.group(1).strip() != "":
-                    splt = m.group(1).split()
+                if m.group(1).strip() != "":  # type: ignore[union-attr]
+                    splt = m.group(1).split()  # type: ignore[union-attr]
                     rid = splt[0]
                     name = splt[1]
                     members = splt[2].split(",")
-                    comment = m.group(2)
+                    comment = m.group(2)  # type: ignore[union-attr]
                     grps_block.add_group(rid, name, members, comment=comment)
             network_obj.add_block(grps_block)
         # import IPython,sys;IPython.embed();sys.exit()

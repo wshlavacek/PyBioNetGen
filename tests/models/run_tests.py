@@ -1,5 +1,6 @@
-import bionetgen as bng
 import glob
+
+import bionetgen as bng
 
 models = glob.glob("*.bngl")
 total = len(models)
@@ -16,11 +17,11 @@ for model in models:
         # with open("{}_loaded.bngl".format(mname), 'w') as f:
         #     f.write(str(m))
     except:
-        print("can't do model {}".format(model))
+        print(f"can't do model {model}")
         fails += 1
         fail.append(model)
 
-print("succ: {}".format(success))
+print(f"succ: {success}")
 print(sorted(succ))
-print("fail: {}".format(fails))
+print(f"fail: {fails}")
 print(sorted(fail))

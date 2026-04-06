@@ -2,9 +2,10 @@
 
 import sys
 import types
-import pytest
-from bionetgen.modelapi.pattern import Pattern, Molecule, Component
 
+import pytest
+
+from bionetgen.modelapi.pattern import Component, Molecule, Pattern
 
 # ── Helper factories ──────────────────────────────────────────────
 
@@ -528,7 +529,7 @@ class TestPattern:
     def test_init_with_canonicalize_flag(self):
         """Pattern(canonicalize=True) calls canonicalize during init."""
         m = make_molecule("A", [make_component("b")])
-        p = Pattern(molecules=[m], canonicalize=True)
+        _p = Pattern(molecules=[m], canonicalize=True)
         # Should not raise; canonical_label set only if pynauty is available
 
 

@@ -1,5 +1,6 @@
-import os, glob
-from pytest import raises
+import glob
+import os
+
 import bionetgen as bng
 from bionetgen.main import BioNetGenTest
 
@@ -9,7 +10,7 @@ tfold = os.path.dirname(__file__)
 def test_bionetgen_model():
     fpath = os.path.join(tfold, "test.bngl")
     fpath = os.path.abspath(fpath)
-    m = bng.bngmodel(fpath)
+    _m = bng.bngmodel(fpath)
 
 
 def test_bionetgen_all_model_loading():
@@ -22,17 +23,17 @@ def test_bionetgen_all_model_loading():
     fails = 0
     for model in models:
         try:
-            m = bng.bngmodel(model)
+            _m = bng.bngmodel(model)
             success += 1
-            mstr = str(m)
+            _mstr = str(_m)
             succ.append(model)
         except:
-            print("can't load model {}".format(model))
+            print(f"can't load model {model}")
             fails += 1
             fail.append(model)
-    print("succ: {}".format(success))
+    print(f"succ: {success}")
     print(sorted(succ))
-    print("fail: {}".format(fails))
+    print(f"fail: {fails}")
     print(sorted(fail))
     assert fails == 0
 
@@ -77,14 +78,14 @@ def test_model_running_CLI():
             model = model[1]
             succ.append(model)
         except:
-            print("can't run model {}".format(model))
+            print(f"can't run model {model}")
             fails += 1
             model = os.path.split(model)
             model = model[1]
             fail.append(model)
-    print("succ: {}".format(success))
+    print(f"succ: {success}")
     print(sorted(succ))
-    print("fail: {}".format(fails))
+    print(f"fail: {fails}")
     print(sorted(fail))
     assert fails == 0
 
@@ -107,14 +108,14 @@ def test_model_running_lib():
             model = model[1]
             succ.append(model)
         except:
-            print("can't run model {}".format(model))
+            print(f"can't run model {model}")
             fails += 1
             model = os.path.split(model)
             model = model[1]
             fail.append(model)
-    print("succ: {}".format(success))
+    print(f"succ: {success}")
     print(sorted(succ))
-    print("fail: {}".format(fails))
+    print(f"fail: {fails}")
     print(sorted(fail))
     assert fails == 0
 

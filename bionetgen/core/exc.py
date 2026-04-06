@@ -1,7 +1,6 @@
 class BNGError(Exception):
     """Base class for all PyBNG exceptions."""
 
-    pass
 
 
 class BNGVersionError(BNGError):

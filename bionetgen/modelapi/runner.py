@@ -1,12 +1,13 @@
 import os
 from tempfile import TemporaryDirectory
-from bionetgen.main import BioNetGen
+
 from bionetgen.core.tools import BNGCLI
+from bionetgen.main import BioNetGen
 
 # This allows access to the CLIs config setup
 app = BioNetGen()
 app.setup()
-conf = app.config["bionetgen"]
+conf = app.config["bionetgen"]  # type: ignore[index]
 
 
 def run(
@@ -135,7 +136,7 @@ def run(
                 result = cli.result
             os.chdir(cur_dir)
             return result
-        except Exception as e:
+        except Exception:
             os.chdir(cur_dir)
             raise
 

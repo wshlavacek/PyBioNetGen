@@ -217,6 +217,7 @@ class TestPublicAPI:
 
     def test_run_signature(self):
         import inspect
+
         import bionetgen
 
         sig = inspect.signature(bionetgen.run)
@@ -281,7 +282,7 @@ class TestBngsimIntegration:
             assert result.process_return == 0
             # Check that output files were created
             files = os.listdir(out)
-            assert any(f.endswith(".gdat") or f.endswith(".cdat") for f in files)
+            assert any(f.endswith((".gdat", ".cdat")) for f in files)
 
     def test_run_via_library_api(self):
         """Run a .net file via bionetgen.run() with simulator='bngsim'."""

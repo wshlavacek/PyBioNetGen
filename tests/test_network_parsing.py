@@ -3,9 +3,6 @@
 These modules have module-level `app = BioNetGen()` calls, so they get
 imported indirectly. We test by creating fixture .net files.
 """
-import os
-import pytest
-import tempfile
 
 
 NET_CONTENT = """\
@@ -56,7 +53,6 @@ class TestBNGNetworkParser:
     def test_parse_network_populates_blocks(self, tmp_path):
         net_file = tmp_path / "test.net"
         net_file.write_text(NET_CONTENT)
-        from bionetgen.network.networkparser import BNGNetworkParser
         from bionetgen.network.network import Network
         net = Network(str(net_file))
         # Should have parameters, species, reactions, groups
@@ -136,7 +132,6 @@ class TestNetwork:
         net_file = tmp_path / "test.net"
         net_file.write_text(NET_MINIMAL)
         from bionetgen.network.network import Network
-        from bionetgen.network.blocks import NetworkParameterBlock
         net = Network(str(net_file))
         # Parameters block already exists
         assert "parameters" in net.active_blocks
@@ -166,6 +161,6 @@ class TestNetwork:
         net_file = tmp_path / "empty.net"
         net_file.write_text("# empty\n")  # file with just a comment
         from bionetgen.network.network import Network
-        net = Network(str(net_file))
+        _net = Network(str(net_file))
         captured = capsys.readouterr()
         assert "WARNING" in captured.out

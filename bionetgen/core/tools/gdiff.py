@@ -1,5 +1,8 @@
-from multiprocessing.sharedctypes import Value
-import xmltodict, copy, os, json
+import copy
+import json
+import os
+
+import xmltodict
 
 from bionetgen.core.utils.logging import BNGLogger
 
@@ -245,7 +248,7 @@ class BNGGdiff:
                 # we need to add it in
                 dgnode = self._get_node_from_names(dg, curr_names)
                 if dgnode is None:
-                    curr_dnode = self._add_node_to_graph(
+                    self._add_node_to_graph(
                         curr_node, dg, curr_names, colors=colors, rmap=rename_map
                     )
                 else:
@@ -332,7 +335,7 @@ class BNGGdiff:
             if len(curr_names) > 0:
                 # let's get IDs and map them
                 curr_name = self._get_node_name(curr_node)
-                if not (g2node is None):
+                if g2node is not None:
                     # also check for name
                     if "data" in g2node.keys():
                         g2name = self._get_node_name(g2node)
@@ -657,7 +660,7 @@ class BNGGdiff:
                 node_lists = [self._get_id_list(idstr) for idstr in node_ids]
                 new_id = node_lists[-1]
                 new_id[-1] += 1
-                new_id = self._get_id_str(new_id)
+                new_id = self._get_id_str(new_id)  # type: ignore[assignment]
                 self._set_node_id(copied_node, new_id)
                 # now we can add
                 node_to_add_to["graph"]["node"].append(copied_node)
@@ -669,7 +672,7 @@ class BNGGdiff:
                 og_node_id = self._get_node_id(copied_original_node)
                 new_id = self._get_id_list(og_node_id)
                 new_id[-1] += 1
-                new_id = self._get_id_str(new_id)
+                new_id = self._get_id_str(new_id)  # type: ignore[assignment]
                 self._set_node_id(copied_node, new_id)
                 nodes_to_add = [copied_original_node, copied_node]
                 node_to_add_to["graph"]["node"] = nodes_to_add
@@ -681,7 +684,7 @@ class BNGGdiff:
                 # let's rename the graph
                 if "@id" in copied_node["graph"]:
                     copied_node["graph"]["@id"] = self._get_node_id(copied_node) + ":"
-                node_stack = [([], [], copied_node)]
+                node_stack: list[tuple] = [([], [], copied_node)]
                 while len(node_stack) > 0:
                     curr_keys, curr_names, curr_node = node_stack.pop(-1)
                     # Do stuff here
@@ -698,7 +701,7 @@ class BNGGdiff:
                         new_id = self._get_id_list(parent_node_id)
                         curr_id = self._get_id_list(self._get_node_id(curr_node))
                         new_id += [curr_id[-1]]
-                        new_id = self._get_id_str(new_id)
+                        new_id = self._get_id_str(new_id)  # type: ignore[assignment]
                         self._set_node_id(curr_node, new_id)
                         rmap[self._get_id_str(curr_id)] = new_id
                     # if we have graphs in there, add the nodes to the stack
@@ -724,7 +727,7 @@ class BNGGdiff:
                                     curr_node["graph"]["node"],
                                 )
                             )
-        return copied_node
+        return copied_node  # type: ignore[no-any-return]
 
     def run(self) -> dict:
         self.logger.debug("Running", loc=f"{__file__} : BNGGdiff.run()")
@@ -734,4 +737,4 @@ class BNGGdiff:
             # now write gml as graphml
             with open(graph_name, "w") as f:
                 xmltodict.unparse(graphs[graph_name], output=f, pretty=True)
-        return graphs
+        return graphs  # type: ignore[no-any-return]

@@ -1,6 +1,7 @@
-from bionetgen.core.utils.logging import BNGLogger
-from bionetgen.modelapi.pattern import Pattern, Molecule, Component
 import pyparsing as pp
+
+from bionetgen.core.utils.logging import BNGLogger
+from bionetgen.modelapi.pattern import Component, Molecule, Pattern
 
 
 class BNGParsers:
@@ -182,16 +183,16 @@ class BNGPatternReader:
                 self.logger.debug(f"found compartment in {parsed_val}", loc=log_loc)
                 pattern.compartment = parsed_val.replace("@", "")
                 continue
-            elif parsed_val.startswith("%"):
+            if parsed_val.startswith("%"):
                 # this is a pattern-wide tag
                 self.logger.debug(f"found tag in {parsed_val}", loc=log_loc)
                 pattern.label = parsed_val.replace("%", "")
                 continue
-            elif parsed_val.startswith(":"):
+            if parsed_val.startswith(":"):
                 # this is a pattern-wide separator
                 self.logger.debug(f"found separator in {parsed_val}", loc=log_loc)
                 continue
-            elif ("$" in parsed_val) or ("{MatchOnce}" in parsed_val):
+            if ("$" in parsed_val) or ("{MatchOnce}" in parsed_val):
                 # this is a constant value species pattern or a MatchOnce observable
                 self.logger.debug(f"found mod in {parsed_val}", loc=log_loc)
                 if "$" in parsed_val:
@@ -199,7 +200,7 @@ class BNGPatternReader:
                 elif "{MatchOnce}" in parsed_val:
                     pattern.MatchOnce = True
                 continue
-            elif (
+            if (
                 ("<" in parsed_val)
                 or ("<=" in parsed_val)
                 or ("==" in parsed_val)
@@ -220,7 +221,7 @@ class BNGPatternReader:
                 pattern.quantity = int(parsed_val.replace(pattern.relation, ""))
                 # this is a quantifier
                 continue
-            elif parsed_val == "0":
+            if parsed_val == "0":
                 # this is a zero molecule
                 m = Molecule(components=[])
                 m.parent_pattern = pattern
@@ -252,12 +253,12 @@ class BNGPatternReader:
                     self.logger.debug(f"found compartment in {parsed_val}", loc=log_loc)
                     molecule.compartment = parsed_val.replace("@", "")
                     continue
-                elif parsed_val.startswith("%"):
+                if parsed_val.startswith("%"):
                     # this is a molecule tag
                     self.logger.debug(f"found tag in {parsed_val}", loc=log_loc)
                     molecule.label = parsed_val.replace("%", "")
                     continue
-                elif parsed_val == "(" or parsed_val == ")":
+                if parsed_val == "(" or parsed_val == ")":
                     if parsed_val == "(":
                         in_molec = True
                     else:
