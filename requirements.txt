@@ -8,10 +8,6 @@ colorlog
 nbopen
 libroadrunner
 sympy
-lxml
-networkx
-python-libsbml
 pylru
 pyparsing
 packaging
-pyyed

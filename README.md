@@ -6,7 +6,7 @@
 [![Downloads](https://static.pepy.tech/badge/bionetgen)](https://pepy.tech/project/bionetgen)
 [![Downloads](https://static.pepy.tech/badge/bionetgen/week)](https://pepy.tech/project/bionetgen)
 
-This is a simple CLI and a library for [BioNetGen modeling language](http://bionetgen.org/). PyBioNetGen also includes a heavily updated version of [Atomizer](https://github.com/RuleWorld/atomizer) which allows for conversion of models written in [Systems Biology Markup Language (SBML)](https://synonym.caltech.edu/) into BioNetGen language (BNGL) format. 
+This is a simple CLI and a library for [BioNetGen modeling language](http://bionetgen.org/). PyBioNetGen optionally includes a heavily updated version of [Atomizer](https://github.com/RuleWorld/atomizer) which allows for conversion of models written in [Systems Biology Markup Language (SBML)](https://synonym.caltech.edu/) into BioNetGen language (BNGL) format. 
 
 Please see the [documentation](https://pybionetgen.readthedocs.io/en/latest/) to learn how to use PyBioNetGen. 
 
@@ -18,21 +18,27 @@ You will need both python (3.7 and above) and perl installed. Once both are avai
 $ pip install bionetgen
 ```
 
+To include atomizer (SBML-to-BNGL conversion), install with the optional extra:
+
+```
+$ pip install bionetgen[atomizer]
+```
+
 ### Features 
 
 PyBioNetGen comes with a command line interface (CLI), based on [cement framework](https://builtoncement.com/), as well as a functional library that can be imported. The CLI can be used to run BNGL models, generate Jupyter notebooks and do rudimentary plotting. 
 
 The library side provides a simple BNGL model runner as well as a model object that can be manipulated and used to get libRoadRunner simulators for the model. 
 
-**BNGsim integration:** When [BNGsim](https://github.com/RuleWorld/bngsim) is installed in the same environment (`pip install bngsim`), PyBioNetGen automatically uses it for high-performance in-process simulation, replacing the subprocess-based `run_network` and `NFsim` backends. BNGsim also enables direct simulation of SBML (`.xml`) and Antimony (`.ant`) files in addition to BNGL. BNGsim is optional — without it, PyBioNetGen works exactly as before.
+**BNGsim integration:** When [BNGsim](https://github.com/lanl/bngsim) is installed in the same environment (`pip install bngsim`), PyBioNetGen automatically uses it for high-performance in-process simulation, replacing the subprocess-based `run_network` and `NFsim` backends. BNGsim also enables direct simulation of SBML (`.xml`) and Antimony (`.ant`) files in addition to BNGL. BNGsim is optional — without it, PyBioNetGen works exactly as before.
 
 **Supported input formats:**
-- `.bngl` — BioNetGen Language (always processed by BNG2.pl, then simulated via BNGsim or run_network)
-- `.net` — BioNetGen network files (direct simulation via BNGsim or run_network)
+- `.bngl` — BioNetGen Language (always processed by BNG2.pl, then simulated via BNGsim or `run_network`)
+- `.net` — BioNetGen network files (direct simulation via BNGsim or `run_network`)
 - `.xml` — SBML files (requires BNGsim) or BioNetGen XML files (for network-free simulation)
 - `.ant` — Antimony files (requires BNGsim)
 
-PyBioNetGen also includes a heavily updated version of [Atomizer](https://github.com/RuleWorld/atomizer) which allows for conversion of SBML models into BNGL format. Atomizer can also be used to automatically try to infer the internal structure of SBML species during the conversion, see [here](https://pybionetgen.readthedocs.io/en/latest/atomizer.html) for more information. Please note that this version of Atomizer is the main supported version and the version distributed with BioNetGen will eventually be deprecated. 
+**Atomizer (optional):** PyBioNetGen includes a heavily updated version of [Atomizer](https://github.com/RuleWorld/atomizer) for conversion of SBML models into BNGL format. Atomizer can also automatically infer the internal structure of SBML species during conversion; see [here](https://pybionetgen.readthedocs.io/en/latest/atomizer.html) for more information. Install with `pip install bionetgen[atomizer]`. Please note that this version of Atomizer is the main supported version and the version distributed with BioNetGen will eventually be deprecated. 
 
 The model object requires a system call to BioNetGen so the initialization can be relatively costly, in case you would like to use it for parallel applications, use the [libRoadRunner](http://libroadrunner.org/) simulator or BNGsim instead, unless you are doing NFSim simulations.
 
