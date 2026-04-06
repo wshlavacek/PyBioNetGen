@@ -568,8 +568,10 @@ def _safe_math_namespace(extra=None):
     """
     import math
 
-    ns = {
-        "__builtins__": {},
+    # Start from user-supplied parameters, then overlay math builtins so
+    # that reserved names (exp, log, sqrt, …) can never be shadowed.
+    ns = dict(extra) if extra else {}
+    ns.update({
         "exp": math.exp,
         "log": math.log,
         "log10": math.log10,
@@ -589,9 +591,8 @@ def _safe_math_namespace(extra=None):
         "pi": math.pi,
         "_pi": math.pi,
         "_e": math.e,
-    }
-    if extra:
-        ns.update(extra)
+    })
+    ns["__builtins__"] = {}
     return ns
 
 
@@ -701,7 +702,7 @@ def _try_prepare_codegen(net_path):
         logger.debug("Codegen compiled: %s", so_path)
         return so_path
     except Exception as e:
-        logger.debug("Codegen unavailable: %s", e)
+        logger.warning("Codegen compilation failed (%s); falling back to interpreted ODE RHS (slower)", e)
         return ""
 
 
@@ -1202,6 +1203,7 @@ def _prepare_scan_point(base_model, param_name, value, species_initializers):
 def _run_ss_scan_threaded(
     base_model, param_name, points, species_initializers,
     make_sim_fn, codegen_so, net_path, t_start, t_end, print_funcs,
+    max_workers=4,
 ):
     """Run steady-state parameter scan with threaded parallelism.
 
@@ -1209,7 +1211,7 @@ def _run_ss_scan_threaded(
     thread-safe), then submits steady_state() calls to a thread pool.
     Falls back to long time-course per point on non-convergence or error.
     """
-    n_workers = min(len(points), 4)
+    n_workers = min(len(points), max_workers)
     rows = []
     obs_names = None
     func_names = None
