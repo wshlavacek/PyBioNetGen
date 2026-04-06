@@ -12,7 +12,7 @@ Please see the [documentation](https://pybionetgen.readthedocs.io/en/latest/) to
 
 ## Installation
 
-You will need both python (3.7 and above) and perl installed. Once both are available you can use the following pip command to install the package
+You will need both python (3.8 and above) and perl installed. Once both are available you can use the following pip command to install the package
 
 ```
 $ pip install bionetgen

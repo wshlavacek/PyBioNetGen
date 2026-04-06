@@ -1,6 +1,12 @@
-from setuptools import setup, find_packages
-import sys, os, json, urllib, subprocess
-import shutil, tarfile, zipfile
+import json
+import os
+import shutil
+import subprocess
+import sys
+import tarfile
+import urllib
+
+from setuptools import find_packages, setup
 
 
 # Utility function for Mac idiosyncracy
@@ -8,15 +14,14 @@ def get_folder(arch):
     for fname in arch.getnames():
         if fname.startswith("._"):
             continue
-        else:
-            break
+        break
     print(fname)
     return fname
 
 
 subprocess.check_call([sys.executable, "-m", "pip", "install", "numpy"])
-import urllib.request
-import itertools as itt
+import itertools as itt  # noqa: E402
+import urllib.request  # noqa: E402
 
 with open(os.path.join(*["bionetgen", "assets", "VERSION"]), "r") as f:
     vfile = f.read()
@@ -81,7 +86,7 @@ for iurl, bng_url in enumerate([linux_url, mac_url, windows_url]):
         ]
     # import file and download libraries
     ext = bng_url.split(".")[-1]
-    fname = "bng.{}".format(ext)
+    fname = f"bng.{ext}"
     # download bng distro
     print(bng_url, fname)
     urllib.request.urlretrieve(bng_url, fname)
@@ -109,11 +114,11 @@ for iurl, bng_url in enumerate([linux_url, mac_url, windows_url]):
         for item in to_move:
             item_list = [fold_name] + item
             item_path = list(
-                itt.accumulate(item_list, lambda x, y: os.path.join(x, y))
+                itt.accumulate(item_list, os.path.join)
             )[-1]
             to_move_item = [bng_path_to_move] + item
             to_move_path = list(
-                itt.accumulate(to_move_item, lambda x, y: os.path.join(x, y))
+                itt.accumulate(to_move_item, os.path.join)
             )[-1]
             shutil.move(item_path, to_move_path)
         # we got bionetgen in
@@ -143,11 +148,11 @@ for iurl, bng_url in enumerate([linux_url, mac_url, windows_url]):
         for item in to_move:
             item_list = [fold_name] + item
             item_path = list(
-                itt.accumulate(item_list, lambda x, y: os.path.join(x, y))
+                itt.accumulate(item_list, os.path.join)
             )[-1]
             to_move_item = [bng_path_to_move] + item[:-1]
             to_move_path = list(
-                itt.accumulate(to_move_item, lambda x, y: os.path.join(x, y))
+                itt.accumulate(to_move_item, os.path.join)
             )[-1]
             shutil.move(item_path, to_move_path)
         # we got bionetgen in
@@ -190,6 +195,8 @@ setup(
         "cement",
         "nbopen",
         "numpy",
+        "pandas",
+        "matplotlib",
         "pyyaml",
         "colorlog",
         "xmltodict",

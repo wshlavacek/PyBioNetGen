@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 #
 # Configuration file for the Sphinx documentation builder.
 #
@@ -16,7 +15,7 @@ import os
 import sys
 
 sys.path.insert(0, os.path.abspath("../../."))
-import sphinx_rtd_theme
+import sphinx_rtd_theme  # noqa: F401 (side-effect import for Sphinx theme)
 
 # -- Project information -----------------------------------------------------
 
