@@ -684,7 +684,7 @@ def _try_prepare_codegen(net_path):
     if os.environ.get("BIONETGEN_NO_CODEGEN"):
         return ""
     try:
-        from bngsim._codegen import prepare_codegen
+        from bngsim import prepare_codegen
 
         so_path = str(prepare_codegen(net_path))
         logger.debug("Codegen compiled: %s", so_path)

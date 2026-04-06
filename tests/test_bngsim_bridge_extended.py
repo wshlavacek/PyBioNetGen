@@ -543,17 +543,17 @@ class TestTryPrepareCodegen:
         with patch.dict(os.environ, {}, clear=False):
             # Make sure BIONETGEN_NO_CODEGEN is not set
             os.environ.pop("BIONETGEN_NO_CODEGEN", None)
-            # bngsim._codegen won't be importable
+            # bngsim.prepare_codegen won't be importable
             assert _try_prepare_codegen("/dummy.net") == ""
 
     def test_returns_so_path_when_codegen_available(self):
         from bionetgen.core.tools.bngsim_bridge import _try_prepare_codegen
 
-        mock_codegen = MagicMock()
-        mock_codegen.prepare_codegen.return_value = "/path/to/lib.so"
+        mock_bngsim = MagicMock()
+        mock_bngsim.prepare_codegen.return_value = "/path/to/lib.so"
 
         with patch.dict(os.environ, {}, clear=False), \
-             patch.dict("sys.modules", {"bngsim._codegen": mock_codegen}):
+             patch.dict("sys.modules", {"bngsim": mock_bngsim}):
             os.environ.pop("BIONETGEN_NO_CODEGEN", None)
             result = _try_prepare_codegen("/dummy.net")
             assert result == "/path/to/lib.so"
