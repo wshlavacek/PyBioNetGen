@@ -29,7 +29,7 @@ except ImportError:
 BNGSIM_HAS_NFSIM = False
 if BNGSIM_AVAILABLE:
     try:
-        from bngsim._bngsim_core import HAS_NFSIM
+        from bngsim import HAS_NFSIM
 
         BNGSIM_HAS_NFSIM = bool(HAS_NFSIM)
     except (ImportError, AttributeError):
@@ -261,9 +261,8 @@ def _write_bngsim_results(result, output_dir, model_name, print_functions=False)
     obs_array = np.asarray(result.observables) if result.n_observables > 0 else np.empty((result.n_times, 0))
 
     if print_functions:
-        core = result._core
-        func_names = list(core.expression_names)
-        func_array = np.asarray(core.expression_data)
+        func_names = list(result.expression_names)
+        func_array = np.asarray(result.expressions)
         has_funcs = len(func_names) > 0 and func_array.ndim == 2 and func_array.shape[1] > 0
     else:
         has_funcs = False
@@ -913,9 +912,8 @@ def _scan_result_to_row(result, scan_value, print_functions=False):
     final_funcs = np.array([])
     if print_functions:
         # BNGsim "expressions" = BNGL functions (from "begin functions" block)
-        core = result._core
-        func_names = list(core.expression_names)
-        func_array = np.asarray(core.expression_data)
+        func_names = list(result.expression_names)
+        func_array = np.asarray(result.expressions)
         if func_array.ndim == 2 and func_array.shape[0] > 0 and func_array.shape[1] > 0:
             final_funcs = func_array[-1, :]
 
