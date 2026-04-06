@@ -234,3 +234,9 @@ Updated underlying BNG and NFsim versions.
 
 ## 0.8.2
 Fixed bug in reading `DeleteMolecules` keyword when multiple molecules were deleted at once. Also, first installment of cleaning up constructor functions for model elements to allow programmatic model building (as opposed to just reading from BNGL file).
+
+## 0.8.3–0.8.6
+Updated underlying BioNetGen to 2.9.3. Updated setup.py to statically link NFsim, removing DLL dependencies. Updated CI configuration to support Python 3.8–3.12 and current GitHub Actions versions. Replaced deprecated `imp` module with modern imports. Added lazy import for sympy. Applied Black formatting. Updated project copyright and author information.
+
+## 0.9.0
+Added BNGsim bridge module for in-process ODE, SSA, and NFsim simulation without subprocess calls to BNG2.pl. Integrated BNGsim into the CLI `run` command and `bionetgen.run()` library API. Added steady-state solver and threaded steady-state parameter scanning. Added table functions, SSA/PSA normalization, and BNGsim-integrated NFsim support for `parameter_scan`. Fixed protocol `saveParameters`/`resetParameters` and NFsim concentration propagation. Made atomizer an optional dependency, installable via `pip install bionetgen[atomizer]`. Added pyproject.toml with ruff and mypy configuration. Expanded unit test suite covering bngsim_bridge, XML parsers, core data structures, simulators, and more. Fixed expression eval namespace collision in bngsim_bridge where model parameters could shadow math builtins. Promoted codegen failure logging from debug to warning. Made steady-state scan thread pool worker count configurable.
