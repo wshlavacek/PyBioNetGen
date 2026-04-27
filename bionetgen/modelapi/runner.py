@@ -17,7 +17,7 @@ def run(
     timeout=None,
     simulator="auto",
     format=None,
-    method="ode",
+    method=None,
     t_span=None,
     n_points=None,
 ):
@@ -47,8 +47,10 @@ def run(
     format : str, optional
         Explicit input format hint: 'bngl', 'net', 'sbml', 'bng-xml', 'antimony'.
         If None, auto-detected from file extension and content.
-    method : str
-        Simulation method: 'ode', 'ssa', 'psa', 'nf', etc. Default 'ode'.
+    method : str, optional
+        Optional simulation method override: 'ode', 'ssa', 'psa', 'nf', etc.
+        For BNGL inputs, if omitted, the model's existing ``simulate_*``
+        actions are preserved when routing through BNGsim.
     t_span : tuple of (float, float), optional
         Time span (t_start, t_end). If None, defaults to (0, 100).
     n_points : int, optional

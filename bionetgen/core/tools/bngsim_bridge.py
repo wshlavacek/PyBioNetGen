@@ -403,7 +403,7 @@ def run_with_bngsim(
     input_path,
     output_dir,
     fmt=None,
-    method="ode",
+    method=None,
     t_span=None,
     n_points=None,
     **sim_kwargs,
@@ -421,8 +421,9 @@ def run_with_bngsim(
         Directory for output files.
     fmt : str
         Detected format (one of FORMAT_* constants).
-    method : str
-        Simulation method ('ode', 'ssa', 'psa', 'nf', etc.).
+    method : str or None
+        Simulation method ('ode', 'ssa', 'psa', 'nf', etc.). If None,
+        direct BNGsim inputs default to ``'ode'``.
     t_span : tuple of (float, float) or None
         Time span (t_start, t_end). If None, defaults to (0, 100).
     n_points : int or None
@@ -450,6 +451,12 @@ def run_with_bngsim(
     input_path = os.path.abspath(input_path)
     output_dir = os.path.abspath(output_dir)
     model_name = os.path.splitext(os.path.basename(input_path))[0]
+
+    # BNGL handling lives in run_bngl_with_bngsim(); for direct inputs,
+    # preserve historical behavior by defaulting to ODE when no explicit
+    # method override was provided.
+    if method is None:
+        method = "ode"
 
     # BNG XML → NFsim path (no Model needed)
     if fmt == FORMAT_BNG_XML:
@@ -2071,7 +2078,8 @@ def run_bngl_with_bngsim(
     bngpath : str
         Path to BioNetGen directory containing BNG2.pl.
     method : str or None
-        Simulation method override. If None, uses methods from BNGL actions.
+        Simulation method override. If None, preserves the BNGL file's
+        declared ``simulate_*`` methods.
     t_span : tuple or None
         Time span override.
     n_points : int or None
