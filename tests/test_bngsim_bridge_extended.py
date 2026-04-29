@@ -54,11 +54,26 @@ def _make_mock_result(obs_names=None, obs_data=None, species_names=None,
     result.n_observables = len(obs_names)
     result.n_times = n_times
     result.time = time
+    result.expression_names = func_names
+    result.expressions = func_data
     result.species_names = species_names
     result.concentrations = concentrations
     result._core = core
     result.to_cdat = MagicMock()
     return result
+
+
+def _make_mock_bngsim_with_nfsim_session(result=None):
+    """Build a mock bngsim module exposing the public NfsimSession API."""
+    if result is None:
+        result = _make_mock_result()
+
+    session = MagicMock()
+    session.simulate.return_value = result
+
+    mock_bngsim = MagicMock()
+    mock_bngsim.NfsimSession.return_value.__enter__.return_value = session
+    return mock_bngsim, session
 
 
 def _make_mock_model(param_names=None, params=None):
@@ -189,21 +204,11 @@ class TestRunNfsim:
     def test_happy_path(self):
         from bionetgen.core.tools.bngsim_bridge import run_nfsim
 
-        mock_nfsim_cls = MagicMock()
-        mock_nfsim_inst = MagicMock()
-        mock_nfsim_cls.return_value = mock_nfsim_inst
-        mock_core_result = MagicMock()
-        mock_nfsim_inst.simulate.return_value = mock_core_result
-
-        mock_result = _make_mock_result()
-        mock_bngsim = MagicMock()
-        mock_bngsim.Result.return_value = mock_result
+        mock_bngsim, session = _make_mock_bngsim_with_nfsim_session()
 
         with patch(f"{BRIDGE}.BNGSIM_AVAILABLE", True), \
              patch(f"{BRIDGE}.BNGSIM_HAS_NFSIM", True), \
              patch(f"{BRIDGE}.bngsim", mock_bngsim), \
-             patch(f"{BRIDGE}.NfsimSimulator", mock_nfsim_cls, create=True), \
-             patch.dict("sys.modules", {"bngsim._bngsim_core": MagicMock(NfsimSimulator=mock_nfsim_cls)}), \
              tempfile.TemporaryDirectory() as tmpdir:
 
             # Create a dummy xml file
@@ -214,27 +219,18 @@ class TestRunNfsim:
             result = run_nfsim(xml_path, tmpdir)
             assert result.process_return == 0
 
-            mock_nfsim_inst.initialize.assert_called_once_with(42)
-            mock_nfsim_inst.simulate.assert_called_once()
-            mock_nfsim_inst.destroy_session.assert_called_once()
+            mock_bngsim.NfsimSession.assert_called_once_with(xml_path, molecule_limit=None)
+            session.initialize.assert_called_once_with(42)
+            session.simulate.assert_called_once_with(0.0, 100.0, 101)
 
     def test_param_overrides(self):
         from bionetgen.core.tools.bngsim_bridge import run_nfsim
 
-        mock_nfsim_cls = MagicMock()
-        mock_nfsim_inst = MagicMock()
-        mock_nfsim_cls.return_value = mock_nfsim_inst
-        mock_core_result = MagicMock()
-        mock_nfsim_inst.simulate.return_value = mock_core_result
-
-        mock_result = _make_mock_result()
-        mock_bngsim = MagicMock()
-        mock_bngsim.Result.return_value = mock_result
+        mock_bngsim, session = _make_mock_bngsim_with_nfsim_session()
 
         with patch(f"{BRIDGE}.BNGSIM_AVAILABLE", True), \
              patch(f"{BRIDGE}.BNGSIM_HAS_NFSIM", True), \
              patch(f"{BRIDGE}.bngsim", mock_bngsim), \
-             patch.dict("sys.modules", {"bngsim._bngsim_core": MagicMock(NfsimSimulator=mock_nfsim_cls)}), \
              tempfile.TemporaryDirectory() as tmpdir:
 
             xml_path = os.path.join(tmpdir, "model.xml")
@@ -242,28 +238,19 @@ class TestRunNfsim:
                 f.write("<model/>")
 
             run_nfsim(xml_path, tmpdir, param_overrides={"k1": 5.0})
-            mock_nfsim_inst.set_param.assert_called_with("k1", 5.0)
+            session.set_param.assert_called_with("k1", 5.0)
 
     def test_conc_overrides_add_molecules(self):
         """conc_overrides should call get_molecule_count + add_molecules."""
         from bionetgen.core.tools.bngsim_bridge import run_nfsim
 
-        mock_nfsim_cls = MagicMock()
-        mock_nfsim_inst = MagicMock()
-        mock_nfsim_cls.return_value = mock_nfsim_inst
-        mock_core_result = MagicMock()
-        mock_nfsim_inst.simulate.return_value = mock_core_result
+        mock_bngsim, session = _make_mock_bngsim_with_nfsim_session()
         # Current count is 50, target is 200 → add 150
-        mock_nfsim_inst.get_molecule_count.return_value = 50
-
-        mock_result = _make_mock_result()
-        mock_bngsim = MagicMock()
-        mock_bngsim.Result.return_value = mock_result
+        session.get_molecule_count.return_value = 50
 
         with patch(f"{BRIDGE}.BNGSIM_AVAILABLE", True), \
              patch(f"{BRIDGE}.BNGSIM_HAS_NFSIM", True), \
              patch(f"{BRIDGE}.bngsim", mock_bngsim), \
-             patch.dict("sys.modules", {"bngsim._bngsim_core": MagicMock(NfsimSimulator=mock_nfsim_cls)}), \
              tempfile.TemporaryDirectory() as tmpdir:
 
             xml_path = os.path.join(tmpdir, "model.xml")
@@ -271,29 +258,20 @@ class TestRunNfsim:
                 f.write("<model/>")
 
             run_nfsim(xml_path, tmpdir, conc_overrides={"A(b)": 200})
-            mock_nfsim_inst.get_molecule_count.assert_called_with("A")
-            mock_nfsim_inst.add_molecules.assert_called_with("A", 150)
+            session.get_molecule_count.assert_called_with("A")
+            session.add_molecules.assert_called_with("A", 150)
 
     def test_conc_overrides_cannot_decrease(self):
         """conc_overrides should warn and skip when target < current."""
         from bionetgen.core.tools.bngsim_bridge import run_nfsim
 
-        mock_nfsim_cls = MagicMock()
-        mock_nfsim_inst = MagicMock()
-        mock_nfsim_cls.return_value = mock_nfsim_inst
-        mock_core_result = MagicMock()
-        mock_nfsim_inst.simulate.return_value = mock_core_result
+        mock_bngsim, session = _make_mock_bngsim_with_nfsim_session()
         # Current count is 200, target is 50 → cannot decrease
-        mock_nfsim_inst.get_molecule_count.return_value = 200
-
-        mock_result = _make_mock_result()
-        mock_bngsim = MagicMock()
-        mock_bngsim.Result.return_value = mock_result
+        session.get_molecule_count.return_value = 200
 
         with patch(f"{BRIDGE}.BNGSIM_AVAILABLE", True), \
              patch(f"{BRIDGE}.BNGSIM_HAS_NFSIM", True), \
              patch(f"{BRIDGE}.bngsim", mock_bngsim), \
-             patch.dict("sys.modules", {"bngsim._bngsim_core": MagicMock(NfsimSimulator=mock_nfsim_cls)}), \
              tempfile.TemporaryDirectory() as tmpdir:
 
             xml_path = os.path.join(tmpdir, "model.xml")
@@ -301,28 +279,19 @@ class TestRunNfsim:
                 f.write("<model/>")
 
             run_nfsim(xml_path, tmpdir, conc_overrides={"A(b)": 50})
-            mock_nfsim_inst.get_molecule_count.assert_called_with("A")
+            session.get_molecule_count.assert_called_with("A")
             # add_molecules should NOT have been called
-            mock_nfsim_inst.add_molecules.assert_not_called()
+            session.add_molecules.assert_not_called()
 
     def test_defaults(self):
         """Test default t_span, n_points, seed."""
         from bionetgen.core.tools.bngsim_bridge import run_nfsim
 
-        mock_nfsim_cls = MagicMock()
-        mock_nfsim_inst = MagicMock()
-        mock_nfsim_cls.return_value = mock_nfsim_inst
-        mock_core_result = MagicMock()
-        mock_nfsim_inst.simulate.return_value = mock_core_result
-
-        mock_result = _make_mock_result()
-        mock_bngsim = MagicMock()
-        mock_bngsim.Result.return_value = mock_result
+        mock_bngsim, session = _make_mock_bngsim_with_nfsim_session()
 
         with patch(f"{BRIDGE}.BNGSIM_AVAILABLE", True), \
              patch(f"{BRIDGE}.BNGSIM_HAS_NFSIM", True), \
              patch(f"{BRIDGE}.bngsim", mock_bngsim), \
-             patch.dict("sys.modules", {"bngsim._bngsim_core": MagicMock(NfsimSimulator=mock_nfsim_cls)}), \
              tempfile.TemporaryDirectory() as tmpdir:
 
             xml_path = os.path.join(tmpdir, "model.xml")
@@ -331,18 +300,18 @@ class TestRunNfsim:
 
             run_nfsim(xml_path, tmpdir)
             # Default: simulate(0.0, 100.0, 101)
-            mock_nfsim_inst.simulate.assert_called_once_with(0.0, 100.0, 101)
-            mock_nfsim_inst.initialize.assert_called_once_with(42)
+            session.simulate.assert_called_once_with(0.0, 100.0, 101)
+            session.initialize.assert_called_once_with(42)
 
     def test_simulation_failure_wraps_exception(self):
         from bionetgen.core.tools.bngsim_bridge import run_nfsim
 
-        mock_nfsim_cls = MagicMock()
-        mock_nfsim_cls.side_effect = RuntimeError("boom")
+        mock_bngsim = MagicMock()
+        mock_bngsim.NfsimSession.side_effect = RuntimeError("boom")
 
         with patch(f"{BRIDGE}.BNGSIM_AVAILABLE", True), \
              patch(f"{BRIDGE}.BNGSIM_HAS_NFSIM", True), \
-             patch.dict("sys.modules", {"bngsim._bngsim_core": MagicMock(NfsimSimulator=mock_nfsim_cls)}), \
+             patch(f"{BRIDGE}.bngsim", mock_bngsim), \
              tempfile.TemporaryDirectory() as tmpdir:
 
             xml_path = os.path.join(tmpdir, "model.xml")
@@ -355,18 +324,11 @@ class TestRunNfsim:
     def test_gml_is_set(self):
         from bionetgen.core.tools.bngsim_bridge import run_nfsim
 
-        mock_nfsim_cls = MagicMock()
-        mock_nfsim_inst = MagicMock()
-        mock_nfsim_cls.return_value = mock_nfsim_inst
-        mock_nfsim_inst.simulate.return_value = MagicMock()
-
-        mock_bngsim = MagicMock()
-        mock_bngsim.Result.return_value = _make_mock_result()
+        mock_bngsim, _ = _make_mock_bngsim_with_nfsim_session()
 
         with patch(f"{BRIDGE}.BNGSIM_AVAILABLE", True), \
              patch(f"{BRIDGE}.BNGSIM_HAS_NFSIM", True), \
              patch(f"{BRIDGE}.bngsim", mock_bngsim), \
-             patch.dict("sys.modules", {"bngsim._bngsim_core": MagicMock(NfsimSimulator=mock_nfsim_cls)}), \
              tempfile.TemporaryDirectory() as tmpdir:
 
             xml_path = os.path.join(tmpdir, "model.xml")
@@ -374,7 +336,7 @@ class TestRunNfsim:
                 f.write("<model/>")
 
             run_nfsim(xml_path, tmpdir, gml=100000)
-            mock_nfsim_inst.set_molecule_limit.assert_called_once_with(100000)
+            mock_bngsim.NfsimSession.assert_called_once_with(xml_path, molecule_limit=100000)
 
 
 # ─── run_with_bngsim ─────────────────────────────────────────────────
@@ -598,12 +560,11 @@ class TestActionsNeedNetwork:
         action = _make_action("simulate_ode", {"t_end": "100", "n_steps": "10"})
         assert _actions_need_network([action]) is True
 
-    def test_simulate_nf_still_defaults_true(self):
+    def test_simulate_nf_does_not_need_network(self):
         from bionetgen.core.tools.bngsim_bridge import _actions_need_network
 
         action = _make_action("simulate_nf", {"t_end": "100", "n_steps": "10"})
-        # _actions_need_network returns True by default even for NF
-        assert _actions_need_network([action]) is True
+        assert _actions_need_network([action]) is False
 
     def test_parameter_scan_ode(self):
         from bionetgen.core.tools.bngsim_bridge import _actions_need_network
@@ -614,6 +575,26 @@ class TestActionsNeedNetwork:
             "n_steps": "10",
         })
         assert _actions_need_network([action]) is True
+
+    def test_parameter_scan_nf_does_not_need_network(self):
+        from bionetgen.core.tools.bngsim_bridge import _actions_need_network
+
+        action = _make_action("parameter_scan", {
+            "parameter": "k1", "par_min": "0.1", "par_max": "10",
+            "n_scan_pts": "5", "method": "nf", "t_end": "100",
+            "n_steps": "10",
+        })
+        assert _actions_need_network([action]) is False
+
+    def test_nf_state_actions_do_not_force_network(self):
+        from bionetgen.core.tools.bngsim_bridge import _actions_need_network
+
+        actions = [
+            _make_action("setParameter", {'"k1"': None, '5.0': None}),
+            _make_action("addConcentration", {'"A(b)"': None, '50': None}),
+            _make_action("simulate_nf", {"t_end": "100", "n_steps": "10"}),
+        ]
+        assert _actions_need_network(actions) is False
 
 
 class TestActionsNeedXml:
@@ -1027,6 +1008,36 @@ class TestExecuteBngsimActions:
                 xml_path=xml_path,
             )
             mock_run_nfsim.assert_called_once()
+
+    def test_pure_nf_actions_work_without_network_model(self):
+        """Pure NF workflows should not require a generated .net model."""
+        from bionetgen.core.tools.bngsim_bridge import _execute_bngsim_actions
+
+        actions = [
+            _make_action("setParameter", {'"kf"': None, '2.0': None}),
+            _make_action("addConcentration", {'"A(b)"': None, '50': None}),
+            _make_action("simulate_nf", {"t_end": "10", "n_steps": "10"}),
+        ]
+
+        with patch(f"{BRIDGE}.BNGSIM_AVAILABLE", True), \
+             patch(f"{BRIDGE}.BNGSIM_HAS_NFSIM", True), \
+             patch(f"{BRIDGE}._try_prepare_codegen", return_value=""), \
+             patch(f"{BRIDGE}._parse_net_species_initializers", return_value=[]), \
+             patch(f"{BRIDGE}.run_nfsim") as mock_run_nfsim, \
+             tempfile.TemporaryDirectory() as tmpdir:
+
+            xml_path = os.path.join(tmpdir, "model.xml")
+            with open(xml_path, "w") as f:
+                f.write("<model/>")
+
+            _execute_bngsim_actions(
+                actions, None, tmpdir, "test_model",
+                xml_path=xml_path,
+            )
+
+        mock_run_nfsim.assert_called_once()
+        assert mock_run_nfsim.call_args.kwargs["param_overrides"] == {"kf": 2.0}
+        assert mock_run_nfsim.call_args.kwargs["conc_deltas"] == {"A(b)": 50}
 
 
 # ─── _run_protocol ────────────────────────────────────────────────────
@@ -1869,6 +1880,44 @@ class TestRunBnglWithBngsim:
                 mock_execute.assert_called_once()
                 assert result.process_return == 0
 
+    def test_pure_nf_flow_skips_generate_network(self):
+        from bionetgen.core.tools.bngsim_bridge import run_bngl_with_bngsim
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            bngl_path = os.path.join(tmpdir, "test.bngl")
+            xml_path = os.path.join(tmpdir, "test.xml")
+            with open(xml_path, "w") as f:
+                f.write("<model/>")
+
+            mock_model = MagicMock()
+            mock_model.model_name = "test"
+            sim_action = _make_action("simulate_nf", {"t_end": "100", "n_steps": "10"})
+            mock_model.actions.items = [sim_action]
+            mock_model.actions.clear_actions = MagicMock()
+            mock_model.add_action = MagicMock()
+            mock_model.write_model = MagicMock()
+
+            mock_cli = MagicMock()
+            mock_cli.result = MagicMock(process_return=0)
+
+            mock_execute = MagicMock(return_value=MagicMock(process_return=0))
+
+            with patch(f"{BRIDGE}.BNGSIM_AVAILABLE", True), \
+                 patch(f"{BRIDGE}.bngsim", MagicMock()), \
+                 patch("bionetgen.modelapi.model.bngmodel", return_value=mock_model), \
+                 patch(f"{BRIDGE}._parse_protocol_block", return_value=[]), \
+                 patch(f"{BRIDGE}._parse_table_functions", return_value=[]), \
+                 patch("bionetgen.core.tools.cli.BNGCLI", return_value=mock_cli), \
+                 patch(f"{BRIDGE}._execute_bngsim_actions", mock_execute):
+
+                result = run_bngl_with_bngsim(bngl_path, tmpdir, "/bngpath")
+
+            assert result.process_return == 0
+            added_actions = [call.args[0] for call in mock_model.add_action.call_args_list]
+            assert "generate_network" not in added_actions
+            assert added_actions == ["writeXML"]
+            assert mock_execute.call_args.args[1] is None
+
     def test_no_sim_actions_returns_cli_result(self):
         """If no simulate actions and no CLI overrides, return BNG2.pl result."""
         from bionetgen.core.tools.bngsim_bridge import run_bngl_with_bngsim
@@ -2162,20 +2211,12 @@ class TestRunNfsimScan:
             "n_steps": "10",
         })
 
-        mock_nfsim_cls = MagicMock()
-        mock_nfsim_inst = MagicMock()
-        mock_nfsim_cls.return_value = mock_nfsim_inst
-        mock_core_result = MagicMock()
-        mock_nfsim_inst.simulate.return_value = mock_core_result
-
         mock_result = _make_mock_result(
             obs_names=["A"], obs_data=np.array([[1.0], [2.0]]), n_times=2,
         )
-        mock_bngsim = MagicMock()
-        mock_bngsim.Result.return_value = mock_result
+        mock_bngsim, session = _make_mock_bngsim_with_nfsim_session(mock_result)
 
         with patch(f"{BRIDGE}.bngsim", mock_bngsim), \
-             patch.dict("sys.modules", {"bngsim._bngsim_core": MagicMock(NfsimSimulator=mock_nfsim_cls)}), \
              tempfile.TemporaryDirectory() as tmpdir:
 
             xml_path = os.path.join(tmpdir, "model.xml")
@@ -2185,5 +2226,6 @@ class TestRunNfsimScan:
             _run_nfsim_scan(xml_path, action, tmpdir, "test_model")
             scan_file = os.path.join(tmpdir, "test_model_scan.scan")
             assert os.path.isfile(scan_file)
-            # 2 scan points = 2 NfsimSimulator instances
-            assert mock_nfsim_cls.call_count == 2
+            # 2 scan points = 2 NfsimSession contexts
+            assert mock_bngsim.NfsimSession.call_count == 2
+            assert session.initialize.call_count == 2
