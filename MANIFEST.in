@@ -1,8 +1,7 @@
-recursive-include *.py
-recursive-include *.ipynb
-include setup.cfg
-include README.md CHANGELOG.md LICENSE
-include *.txt
+include README.md CHANGELOG.md LICENSE pyproject.toml requirements.txt requirements-dev.txt setup.py
+recursive-include bionetgen/assets *
 recursive-include bionetgen/bng-linux *
 recursive-include bionetgen/bng-mac *
 recursive-include bionetgen/bng-win *
+recursive-include scripts *.py
+global-exclude *.py[cod]

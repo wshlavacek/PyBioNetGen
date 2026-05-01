@@ -1,12 +1,12 @@
-.PHONY: clean virtualenv test typecheck docker dist dist-upload
+.PHONY: clean virtualenv test typecheck docker vendor-bng dist dist-upload
 
 clean:
 	find . -name '*.py[co]' -delete
 
 virtualenv:
-	virtualenv --prompt '|> bionetgen <| ' env
-	env/bin/pip install -r requirements-dev.txt
-	env/bin/python setup.py develop
+	python -m venv env
+	env/bin/python -m pip install -r requirements-dev.txt
+	env/bin/python -m pip install -e .
 	@echo
 	@echo "VirtualENV Setup Complete. Now run: source env/bin/activate"
 	@echo
@@ -20,10 +20,12 @@ test:
 typecheck:
 	uv run --no-project --with-requirements requirements-dev.txt python -m mypy bionetgen tests
 
-dist: clean
-	rm -rf dist/*
-	python setup.py sdist
-	python setup.py bdist_wheel
+vendor-bng:
+	uv run --no-project --with-requirements requirements-dev.txt python scripts/vendor_bionetgen_assets.py
+
+dist: clean vendor-bng
+	rm -rf dist build *.egg-info
+	uv run --no-project --with-requirements requirements-dev.txt python -m build --sdist --wheel
 
 dist-upload:
 	twine upload dist/*

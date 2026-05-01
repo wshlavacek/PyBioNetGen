@@ -3,11 +3,12 @@ import sys
 import time
 import urllib
 import urllib.request
+from pathlib import Path
 
 # GH API has rate exceeded issues if more than 60
 # within an hour. To avoid this entirely, we'll
-# download and save the JSON and have setup.py
-# work on that instead
+# download and save the JSON and have the explicit
+# vendoring helper work on that instead
 
 # let's pull URLs for each distribution
 # in the latest distribution
@@ -33,5 +34,6 @@ if ctr >= 100:
 rls_json_txt = rls_resp.read()
 rls_json = json.loads(rls_json_txt)
 
-with open("ghapi.json", "w") as f:
+output_path = Path(__file__).resolve().parent / "ghapi.json"
+with open(output_path, "w") as f:
     json.dump(rls_json, f)

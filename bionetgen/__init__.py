@@ -1,5 +1,6 @@
 from .core.defaults import defaults
 from .core.tools.bngsim_bridge import BNGSIM_AVAILABLE, BNGSIM_VERSION
+from .core.version import __version__
 from .modelapi import bngmodel
 from .modelapi.runner import run
 from .simulator import sim_getter
@@ -11,6 +12,7 @@ __all__ = [
     "BNGSIM_AVAILABLE",
     "BNGSIM_VERSION",
     "SympyOdes",
+    "__version__",
     "bngmodel",
     "defaults",
     "export_sympy_odes",

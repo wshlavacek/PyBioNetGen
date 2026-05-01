@@ -1,3 +1,62 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "bionetgen"
+dynamic = ["version"]
+description = "A simple CLI and library for the BioNetGen modeling language"
+readme = {file = "README.md", content-type = "text/markdown"}
+requires-python = ">=3.8"
+license = "MIT"
+authors = [
+    {name = "Ali Sinan Saglam", email = "bionetgen.main@gmail.com"},
+    {name = "Alex DiBiasi"},
+    {name = "James R. Faeder"},
+]
+dependencies = [
+    "cement",
+    "nbopen",
+    "numpy",
+    "pandas",
+    "matplotlib",
+    "pyyaml",
+    "colorlog",
+    "xmltodict",
+    "seaborn",
+    "libroadrunner",
+    "sympy",
+    "pylru",
+    "pyparsing",
+    "packaging",
+]
+
+[project.optional-dependencies]
+atomizer = [
+    "python-libsbml",
+    "lxml",
+    "networkx",
+]
+
+[project.scripts]
+bionetgen = "bionetgen.main:main"
+
+[project.urls]
+Homepage = "https://github.com/RuleWorld/PyBioNetGen"
+Repository = "https://github.com/RuleWorld/PyBioNetGen"
+Documentation = "https://pybionetgen.readthedocs.io/en/latest/"
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.packages.find]
+include = ["bionetgen*"]
+namespaces = false
+exclude = ["ez_setup", "tests*"]
+
+[tool.setuptools.dynamic]
+version = {attr = "bionetgen.core.version.__version__"}
+
 [tool.ruff]
 target-version = "py312"
 line-length = 100

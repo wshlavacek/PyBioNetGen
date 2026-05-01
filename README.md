@@ -114,6 +114,10 @@ $ make test
 `make test` and CI both run the same uv-based source-tree checks: `pytest`
 first, then `mypy`.
 
+Editable installs no longer trigger BioNetGen bundle downloads. Local
+development stays source-tree based by default, and vendoring the platform
+bundles is now an explicit maintenance step for release work.
+
 ### Docker
 
 Included is a basic `Dockerfile` for building and distributing `BioNetGen CLI`,
@@ -130,11 +134,13 @@ $ docker run -it bionetgen --help
 You can use `make dist` command to make the distribution and push to PyPI with
 
 ```
-python -m twine upload dist/*
+$ make vendor-bng   # optional: refresh vendored archives explicitly
+$ make dist         # vendors BioNetGen assets, then runs python -m build
+$ python -m twine upload dist/*
 ```
 
-Local validation no longer depends on `setup.py`, but `make dist` still does.
-That file remains for legacy release packaging because it currently bundles the
-platform-specific BioNetGen assets into the published package.
+Build metadata now lives in `pyproject.toml`. `setup.py` remains only as a thin
+compatibility shim for legacy setuptools entry points; it no longer downloads
+dependencies or vendors platform assets during install.
 
 You'll need to have a PyPI API token created, see [here](https://packaging.python.org/tutorials/packaging-projects/) for more information. 

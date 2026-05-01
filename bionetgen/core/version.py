@@ -1,22 +1,55 @@
-import os
-
-from cement.utils.version import get_version as cement_get_version
-
-# Find VERSION file
-vpath = os.path.dirname(os.path.abspath(__file__))
-vpath = os.path.split(vpath)[0]
-vpath = os.path.join(*[vpath, "assets", "VERSION"])
-with open(vpath, "r") as f:
-    v = f.read()
-vtuple = [0, 0, 0, 0, 0]
-for iv, ver in enumerate(v.split()):
-    try:
-        vtuple[iv] = int(ver)
-    except:
-        vtuple[iv] = ver  # type: ignore[call-overload]
-
-VERSION = tuple(vtuple)
+from pathlib import Path
+from typing import Final, List, Tuple, Union
 
 
-def get_version(version=VERSION):
-    return cement_get_version(version)
+VersionPart = Union[int, str]
+VersionTuple = Tuple[VersionPart, ...]
+
+_VERSION_FILE: Final = Path(__file__).resolve().parents[1] / "assets" / "VERSION"
+_SUFFIXES: Final = {
+    "alpha": "a",
+    "beta": "b",
+    "candidate": "rc",
+    "rc": "rc",
+    "final": "",
+}
+
+
+def _parse_version_text(text: str) -> VersionTuple:
+    parts: List[VersionPart] = []
+    for token in text.split():
+        try:
+            parts.append(int(token))
+        except ValueError:
+            parts.append(token)
+    return tuple(parts)
+
+
+def _format_version(version: VersionTuple) -> str:
+    if len(version) < 3:
+        raise ValueError(f"Expected at least major/minor/patch version parts, got: {version!r}")
+
+    major, minor, patch = version[:3]
+    base = f"{major}.{minor}.{patch}"
+    if len(version) < 5:
+        return base
+
+    stage = str(version[3]).lower()
+    suffix = _SUFFIXES.get(stage)
+    if suffix is None:
+        raise ValueError(f"Unsupported release stage {version[3]!r} in VERSION file")
+    if not suffix:
+        return base
+    return f"{base}{suffix}{version[4]}"
+
+
+def _read_version_file(path: Path = _VERSION_FILE) -> VersionTuple:
+    return _parse_version_text(path.read_text(encoding="utf-8"))
+
+
+VERSION: Final[VersionTuple] = _read_version_file()
+__version__ = _format_version(VERSION)
+
+
+def get_version(version: VersionTuple = VERSION) -> str:
+    return _format_version(version)
