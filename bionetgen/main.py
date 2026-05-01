@@ -154,7 +154,8 @@ class BNGBase(cement.Controller):
                 {
                     "help": "Optional simulation method override: ode, ssa, psa, nf. "
                     "For BNGL inputs, omit this to preserve the model's "
-                    "simulate_* actions when routing through BNGsim.",
+                    "simulate_* actions when routing through BNGsim. "
+                    "For direct BioNetGen XML inputs, only nf is supported.",
                     "default": None,
                     "type": str,
                     "dest": "method",
@@ -170,7 +171,9 @@ class BNGBase(cement.Controller):
         files. When BNGsim is installed, it is used for fast in-process
         simulation. Use --no-bngsim to force the traditional BNG2.pl path.
         For BNGL inputs, ``--method`` is an explicit override; if omitted,
-        the model's declared ``simulate_*`` actions are preserved.
+        the model's declared ``simulate_*`` actions are preserved. For
+        direct BioNetGen XML inputs, ``--method`` defaults to ``nf`` and
+        network-based methods are rejected.
         """
         from bionetgen.core.tools.bngsim_bridge import (
             BNGSIM_AVAILABLE,

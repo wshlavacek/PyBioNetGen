@@ -456,7 +456,8 @@ def run_with_bngsim(
         Detected format (one of FORMAT_* constants).
     method : str or None
         Simulation method ('ode', 'ssa', 'psa', 'nf', etc.). If None,
-        direct BNGsim inputs default to ``'ode'``.
+        direct non-BNG-XML inputs default to ``'ode'`` while direct
+        BioNetGen XML inputs default to ``'nf'``.
     t_span : tuple of (float, float) or None
         Time span (t_start, t_end). If None, defaults to (0, 100).
     n_points : int or None
@@ -485,15 +486,11 @@ def run_with_bngsim(
     output_dir = os.path.abspath(output_dir)
     model_name = os.path.splitext(os.path.basename(input_path))[0]
 
-    # BNGL handling lives in run_bngl_with_bngsim(); for direct inputs,
-    # preserve historical behavior by defaulting to ODE when no explicit
-    # method override was provided.
-    if method is None:
-        method = "ode"
-
     # BNG XML → NFsim path (no Model needed)
     if fmt == FORMAT_BNG_XML:
-        if not _is_nf_method(method) and method != "ode":
+        if method is None:
+            method = "nf"
+        if not _is_nf_method(method):
             raise BNGSimError(
                 f"BioNetGen XML files are for network-free simulation, "
                 f"but method='{method}' was requested. "
@@ -508,6 +505,12 @@ def run_with_bngsim(
             gml=sim_kwargs.pop("gml", None),
             model_name=model_name,
         )
+
+    # BNGL handling lives in run_bngl_with_bngsim(); for other direct
+    # inputs, preserve historical behavior by defaulting to ODE when no
+    # explicit method override was provided.
+    if method is None:
+        method = "ode"
 
     # Network-based methods: .net, SBML, Antimony
     if _is_nf_method(method):

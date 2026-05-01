@@ -50,7 +50,9 @@ def run(
     method : str, optional
         Optional simulation method override: 'ode', 'ssa', 'psa', 'nf', etc.
         For BNGL inputs, if omitted, the model's existing ``simulate_*``
-        actions are preserved when routing through BNGsim.
+        actions are preserved when routing through BNGsim. For direct
+        BioNetGen XML inputs, if omitted, the method defaults to ``nf``
+        and network-based methods are rejected.
     t_span : tuple of (float, float), optional
         Time span (t_start, t_end). If None, defaults to (0, 100).
     n_points : int, optional

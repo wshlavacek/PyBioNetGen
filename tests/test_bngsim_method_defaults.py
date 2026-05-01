@@ -2,6 +2,8 @@ import os
 import tempfile
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from bionetgen.modelapi.structs import Action
 
 BRIDGE = "bionetgen.core.tools.bngsim_bridge"
@@ -179,3 +181,24 @@ class TestDirectInputMethodDefaults:
             run_with_bngsim("/model.net", tmpdir, fmt="net", method=None)
 
         mock_bngsim.Simulator.assert_called_once_with(mock_model, method="ode")
+
+    def test_direct_bng_xml_input_defaults_to_nf(self):
+        from bionetgen.core.tools.bngsim_bridge import run_with_bngsim
+
+        sentinel = object()
+
+        with patch(f"{BRIDGE}.BNGSIM_AVAILABLE", True), \
+             patch(f"{BRIDGE}.run_nfsim", return_value=sentinel) as mock_run:
+
+            result = run_with_bngsim("/model.xml", "/tmp/out", fmt="bng-xml", method=None)
+
+        assert result is sentinel
+        mock_run.assert_called_once()
+
+    def test_direct_bng_xml_input_rejects_ode_override(self):
+        from bionetgen.core.tools.bngsim_bridge import run_with_bngsim
+        from bionetgen.core.exc import BNGSimError
+
+        with patch(f"{BRIDGE}.BNGSIM_AVAILABLE", True):
+            with pytest.raises(BNGSimError, match="network-free simulation"):
+                run_with_bngsim("/model.xml", "/tmp/out", fmt="bng-xml", method="ode")

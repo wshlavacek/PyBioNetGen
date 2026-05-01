@@ -359,12 +359,28 @@ class TestRunWithBngsim:
             run_with_bngsim("/model.xml", "/output", fmt="bng-xml", method="nf")
             mock_run_nfsim.assert_called_once()
 
+    def test_bng_xml_defaults_to_nf(self):
+        from bionetgen.core.tools.bngsim_bridge import run_with_bngsim
+
+        mock_run_nfsim = MagicMock()
+        with patch(f"{BRIDGE}.BNGSIM_AVAILABLE", True), \
+             patch(f"{BRIDGE}.run_nfsim", mock_run_nfsim):
+            run_with_bngsim("/model.xml", "/output", fmt="bng-xml", method=None)
+            mock_run_nfsim.assert_called_once()
+
     def test_bng_xml_bad_method_raises(self):
         from bionetgen.core.tools.bngsim_bridge import run_with_bngsim
 
         with patch(f"{BRIDGE}.BNGSIM_AVAILABLE", True):
             with pytest.raises(BNGSimError, match="network-free simulation"):
                 run_with_bngsim("/model.xml", "/output", fmt="bng-xml", method="ssa")
+
+    def test_bng_xml_ode_method_raises(self):
+        from bionetgen.core.tools.bngsim_bridge import run_with_bngsim
+
+        with patch(f"{BRIDGE}.BNGSIM_AVAILABLE", True):
+            with pytest.raises(BNGSimError, match="network-free simulation"):
+                run_with_bngsim("/model.xml", "/output", fmt="bng-xml", method="ode")
 
     def test_net_loads_from_net(self):
         from bionetgen.core.tools.bngsim_bridge import run_with_bngsim
