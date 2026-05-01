@@ -287,26 +287,21 @@ def _make_bng_result(output_dir, method):
     return bng_result
 
 
-def _apply_nfsim_concentration_changes(
-    nfsim,
+def _collapse_nfsim_concentration_changes(
     conc_overrides=None,
     conc_deltas=None,
 ):
-    """Apply recorded concentration changes to a fresh NFsim session."""
+    """Collapse concentration changes to NFsim's molecule-type granularity."""
+    collapsed_overrides = {}
+    collapsed_deltas = {}
+
     if conc_overrides:
         for species_pattern, target_count in conc_overrides.items():
-            mol_type = species_pattern.split("(")[0]
+            mol_type = str(species_pattern).split("(", 1)[0]
             try:
-                current = nfsim.get_molecule_count(mol_type)
-                to_add = int(target_count) - current
-                if to_add > 0:
-                    nfsim.add_molecules(mol_type, to_add)
-                elif to_add < 0:
-                    logger.warning(
-                        "NFsim: cannot decrease %s from %d to %d; "
-                        "leaving count unchanged",
-                        mol_type, current, target_count,
-                    )
+                collapsed_overrides[mol_type] = (
+                    collapsed_overrides.get(mol_type, 0) + int(target_count)
+                )
             except Exception as e:
                 logger.warning(
                     "NFsim: conc override for %s failed: %s",
@@ -315,21 +310,64 @@ def _apply_nfsim_concentration_changes(
 
     if conc_deltas:
         for species_pattern, delta_count in conc_deltas.items():
-            mol_type = species_pattern.split("(")[0]
+            mol_type = str(species_pattern).split("(", 1)[0]
             try:
-                delta = int(delta_count)
-                if delta > 0:
-                    nfsim.add_molecules(mol_type, delta)
-                elif delta < 0:
-                    logger.warning(
-                        "NFsim: cannot decrease %s by %d; leaving count unchanged",
-                        mol_type, -delta,
-                    )
+                collapsed_deltas[mol_type] = (
+                    collapsed_deltas.get(mol_type, 0) + int(delta_count)
+                )
             except Exception as e:
                 logger.warning(
                     "NFsim: conc delta for %s failed: %s",
                     species_pattern, e,
                 )
+
+    return collapsed_overrides, collapsed_deltas
+
+
+def _apply_nfsim_concentration_changes(
+    nfsim,
+    conc_overrides=None,
+    conc_deltas=None,
+):
+    """Apply recorded concentration changes to a fresh NFsim session."""
+    collapsed_overrides, collapsed_deltas = _collapse_nfsim_concentration_changes(
+        conc_overrides=conc_overrides,
+        conc_deltas=conc_deltas,
+    )
+
+    for mol_type, target_count in collapsed_overrides.items():
+        try:
+            desired_count = target_count + collapsed_deltas.pop(mol_type, 0)
+            current = nfsim.get_molecule_count(mol_type)
+            to_add = desired_count - current
+            if to_add > 0:
+                nfsim.add_molecules(mol_type, to_add)
+            elif to_add < 0:
+                logger.warning(
+                    "NFsim: cannot decrease %s from %d to %d; "
+                    "leaving count unchanged",
+                    mol_type, current, desired_count,
+                )
+        except Exception as e:
+            logger.warning(
+                "NFsim: concentration replay for %s failed: %s",
+                mol_type, e,
+            )
+
+    for mol_type, delta in collapsed_deltas.items():
+        try:
+            if delta > 0:
+                nfsim.add_molecules(mol_type, delta)
+            elif delta < 0:
+                logger.warning(
+                    "NFsim: cannot decrease %s by %d; leaving count unchanged",
+                    mol_type, -delta,
+                )
+        except Exception as e:
+            logger.warning(
+                "NFsim: concentration replay for %s failed: %s",
+                mol_type, e,
+            )
 
 
 def run_nfsim(

@@ -283,6 +283,55 @@ class TestRunNfsim:
             # add_molecules should NOT have been called
             session.add_molecules.assert_not_called()
 
+    def test_conc_overrides_same_mol_type_accumulate(self):
+        """Patterned overrides should collapse to one mol-type total."""
+        from bionetgen.core.tools.bngsim_bridge import run_nfsim
+
+        mock_bngsim, session = _make_mock_bngsim_with_nfsim_session()
+        session.get_molecule_count.return_value = 20
+
+        with patch(f"{BRIDGE}.BNGSIM_AVAILABLE", True), \
+             patch(f"{BRIDGE}.BNGSIM_HAS_NFSIM", True), \
+             patch(f"{BRIDGE}.bngsim", mock_bngsim), \
+             tempfile.TemporaryDirectory() as tmpdir:
+
+            xml_path = os.path.join(tmpdir, "model.xml")
+            with open(xml_path, "w") as f:
+                f.write("<model/>")
+
+            run_nfsim(
+                xml_path,
+                tmpdir,
+                conc_overrides={"A(b~0)": 50, "A(b~1)": 150},
+            )
+            session.get_molecule_count.assert_called_once_with("A")
+            session.add_molecules.assert_called_once_with("A", 180)
+
+    def test_conc_overrides_and_deltas_same_mol_type_combine(self):
+        """Absolute and relative NF concentration changes should combine."""
+        from bionetgen.core.tools.bngsim_bridge import run_nfsim
+
+        mock_bngsim, session = _make_mock_bngsim_with_nfsim_session()
+        session.get_molecule_count.return_value = 10
+
+        with patch(f"{BRIDGE}.BNGSIM_AVAILABLE", True), \
+             patch(f"{BRIDGE}.BNGSIM_HAS_NFSIM", True), \
+             patch(f"{BRIDGE}.bngsim", mock_bngsim), \
+             tempfile.TemporaryDirectory() as tmpdir:
+
+            xml_path = os.path.join(tmpdir, "model.xml")
+            with open(xml_path, "w") as f:
+                f.write("<model/>")
+
+            run_nfsim(
+                xml_path,
+                tmpdir,
+                conc_overrides={"A(b)": 100},
+                conc_deltas={"A(c)": 25},
+            )
+            session.get_molecule_count.assert_called_once_with("A")
+            session.add_molecules.assert_called_once_with("A", 115)
+
     def test_defaults(self):
         """Test default t_span, n_points, seed."""
         from bionetgen.core.tools.bngsim_bridge import run_nfsim
