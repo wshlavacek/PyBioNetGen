@@ -96,22 +96,23 @@ You can find more tutorials [here](https://pybionetgen.readthedocs.io/en/latest/
 The following demonstrates setting up and working with a development environment:
 
 ```
-### create a virtualenv for development
+### install uv once
 
-$ make virtualenv
-
-$ source env/bin/activate
+$ python -m pip install uv
 
 
-### run bionetgen cli application
+### run bionetgen cli application from the source tree
 
-$ bionetgen --help
+$ uv run --no-project --with-requirements requirements-dev.txt python -m bionetgen --help
 
 
-### run pytest / coverage
+### run pytest, then mypy
 
 $ make test
 ```
+
+`make test` and CI both run the same uv-based source-tree checks: `pytest`
+first, then `mypy`.
 
 ### Docker
 
@@ -131,5 +132,9 @@ You can use `make dist` command to make the distribution and push to PyPI with
 ```
 python -m twine upload dist/*
 ```
+
+Local validation no longer depends on `setup.py`, but `make dist` still does.
+That file remains for legacy release packaging because it currently bundles the
+platform-specific BioNetGen assets into the published package.
 
 You'll need to have a PyPI API token created, see [here](https://packaging.python.org/tutorials/packaging-projects/) for more information. 

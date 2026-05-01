@@ -348,11 +348,11 @@ def _replace_nv_ith_s(
                 else f"s{idx}"
             )
         if var == "expressions":
-            return expr_syms[idx].name if idx < len(expr_syms) else f"e{idx}"
+            return str(expr_syms[idx].name) if idx < len(expr_syms) else f"e{idx}"
         if var == "observables":
-            return obs_syms[idx].name if idx < len(obs_syms) else f"o{idx}"
+            return str(obs_syms[idx].name) if idx < len(obs_syms) else f"o{idx}"
         if var == "ratelaws":
-            return rate_syms[idx].name if idx < len(rate_syms) else f"r{idx}"
+            return str(rate_syms[idx].name) if idx < len(rate_syms) else f"r{idx}"
         if var == "Dspecies":
             return f"ds{idx}"
         # Unknown NV_Ith_S target; leave it as-is

@@ -1,4 +1,4 @@
-.PHONY: clean virtualenv test docker dist dist-upload
+.PHONY: clean virtualenv test typecheck docker dist dist-upload
 
 clean:
 	find . -name '*.py[co]' -delete
@@ -14,8 +14,11 @@ virtualenv:
 docker: clean
 	docker build -t bionetgen:latest .
 
-test: 
-	python -m pytest tests/
+test:
+	uv run --no-project --with-requirements requirements-dev.txt python scripts/run_dev_checks.py tests/
+
+typecheck:
+	uv run --no-project --with-requirements requirements-dev.txt python -m mypy bionetgen tests
 
 dist: clean
 	rm -rf dist/*

@@ -30,29 +30,19 @@ jobs:
       uses: actions/setup-python@v5
       with:
         python-version: ${{ matrix.python-version }}
-    - name: Cache pip
-      uses: actions/cache@v4
+    - name: Install uv
+      uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
       with:
-        path: ~/.cache/pip
-        key: ${{ runner.os }}-pip-${{ hashFiles('requirements-dev.txt') }}
-        restore-keys: |
-          ${{ runner.os }}-pip-
-          ${{ runner.os }}-
+        enable-cache: true
     - name: Install dependencies
       run: |
         if [ "$RUNNER_OS" == "Linux" ]; then
           sudo apt-get update && sudo apt-get -y install libncurses-dev
         fi
-        python -m pip install --upgrade pip
-        pip install -r requirements-dev.txt
       shell: bash
-    - name: Build
+    - name: Run pytest + mypy
       run: |
-        python setup.py install
-        python setup.py sdist bdist_wheel
-    - name: Test with PyTest
-      run: |
-        pytest
+        uv run --no-project --with-requirements requirements-dev.txt python scripts/run_dev_checks.py
   
   deploy-container:
     runs-on: ubuntu-latest

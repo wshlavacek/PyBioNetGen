@@ -1,3 +1,10 @@
+"""Legacy setuptools entry point for release packaging.
+
+Local validation and CI run from the source tree via uv. ``setup.py`` remains
+because release packaging still bundles platform-specific BioNetGen assets into
+the published package during ``make dist``.
+"""
+
 import json
 import os
 import shutil
