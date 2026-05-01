@@ -332,6 +332,42 @@ class TestRunNfsim:
             session.get_molecule_count.assert_called_once_with("A")
             session.add_molecules.assert_called_once_with("A", 115)
 
+    def test_conc_deltas_cannot_decrease(self, caplog):
+        """Negative deltas warn and no-op until NFsim supports removal."""
+        from bionetgen.core.tools.bngsim_bridge import run_nfsim
+
+        mock_bngsim, session = _make_mock_bngsim_with_nfsim_session()
+
+        with patch(f"{BRIDGE}.BNGSIM_AVAILABLE", True), \
+             patch(f"{BRIDGE}.BNGSIM_HAS_NFSIM", True), \
+             patch(f"{BRIDGE}.bngsim", mock_bngsim), \
+             tempfile.TemporaryDirectory() as tmpdir:
+
+            xml_path = os.path.join(tmpdir, "model.xml")
+            with open(xml_path, "w") as f:
+                f.write("<model/>")
+
+            with caplog.at_level("WARNING", logger="bionetgen.bngsim_bridge"):
+                run_nfsim(xml_path, tmpdir, conc_deltas={"A(b)": -25})
+
+            session.get_molecule_count.assert_not_called()
+            session.add_molecules.assert_not_called()
+            assert "NFsim: cannot decrease A by 25" in caplog.text
+
+    def test_patterned_conc_changes_are_molecule_type_granular(self):
+        """Pattern specificity is intentionally collapsed at replay time."""
+        from bionetgen.core.tools.bngsim_bridge import (
+            _collapse_nfsim_concentration_changes,
+        )
+
+        collapsed_overrides, collapsed_deltas = _collapse_nfsim_concentration_changes(
+            conc_overrides={"A(b~0)": 50, "A(b~1)": 150},
+            conc_deltas={"A(b~0)": -5, "A(b~1)": 20},
+        )
+
+        assert collapsed_overrides == {"A": 200}
+        assert collapsed_deltas == {"A": 15}
+
     def test_defaults(self):
         """Test default t_span, n_points, seed."""
         from bionetgen.core.tools.bngsim_bridge import run_nfsim
