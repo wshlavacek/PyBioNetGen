@@ -3,10 +3,12 @@
 import copy
 import json
 import os
+from unittest import mock
 
 import pytest
 import xmltodict
 
+from bionetgen.core.exc import BNGFileError
 from bionetgen.core.tools.gdiff import BNGGdiff
 
 # ---------------------------------------------------------------------------
@@ -292,7 +294,9 @@ class TestHelpers:
 
     def test_get_color_id_unknown_raises(self, gdiff_obj):
         node = _make_shape_node("x", "#123456", "n0")
-        with pytest.raises(RuntimeError, match="doesn't match known colors"):
+        with pytest.raises(
+            BNGFileError, match="doesn't match known BioNetGen contact-map colors"
+        ):
             gdiff_obj._get_color_id(node)
 
     def test_color_node(self, gdiff_obj):
@@ -362,6 +366,27 @@ class TestHelpers:
         props = gdiff_obj._get_node_properties(node)
         assert props["y:NodeLabel"]["#text"] == "G"
 
+    def test_get_node_properties_shape_without_supported_node_type_raises(
+        self, gdiff_obj
+    ):
+        node = {"@id": "n0", "data": {"@key": "d6", "y:UnsupportedNode": {}}}
+        with pytest.raises(
+            BNGFileError, match="Could not find supported yEd properties"
+        ):
+            gdiff_obj._get_node_properties(node)
+
+    def test_get_node_properties_list_without_supported_node_type_raises(
+        self, gdiff_obj
+    ):
+        node = {
+            "@id": "n0",
+            "data": [{"@key": "d4"}, {"@key": "d6", "y:UnsupportedNode": {}}],
+        }
+        with pytest.raises(
+            BNGFileError, match="Could not find supported yEd properties"
+        ):
+            gdiff_obj._get_node_properties(node)
+
     def test_get_node_fill(self, gdiff_obj):
         node = _make_shape_node("x", "#D2D2D2", "n0")
         fill = gdiff_obj._get_node_fill(node)
@@ -370,6 +395,16 @@ class TestHelpers:
     def test_get_font_size(self, gdiff_obj):
         node = _make_shape_node("x", "#D2D2D2", "n0", font_size="18")
         assert gdiff_obj._get_font_size(node) == 18
+
+    def test_color_node_logs_and_raises_for_invalid_node(self, gdiff_obj):
+        node = {"@id": "n0", "data": {"@key": "d6", "y:UnsupportedNode": {}}}
+        with mock.patch.object(gdiff_obj.logger, "error") as mock_error:
+            with pytest.raises(
+                BNGFileError, match="Could not find supported yEd properties"
+            ):
+                gdiff_obj._color_node(node, "#AABBCC")
+        mock_error.assert_called_once()
+        assert "Couldn't color GraphML node n0" in mock_error.call_args.args[0]
 
 
 # ======================================================================
