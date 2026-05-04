@@ -240,13 +240,11 @@ class TestRunNfsim:
             run_nfsim(xml_path, tmpdir, param_overrides={"k1": 5.0})
             session.set_param.assert_called_with("k1", 5.0)
 
-    def test_conc_overrides_add_molecules(self):
-        """conc_overrides should call get_molecule_count + add_molecules."""
+    def test_conc_overrides_set_exact_species_count(self):
+        """conc_overrides should call set_species_count when available."""
         from bionetgen.core.tools.bngsim_bridge import run_nfsim
 
         mock_bngsim, session = _make_mock_bngsim_with_nfsim_session()
-        # Current count is 50, target is 200 → add 150
-        session.get_molecule_count.return_value = 50
 
         with patch(f"{BRIDGE}.BNGSIM_AVAILABLE", True), \
              patch(f"{BRIDGE}.BNGSIM_HAS_NFSIM", True), \
@@ -258,16 +256,15 @@ class TestRunNfsim:
                 f.write("<model/>")
 
             run_nfsim(xml_path, tmpdir, conc_overrides={"A(b)": 200})
-            session.get_molecule_count.assert_called_with("A")
-            session.add_molecules.assert_called_with("A", 150)
+            session.set_species_count.assert_called_with("A(b)", 200)
+            session.get_molecule_count.assert_not_called()
+            session.add_molecules.assert_not_called()
 
-    def test_conc_overrides_cannot_decrease(self):
-        """conc_overrides should warn and skip when target < current."""
+    def test_conc_overrides_can_decrease_exact_species_count(self):
+        """conc_overrides should allow decreases through set_species_count."""
         from bionetgen.core.tools.bngsim_bridge import run_nfsim
 
         mock_bngsim, session = _make_mock_bngsim_with_nfsim_session()
-        # Current count is 200, target is 50 → cannot decrease
-        session.get_molecule_count.return_value = 200
 
         with patch(f"{BRIDGE}.BNGSIM_AVAILABLE", True), \
              patch(f"{BRIDGE}.BNGSIM_HAS_NFSIM", True), \
@@ -279,16 +276,15 @@ class TestRunNfsim:
                 f.write("<model/>")
 
             run_nfsim(xml_path, tmpdir, conc_overrides={"A(b)": 50})
-            session.get_molecule_count.assert_called_with("A")
-            # add_molecules should NOT have been called
+            session.set_species_count.assert_called_with("A(b)", 50)
+            session.get_molecule_count.assert_not_called()
             session.add_molecules.assert_not_called()
 
-    def test_conc_overrides_same_mol_type_accumulate(self):
-        """Patterned overrides should collapse to one mol-type total."""
+    def test_conc_overrides_same_mol_type_stay_pattern_specific(self):
+        """Patterned overrides should no longer collapse by molecule type."""
         from bionetgen.core.tools.bngsim_bridge import run_nfsim
 
         mock_bngsim, session = _make_mock_bngsim_with_nfsim_session()
-        session.get_molecule_count.return_value = 20
 
         with patch(f"{BRIDGE}.BNGSIM_AVAILABLE", True), \
              patch(f"{BRIDGE}.BNGSIM_HAS_NFSIM", True), \
@@ -304,15 +300,17 @@ class TestRunNfsim:
                 tmpdir,
                 conc_overrides={"A(b~0)": 50, "A(b~1)": 150},
             )
-            session.get_molecule_count.assert_called_once_with("A")
-            session.add_molecules.assert_called_once_with("A", 180)
+            session.set_species_count.assert_any_call("A(b~0)", 50)
+            session.set_species_count.assert_any_call("A(b~1)", 150)
+            assert session.set_species_count.call_count == 2
+            session.get_molecule_count.assert_not_called()
+            session.add_molecules.assert_not_called()
 
-    def test_conc_overrides_and_deltas_same_mol_type_combine(self):
-        """Absolute and relative NF concentration changes should combine."""
+    def test_conc_overrides_and_deltas_remain_pattern_specific(self):
+        """Absolute and relative NF concentration changes should replay by pattern."""
         from bionetgen.core.tools.bngsim_bridge import run_nfsim
 
         mock_bngsim, session = _make_mock_bngsim_with_nfsim_session()
-        session.get_molecule_count.return_value = 10
 
         with patch(f"{BRIDGE}.BNGSIM_AVAILABLE", True), \
              patch(f"{BRIDGE}.BNGSIM_HAS_NFSIM", True), \
@@ -329,11 +327,13 @@ class TestRunNfsim:
                 conc_overrides={"A(b)": 100},
                 conc_deltas={"A(c)": 25},
             )
-            session.get_molecule_count.assert_called_once_with("A")
-            session.add_molecules.assert_called_once_with("A", 115)
+            session.set_species_count.assert_called_once_with("A(b)", 100)
+            session.add_species.assert_called_once_with("A(c)", 25)
+            session.get_molecule_count.assert_not_called()
+            session.add_molecules.assert_not_called()
 
-    def test_conc_deltas_cannot_decrease(self, caplog):
-        """Negative deltas warn and no-op until NFsim supports removal."""
+    def test_conc_overrides_and_deltas_same_pattern_combine(self):
+        """An override and delta for the same exact pattern should combine."""
         from bionetgen.core.tools.bngsim_bridge import run_nfsim
 
         mock_bngsim, session = _make_mock_bngsim_with_nfsim_session()
@@ -347,15 +347,38 @@ class TestRunNfsim:
             with open(xml_path, "w") as f:
                 f.write("<model/>")
 
-            with caplog.at_level("WARNING", logger="bionetgen.bngsim_bridge"):
-                run_nfsim(xml_path, tmpdir, conc_deltas={"A(b)": -25})
+            run_nfsim(
+                xml_path,
+                tmpdir,
+                conc_overrides={"A(b)": 100},
+                conc_deltas={"A(b)": 25},
+            )
+            session.set_species_count.assert_called_once_with("A(b)", 125)
+            session.add_species.assert_not_called()
 
+    def test_conc_deltas_can_decrease_exact_species_count(self):
+        """Negative deltas should call remove_species when available."""
+        from bionetgen.core.tools.bngsim_bridge import run_nfsim
+
+        mock_bngsim, session = _make_mock_bngsim_with_nfsim_session()
+
+        with patch(f"{BRIDGE}.BNGSIM_AVAILABLE", True), \
+             patch(f"{BRIDGE}.BNGSIM_HAS_NFSIM", True), \
+             patch(f"{BRIDGE}.bngsim", mock_bngsim), \
+             tempfile.TemporaryDirectory() as tmpdir:
+
+            xml_path = os.path.join(tmpdir, "model.xml")
+            with open(xml_path, "w") as f:
+                f.write("<model/>")
+
+            run_nfsim(xml_path, tmpdir, conc_deltas={"A(b)": -25})
+
+            session.remove_species.assert_called_once_with("A(b)", 25)
             session.get_molecule_count.assert_not_called()
             session.add_molecules.assert_not_called()
-            assert "NFsim: cannot decrease A by 25" in caplog.text
 
-    def test_patterned_conc_changes_are_molecule_type_granular(self):
-        """Pattern specificity is intentionally collapsed at replay time."""
+    def test_legacy_patterned_conc_changes_are_molecule_type_granular(self):
+        """Legacy fallback still collapses patterns by molecule type."""
         from bionetgen.core.tools.bngsim_bridge import (
             _collapse_nfsim_concentration_changes,
         )
@@ -367,6 +390,26 @@ class TestRunNfsim:
 
         assert collapsed_overrides == {"A": 200}
         assert collapsed_deltas == {"A": 15}
+
+    def test_conc_replay_falls_back_for_legacy_nfsim_session(self):
+        """Older bngsim builds without species APIs keep the molecule-type path."""
+        from bionetgen.core.tools.bngsim_bridge import (
+            _apply_nfsim_concentration_changes,
+        )
+
+        class LegacyNfsimSession:
+            def __init__(self):
+                self.get_molecule_count = MagicMock(return_value=50)
+                self.add_molecules = MagicMock()
+
+        session = LegacyNfsimSession()
+        _apply_nfsim_concentration_changes(
+            session,
+            conc_overrides={"A(b)": 200},
+        )
+
+        session.get_molecule_count.assert_called_once_with("A")
+        session.add_molecules.assert_called_once_with("A", 150)
 
     def test_defaults(self):
         """Test default t_span, n_points, seed."""

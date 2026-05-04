@@ -330,6 +330,42 @@ def _apply_nfsim_concentration_changes(
     conc_deltas=None,
 ):
     """Apply recorded concentration changes to a fresh NFsim session."""
+    if (
+        callable(getattr(nfsim, "set_species_count", None))
+        and callable(getattr(nfsim, "add_species", None))
+        and callable(getattr(nfsim, "remove_species", None))
+    ):
+        remaining_deltas = {
+            str(species_pattern): delta for species_pattern, delta in (conc_deltas or {}).items()
+        }
+
+        if conc_overrides:
+            for species_pattern, target_count in conc_overrides.items():
+                try:
+                    pattern = str(species_pattern)
+                    desired_count = int(target_count) + int(remaining_deltas.pop(pattern, 0))
+                    nfsim.set_species_count(pattern, desired_count)
+                except Exception as e:
+                    logger.warning(
+                        "NFsim: concentration replay for %s failed: %s",
+                        species_pattern, e,
+                    )
+
+        for species_pattern, delta in remaining_deltas.items():
+            try:
+                pattern = str(species_pattern)
+                delta = int(delta)
+                if delta > 0:
+                    nfsim.add_species(pattern, delta)
+                elif delta < 0:
+                    nfsim.remove_species(pattern, -delta)
+            except Exception as e:
+                logger.warning(
+                    "NFsim: concentration replay for %s failed: %s",
+                    species_pattern, e,
+                )
+        return
+
     collapsed_overrides, collapsed_deltas = _collapse_nfsim_concentration_changes(
         conc_overrides=conc_overrides,
         conc_deltas=conc_deltas,
@@ -409,7 +445,8 @@ def run_nfsim(
         Used to propagate ``setParameter`` calls to NFsim.
     conc_overrides : dict or None
         Species pattern → absolute molecule count overrides to apply
-        after initialization via ``NfsimSession.add_molecules()``.
+        after initialization via ``NfsimSession.set_species_count()`` when
+        available, with a molecule-type fallback for older bngsim builds.
         Used to propagate ``setConcentration``/``addConcentration``
         calls to NFsim.
     conc_deltas : dict or None
