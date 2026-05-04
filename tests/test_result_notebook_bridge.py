@@ -5,6 +5,7 @@ import math
 import numpy as np
 import pytest
 
+from bionetgen.core.exc import BNGFileError
 from bionetgen.core.notebook import BNGNotebook
 from bionetgen.core.tools.bngsim_bridge import (
     _BNG2PL_ACTIONS,
@@ -162,6 +163,14 @@ class TestBNGResultLoadDat:
         assert arr.dtype.names == ("time", "A", "B")
         np.testing.assert_allclose(arr["time"], [0.0, 1.0])
         np.testing.assert_allclose(arr["B"], [2.5, 4.5])
+
+    def test_missing_hash_header_raises(self, tmp_path):
+        p = tmp_path / "bad.gdat"
+        p.write_text("time A\n0 1\n")
+        res = BNGResult()
+
+        with pytest.raises(BNGFileError, match="No header line that starts with #"):
+            res._load_dat(str(p))
 
 
 class TestBNGResultFindDatFiles:
@@ -383,10 +392,10 @@ class TestActionsNeedNetwork:
         a = Action("simulate_ode", {"t_end": "100", "n_steps": "10"})
         assert _actions_need_network([a]) is True
 
-    def test_simulate_nf_still_returns_true(self):
-        # _actions_need_network returns True by default (fallthrough)
+    def test_simulate_nf_does_not_need_network(self):
+        # NF-only simulation should need XML, not a generated .net file.
         a = Action("simulate_nf", {"t_end": "100", "n_steps": "10"})
-        assert _actions_need_network([a]) is True
+        assert _actions_need_network([a]) is False
 
 
 class TestActionsNeedXml:

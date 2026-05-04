@@ -3,6 +3,8 @@ from unittest import mock
 
 import pytest
 
+from bionetgen.core.exc import BNGFileError, BNGModelError
+
 
 class TestRunCLI:
     def test_runs_bngcli(self):
@@ -53,7 +55,7 @@ class TestPlotDAT:
         from bionetgen.core.main import plotDAT
         app = mock.MagicMock()
         app.pargs.input = "test.txt"
-        with pytest.raises(AssertionError):
+        with pytest.raises(BNGFileError, match=r"\.gdat, \.cdat, or \.scan"):
             plotDAT(app)
 
 
@@ -203,7 +205,7 @@ class TestGenerateNotebook:
         from bionetgen.core.main import generate_notebook
         app = mock.MagicMock()
         app.pargs.input = "model.txt"
-        with pytest.raises(AssertionError):
+        with pytest.raises(BNGFileError, match=r"\.bngl extension"):
             generate_notebook(app)
 
     def test_failed_load_raises(self):
@@ -224,5 +226,5 @@ class TestGenerateNotebook:
         mock_bng = mock.MagicMock()
         mock_bng.bngmodel.side_effect = Exception("fail")
         with mock.patch.dict("sys.modules", {"bionetgen": mock_bng}):
-            with pytest.raises(RuntimeError):
+            with pytest.raises(BNGModelError, match="Couldn't import given model"):
                 generate_notebook(app)

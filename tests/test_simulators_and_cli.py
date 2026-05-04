@@ -7,6 +7,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from bionetgen.core.exc import BNGFileError, BNGSimError
+
 # ---------------------------------------------------------------------------
 # 1. BNGSimulator base class
 # ---------------------------------------------------------------------------
@@ -110,15 +112,12 @@ class TestSimGetter:
 
     @patch("bionetgen.simulator.simulators.CSimulator")
     @patch("bionetgen.simulator.simulators.libRRSimulator")
-    def test_model_file_unsupported(self, mock_libRR, mock_CSim, capsys):
-        """Unsupported sim_type prints a message."""
+    def test_model_file_unsupported(self, mock_libRR, mock_CSim):
+        """Unsupported sim_type raises BNGSimError."""
         from bionetgen.simulator.simulators import sim_getter
 
-        result = sim_getter(model_file="/path/model.bngl", sim_type="unknown")
-        captured = capsys.readouterr()
-        assert "unknown" in captured.out
-        assert "not supported" in captured.out
-        assert result is None
+        with pytest.raises(BNGSimError, match="unknown"):
+            sim_getter(model_file="/path/model.bngl", sim_type="unknown")
 
     @patch("bionetgen.simulator.simulators.CSimulator")
     @patch("bionetgen.simulator.simulators.libRRSimulator")
@@ -150,6 +149,15 @@ class TestSimGetter:
         kw = mock_CSim.call_args
         assert kw.kwargs.get("generate_network") is True
         assert result is sentinel
+
+    @patch("bionetgen.simulator.simulators.CSimulator")
+    @patch("bionetgen.simulator.simulators.libRRSimulator")
+    def test_model_str_unsupported_raises(self, mock_libRR, mock_CSim):
+        """Unsupported sim_type for model_str raises BNGSimError."""
+        from bionetgen.simulator.simulators import sim_getter
+
+        with pytest.raises(BNGSimError, match="not supported"):
+            sim_getter(model_str="begin model\nend model\n", sim_type="unknown")
 
 
 # ---------------------------------------------------------------------------
@@ -287,6 +295,15 @@ class TestBNGCLI:
             cli.run()
 
         assert "BNGPATH" not in os.environ
+
+    @patch("bionetgen.core.utils.utils.find_BNG_path", side_effect=RuntimeError("boom"))
+    def test_init_find_bng_path_failure_raises_bngfile_error(self, mock_find, tmp_path):
+        """Unexpected path resolution failures raise BNGFileError."""
+        bngl = _make_bngl(tmp_path)
+        output_dir = str(tmp_path / "output")
+
+        with pytest.raises(BNGFileError, match="Unable to resolve BNG2.pl"):
+            _create_cli(bngl, output_dir, "/fake/bng")
 
 
 # ---------------------------------------------------------------------------

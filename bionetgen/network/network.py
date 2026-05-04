@@ -1,4 +1,5 @@
 from bionetgen.main import BioNetGen
+from bionetgen.core.utils.logging import BNGLogger
 from bionetgen.network.blocks import (
     NetworkGroupBlock,
     NetworkParameterBlock,
@@ -12,6 +13,7 @@ app = BioNetGen()
 app.setup()
 conf = app.config["bionetgen"]  # type: ignore[index]
 def_bng_path = conf["bngpath"]
+logger = BNGLogger()
 
 
 ###### CORE OBJECT AND PARSING FRONT-END ######
@@ -67,8 +69,9 @@ class Network:
         # Check to see if there are no active blocks
         # If not, model is most likely not in BNGL format
         if not self.active_blocks:
-            print(
-                "WARNING: No active blocks. Please ensure model is in proper BNGL or BNG-XML format"
+            logger.warning(
+                "No active blocks. Please ensure model is in proper BNGL or BNG-XML format",
+                loc=f"{__file__} : Network.__init__()",
             )
 
     def __str__(self):
@@ -116,13 +119,21 @@ class Network:
         block_adder = getattr(self, f"add_{bname}_block")
         block_adder()
 
+    def _set_typed_block(self, block, expected_type, attr_name, active_name):
+        if not isinstance(block, expected_type):
+            raise TypeError(
+                f"{attr_name} block must be a {expected_type.__name__}, "
+                f"got {type(block).__name__}"
+            )
+        setattr(self, attr_name, block)
+        if active_name not in self.active_blocks:
+            self.active_blocks.append(active_name)
+
     def add_parameters_block(self, block=None):
         if block is not None:
-            # TODO: Transition to BNGErrors and logging
-            assert isinstance(block, NetworkParameterBlock)
-            self.parameters = block
-            if "parameters" not in self.active_blocks:
-                self.active_blocks.append("parameters")
+            self._set_typed_block(
+                block, NetworkParameterBlock, "parameters", "parameters"
+            )
         else:
             self.parameters = NetworkParameterBlock()
 
@@ -137,31 +148,21 @@ class Network:
 
     def add_species_block(self, block=None):
         if block is not None:
-            # TODO: Transition to BNGErrors and logging
-            assert isinstance(block, NetworkSpeciesBlock)
-            self.species = block
-            if "species" not in self.active_blocks:
-                self.active_blocks.append("species")
+            self._set_typed_block(block, NetworkSpeciesBlock, "species", "species")
         else:
             self.species = NetworkSpeciesBlock()
 
     def add_groups_block(self, block=None):
         if block is not None:
-            # TODO: Transition to BNGErrors and logging
-            assert isinstance(block, NetworkGroupBlock)
-            self.groups = block
-            if "groups" not in self.active_blocks:
-                self.active_blocks.append("groups")
+            self._set_typed_block(block, NetworkGroupBlock, "groups", "groups")
         else:
             self.groups = NetworkGroupBlock()
 
     def add_reactions_block(self, block=None):
         if block is not None:
-            # TODO: Transition to BNGErrors and logging
-            assert isinstance(block, NetworkReactionBlock)
-            self.reactions = block
-            if "reactions" not in self.active_blocks:
-                self.active_blocks.append("reactions")
+            self._set_typed_block(
+                block, NetworkReactionBlock, "reactions", "reactions"
+            )
         else:
             self.reactions = NetworkReactionBlock()
 

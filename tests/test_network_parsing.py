@@ -4,6 +4,17 @@ These modules have module-level `app = BioNetGen()` calls, so they get
 imported indirectly. We test by creating fixture .net files.
 """
 
+from unittest.mock import patch
+
+import pytest
+
+from bionetgen.network.blocks import (
+    NetworkGroupBlock,
+    NetworkParameterBlock,
+    NetworkReactionBlock,
+    NetworkSpeciesBlock,
+)
+
 
 NET_CONTENT = """\
 # NET file
@@ -23,6 +34,20 @@ begin groups
   2 Btot 2
 end groups
 """
+
+
+def _make_network_bypass_init():
+    from bionetgen.network.network import Network
+
+    net = object.__new__(Network)
+    net.active_blocks = []
+    net.block_order = ["parameters", "species", "reactions", "groups"]
+    net.network_name = "test"
+    net.parameters = NetworkParameterBlock()
+    net.species = NetworkSpeciesBlock()
+    net.reactions = NetworkReactionBlock()
+    net.groups = NetworkGroupBlock()
+    return net
 
 NET_MINIMAL = """\
 # NET file
@@ -157,10 +182,32 @@ class TestNetwork:
         # Active blocks should include parameters
         assert "parameters" in net.active_blocks
 
-    def test_no_active_blocks_warning(self, tmp_path, capsys):
+    def test_no_active_blocks_warning(self, tmp_path):
         net_file = tmp_path / "empty.net"
         net_file.write_text("# empty\n")  # file with just a comment
-        from bionetgen.network.network import Network
-        _net = Network(str(net_file))
-        captured = capsys.readouterr()
-        assert "WARNING" in captured.out
+        from bionetgen.network import network as network_module
+
+        with patch.object(network_module, "logger") as mock_logger:
+            net = network_module.Network(str(net_file))
+
+        mock_logger.warning.assert_called_once()
+        warning_args, warning_kwargs = mock_logger.warning.call_args
+        assert "No active blocks" in warning_args[0]
+        assert "Network.__init__()" in warning_kwargs["loc"]
+        assert len(net.active_blocks) == 0
+
+    @pytest.mark.parametrize(
+        ("adder_name", "expected_type_name"),
+        [
+            ("add_parameters_block", "NetworkParameterBlock"),
+            ("add_species_block", "NetworkSpeciesBlock"),
+            ("add_groups_block", "NetworkGroupBlock"),
+            ("add_reactions_block", "NetworkReactionBlock"),
+        ],
+    )
+    def test_add_block_type_validation(self, adder_name, expected_type_name):
+        net = _make_network_bypass_init()
+        adder = getattr(net, adder_name)
+
+        with pytest.raises(TypeError, match=expected_type_name):
+            adder(object())

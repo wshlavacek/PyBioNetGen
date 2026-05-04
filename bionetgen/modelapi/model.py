@@ -2,7 +2,8 @@ import copy
 import shutil
 import tempfile
 
-from bionetgen.core.exc import BNGModelError
+from bionetgen.core.exc import BNGModelError, BNGSimError
+from bionetgen.core.utils.logging import BNGLogger
 from bionetgen.main import BioNetGen
 
 from .blocks import (
@@ -24,6 +25,7 @@ app = BioNetGen()
 app.setup()
 conf = app.config["bionetgen"]  # type: ignore[index]
 def_bng_path = conf["bngpath"]
+logger = BNGLogger()
 
 
 ###### CORE OBJECT AND PARSING FRONT-END ######
@@ -103,13 +105,9 @@ class bngmodel:
         # Check to see if there are no active blocks
         # If not, model is most likely not in BNGL format
         if not self.active_blocks:
-            # TODO: consider raising a BNGModelError() here
-            # raise BNGModelError(
-            #                 self.model_path,
-            #                 message="WARNING: No active blocks. Please ensure model is in proper BNGL or BNG-XML format",
-            #             )
-            print(
-                "WARNING: No active blocks. Please ensure model is in proper BNGL or BNG-XML format"
+            logger.warning(
+                "No active blocks. Please ensure model is in proper BNGL or BNG-XML format",
+                loc=f"{__file__} : bngmodel.__init__()",
             )
 
     @property
@@ -194,16 +192,22 @@ class bngmodel:
         block_adder = getattr(self, f"add_{bname}_block")
         block_adder()
 
+    def _set_typed_block(self, block, expected_type, attr_name, active_name):
+        if not isinstance(block, expected_type):
+            raise TypeError(
+                f"{attr_name} block must be a {expected_type.__name__}, "
+                f"got {type(block).__name__}"
+            )
+        setattr(self, attr_name, block)
+        if active_name not in self.active_blocks:
+            self.active_blocks.append(active_name)
+
     def add_parameters_block(self, block=None):
         """
         Adds a parameters block to the model object.
         """
         if block is not None:
-            # TODO: Transition to BNGErrors and logging
-            assert isinstance(block, ParameterBlock)
-            self.parameters = block
-            if "parameters" not in self.active_blocks:
-                self.active_blocks.append("parameters")
+            self._set_typed_block(block, ParameterBlock, "parameters", "parameters")
         else:
             self.parameters = ParameterBlock()
 
@@ -212,11 +216,9 @@ class bngmodel:
         Adds a compartments block to the model object.
         """
         if block is not None:
-            # TODO: Transition to BNGErrors and logging
-            assert isinstance(block, CompartmentBlock)
-            self.compartments = block
-            if "compartments" not in self.active_blocks:
-                self.active_blocks.append("compartments")
+            self._set_typed_block(
+                block, CompartmentBlock, "compartments", "compartments"
+            )
         else:
             self.compartments = CompartmentBlock()
 
@@ -225,11 +227,9 @@ class bngmodel:
         Adds a molecule types block to the model object.
         """
         if block is not None:
-            # TODO: Transition to BNGErrors and logging
-            assert isinstance(block, MoleculeTypeBlock)
-            self.molecule_types = block
-            if "molecule_types" not in self.active_blocks:
-                self.active_blocks.append("molecule_types")
+            self._set_typed_block(
+                block, MoleculeTypeBlock, "molecule_types", "molecule_types"
+            )
         else:
             self.molecule_types = MoleculeTypeBlock()
 
@@ -238,11 +238,7 @@ class bngmodel:
         Adds a species block to the model object.
         """
         if block is not None:
-            # TODO: Transition to BNGErrors and logging
-            assert isinstance(block, SpeciesBlock)
-            self.species = block
-            if "species" not in self.active_blocks:
-                self.active_blocks.append("species")
+            self._set_typed_block(block, SpeciesBlock, "species", "species")
         else:
             self.species = SpeciesBlock()
 
@@ -251,11 +247,9 @@ class bngmodel:
         Adds an observable block to the model object.
         """
         if block is not None:
-            # TODO: Transition to BNGErrors and logging
-            assert isinstance(block, ObservableBlock)
-            self.observables = block
-            if "observables" not in self.active_blocks:
-                self.active_blocks.append("observables")
+            self._set_typed_block(
+                block, ObservableBlock, "observables", "observables"
+            )
         else:
             self.observables = ObservableBlock()
 
@@ -264,11 +258,7 @@ class bngmodel:
         Adds a functions block to the model object.
         """
         if block is not None:
-            # TODO: Transition to BNGErrors and logging
-            assert isinstance(block, FunctionBlock)
-            self.functions = block
-            if "functions" not in self.active_blocks:
-                self.active_blocks.append("functions")
+            self._set_typed_block(block, FunctionBlock, "functions", "functions")
         else:
             self.functions = FunctionBlock()
 
@@ -277,11 +267,7 @@ class bngmodel:
         Adds a rules block to the model object.
         """
         if block is not None:
-            # TODO: Transition to BNGErrors and logging
-            assert isinstance(block, RuleBlock)
-            self.rules = block
-            if "rules" not in self.active_blocks:
-                self.active_blocks.append("rules")
+            self._set_typed_block(block, RuleBlock, "rules", "rules")
         else:
             self.rules = RuleBlock()
 
@@ -290,11 +276,12 @@ class bngmodel:
         Adds an energy patterns block to the model object.
         """
         if block is not None:
-            # TODO: Transition to BNGErrors and logging
-            assert isinstance(block, EnergyPatternBlock)
-            self.energy_patterns = block
-            if "energy_patterns" not in self.active_blocks:
-                self.active_blocks.append("energy_patterns")
+            self._set_typed_block(
+                block,
+                EnergyPatternBlock,
+                "energy_patterns",
+                "energy_patterns",
+            )
         else:
             self.energy_patterns = EnergyPatternBlock()
 
@@ -303,11 +290,12 @@ class bngmodel:
         Adds a population maps block to the model object.
         """
         if block is not None:
-            # TODO: Transition to BNGErrors and logging
-            assert isinstance(block, PopulationMapBlock)
-            self.population_maps = block
-            if "population_maps" not in self.active_blocks:
-                self.active_blocks.append("population_maps")
+            self._set_typed_block(
+                block,
+                PopulationMapBlock,
+                "population_maps",
+                "population_maps",
+            )
         else:
             self.population_maps = PopulationMapBlock()
 
@@ -316,11 +304,7 @@ class bngmodel:
         Adds an actions block to the model object.
         """
         if block is not None:
-            # TODO: Transition to BNGErrors and logging
-            assert isinstance(block, ActionBlock)
-            self.actions = block
-            if "actions" not in self.active_blocks:
-                self.active_blocks.append("actions")
+            self._set_typed_block(block, ActionBlock, "actions", "actions")
         else:
             self.actions = ActionBlock()
 
@@ -407,10 +391,10 @@ class bngmodel:
             self.simulator = bng.sim_getter(model_file=self, sim_type=sim_type)
             return self.simulator
         else:
-            print(f'Sim type {sim_type} is not recognized, only libroadrunner \
-                   is supported currently by passing "libRR" to \
-                   sim_type keyword argument')
-            return None
+            raise BNGSimError(
+                f"Simulator type '{sim_type}' is not supported. "
+                "Supported simulator types are: libRR, cpy."
+            )
         # for now we return the underlying simulator
         return self.simulator.simulator
 

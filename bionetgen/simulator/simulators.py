@@ -1,5 +1,15 @@
+from bionetgen.core.exc import BNGSimError
+
 from .csimulator import CSimulator
 from .librrsimulator import libRRSimulator
+
+
+def _raise_unsupported_simulator_type(sim_type):
+    msg = (
+        f"Simulator type '{sim_type}' is not supported. "
+        "Supported simulator types are: libRR, cpy."
+    )
+    raise BNGSimError(msg)
 
 
 def sim_getter(model_file=None, model_str=None, sim_type="libRR"):
@@ -41,13 +51,12 @@ def sim_getter(model_file=None, model_str=None, sim_type="libRR"):
             elif sim_type == "cpy":
                 return CSimulator(model_file=model_file, generate_network=True)
             else:
-                print(f"simulator type {sim_type} not supported")
-            return None
+                _raise_unsupported_simulator_type(sim_type)
     if model_file is not None:
         if sim_type == "libRR":
             return libRRSimulator(model_file=model_file)
         elif sim_type == "cpy":
             return CSimulator(model_file=model_file, generate_network=True)
         else:
-            print(f"simulator type {sim_type} not supported")
+            _raise_unsupported_simulator_type(sim_type)
     return None

@@ -736,18 +736,8 @@ def main():
         try:
             app.run()
 
-        except AssertionError as e:
-            print("AssertionError > %s" % e.args[0])
-            app.exit_code = 1
-            # TODO: figure out if this is what we want,
-            # rn it prints stuff twice
-            # if app.debug is True:
-            #     import traceback
-
-            #     traceback.print_exc()
-
         except BNGError as e:
-            print("BNGError > %s" % e.args[0])
+            app.log.error(str(e), f"{__file__} : main()")
             app.exit_code = 1
             # TODO: figure out if this is what we want,
             # rn it prints stuff twice

@@ -913,26 +913,31 @@ class TestBngmodel:
             assert hasattr(model, bname)
 
     @patch("bionetgen.modelapi.model.BNGParser")
-    def test_init_no_active_blocks_warning(self, MockParser, capsys):
-        """When no blocks are active after parsing, a warning should be printed."""
-        from bionetgen.modelapi.model import bngmodel
+    def test_init_no_active_blocks_warning(self, MockParser):
+        """When no blocks are active after parsing, a warning should be logged."""
+        from bionetgen.modelapi import model as model_module
 
         mock_parser = MagicMock()
         MockParser.return_value = mock_parser
         mock_parser.parse_model.side_effect = lambda m: None
 
-        model = bngmodel("/fake/empty.bngl")
+        with patch.object(model_module, "logger") as mock_logger:
+            model = model_module.bngmodel("/fake/empty.bngl")
 
-        captured = capsys.readouterr()
-        assert "WARNING" in captured.out or len(model.active_blocks) == 0
+        mock_logger.warning.assert_called_once()
+        warning_args, warning_kwargs = mock_logger.warning.call_args
+        assert "No active blocks" in warning_args[0]
+        assert "bngmodel.__init__()" in warning_kwargs["loc"]
+        assert len(model.active_blocks) == 0
 
     def test_setup_simulator_unrecognized_type(self):
-        """Unrecognized sim types should return None."""
-        model = _make_model_bypass_init()
-        model.bngparser = MagicMock()
+        """Unrecognized sim types should raise BNGSimError."""
+        from bionetgen.core.exc import BNGSimError
 
-        result = model.setup_simulator(sim_type="unknown")
-        assert result is None
+        model = _make_model_bypass_init()
+
+        with pytest.raises(BNGSimError, match="Simulator type 'unknown' is not supported"):
+            model.setup_simulator(sim_type="unknown")
 
     def test_add_all_block_types(self):
         """Test adding each block type to a model."""
@@ -971,6 +976,28 @@ class TestBngmodel:
         model.add_parameters_block()
         assert isinstance(model.parameters, ParameterBlock)
         assert len(model.parameters) == 0
+
+    @pytest.mark.parametrize(
+        ("adder_name", "expected_type_name"),
+        [
+            ("add_parameters_block", "ParameterBlock"),
+            ("add_compartments_block", "CompartmentBlock"),
+            ("add_molecule_types_block", "MoleculeTypeBlock"),
+            ("add_species_block", "SpeciesBlock"),
+            ("add_observables_block", "ObservableBlock"),
+            ("add_functions_block", "FunctionBlock"),
+            ("add_rules_block", "RuleBlock"),
+            ("add_energy_patterns_block", "EnergyPatternBlock"),
+            ("add_population_maps_block", "PopulationMapBlock"),
+            ("add_actions_block", "ActionBlock"),
+        ],
+    )
+    def test_add_block_type_validation(self, adder_name, expected_type_name):
+        model = _make_model_bypass_init()
+        adder = getattr(model, adder_name)
+
+        with pytest.raises(TypeError, match=expected_type_name):
+            adder(object())
 
     def test_block_order_preserved_in_str(self):
         """Blocks should appear in _block_order in the string output."""

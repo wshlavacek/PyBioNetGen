@@ -18,6 +18,8 @@ from unittest import mock
 import numpy as np
 import pytest
 
+from bionetgen.core.exc import BNGError, BNGFileError
+
 # ---------------------------------------------------------------------------
 # 1. sympy_odes.py — internal helpers and extract_odes_from_mexfile
 # ---------------------------------------------------------------------------
@@ -838,7 +840,7 @@ class TestCoreMain:
         from bionetgen.core.main import plotDAT
         mock_app = mock.MagicMock()
         mock_app.pargs.input = "model.xyz"
-        with pytest.raises(AssertionError):
+        with pytest.raises(BNGFileError, match=r"\.gdat, \.cdat, or \.scan"):
             plotDAT(mock_app)
 
     def test_printInfo(self):
@@ -971,12 +973,35 @@ class TestMainCLI:
         from bionetgen.main import BNGBase
         assert BNGBase.Meta.label == "bionetgen"
 
-    def test_main_function_assertion_error(self):
-        """Test that main() handles AssertionError via BioNetGenTest."""
-        from bionetgen.main import BioNetGenTest
-        with BioNetGenTest() as app:
-            app.run()
-            assert app.config is not None
+    def test_main_function_logs_bng_error(self):
+        from bionetgen.main import main
+
+        mock_app = mock.MagicMock()
+        mock_app.run.side_effect = BNGError("boom")
+        mock_ctx = mock.MagicMock()
+        mock_ctx.__enter__.return_value = mock_app
+        mock_ctx.__exit__.return_value = False
+
+        with mock.patch("bionetgen.main.BioNetGen", return_value=mock_ctx):
+            main()
+
+        mock_app.log.error.assert_called_once()
+        assert mock_app.log.error.call_args[0][0] == "boom"
+        assert "main()" in mock_app.log.error.call_args[0][1]
+        assert mock_app.exit_code == 1
+
+    def test_main_function_does_not_special_case_assertion_error(self):
+        from bionetgen.main import main
+
+        mock_app = mock.MagicMock()
+        mock_app.run.side_effect = AssertionError("boom")
+        mock_ctx = mock.MagicMock()
+        mock_ctx.__enter__.return_value = mock_app
+        mock_ctx.__exit__.return_value = False
+
+        with mock.patch("bionetgen.main.BioNetGen", return_value=mock_ctx):
+            with pytest.raises(AssertionError, match="boom"):
+                main()
 
 
 # ---------------------------------------------------------------------------
@@ -1019,7 +1044,7 @@ class TestCSimulator:
         with mock.patch("ctypes.CDLL", return_value=mock_lib):
             from bionetgen.simulator.csimulator import CSimWrapper
             wrapper = CSimWrapper("/fake/lib.so", num_params=2, num_spec_init=3)
-            with pytest.raises(AssertionError):
+            with pytest.raises(ValueError, match="Expected 3 initial species values"):
                 wrapper.set_species_init([1.0, 2.0])
 
     def test_csim_wrapper_set_parameters(self):
@@ -1035,7 +1060,7 @@ class TestCSimulator:
         with mock.patch("ctypes.CDLL", return_value=mock_lib):
             from bionetgen.simulator.csimulator import CSimWrapper
             wrapper = CSimWrapper("/fake/lib.so", num_params=2, num_spec_init=3)
-            with pytest.raises(AssertionError):
+            with pytest.raises(ValueError, match="Expected 2 parameter values"):
                 wrapper.set_parameters([0.1])
 
     def test_csimulator_str_repr(self):

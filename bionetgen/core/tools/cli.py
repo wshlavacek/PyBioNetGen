@@ -1,6 +1,6 @@
 import os
 
-from bionetgen.core.exc import BNGRunError
+from bionetgen.core.exc import BNGFileError, BNGRunError
 from bionetgen.core.utils.logging import BNGLogger
 
 
@@ -65,12 +65,14 @@ class BNGCLI:
 
         try:
             resolved_dir, resolved_exec = find_BNG_path(bngpath)
-        except Exception as e:
-            raise AssertionError(
-                "BNG2.pl is not found! "
+        except Exception as exc:
+            msg = (
+                "Unable to resolve BNG2.pl. "
                 "Set the BNGPATH environment variable to the BioNetGen folder containing BNG2.pl. "
-                f"Details: {e}"
-            ) from e
+                f"Details: {exc}"
+            )
+            self.logger.error(msg, loc=f"{__file__} : BNGCLI.__init__()")
+            raise BNGFileError(bngpath, message=msg) from exc
 
         self.bngpath = resolved_dir
         self.bng_exec = resolved_exec

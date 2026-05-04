@@ -197,10 +197,13 @@ class BNGVisualize:
                     # dump files
                     vis_res._dump_files(cur_dir)
                     return vis_res
-                except Exception as e:
+                except Exception as exc:
+                    self.logger.error(
+                        f"Failed to generate visualization files: {exc}",
+                        loc=f"{__file__} : BNGVisualize._normal_mode()",
+                    )
                     os.chdir(cur_dir)
-                    print("Couldn't run the simulation, see error.")
-                    raise e
+                    raise
         else:
             # instantiate a CLI object with the info
             cli = BNGCLI(model, self.output, self.bngpath, suppress=self.suppress)
@@ -215,11 +218,10 @@ class BNGVisualize:
                 # go back
                 os.chdir(cur_dir)
                 return vis_res
-            except Exception as e:
+            except Exception as exc:
                 self.logger.error(
-                    "Failed to run file",
+                    f"Failed to generate visualization files: {exc}",
                     loc=f"{__file__} : BNGVisualize._normal_mode()",
                 )
                 os.chdir(cur_dir)
-                print("Couldn't run the simulation, see error.")
-                raise e
+                raise

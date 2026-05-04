@@ -4,6 +4,8 @@ from unittest import mock
 
 import pytest
 
+from bionetgen.core.exc import BNGFileError
+
 # ── BNGPlotter tests ──────────────────────────────────────────────
 
 class TestBNGPlotter:
@@ -91,6 +93,60 @@ class TestBNGPlotter:
             mock_plt.ylabel.assert_called()
             mock_plt.title.assert_called()
 
+    def test_plot_without_series_raises(self, tmp_path):
+        gdat = tmp_path / "test.gdat"
+        gdat.write_text("# time\n0.0\n1.0\n")
+        out = tmp_path / "out.png"
+        from bionetgen.core.tools.plot import BNGPlotter
+        p = BNGPlotter(str(gdat), str(out))
+        mock_sbrn = mock.MagicMock()
+        mock_plt = mock.MagicMock()
+        with mock.patch.dict("sys.modules", {"seaborn": mock_sbrn, "matplotlib.pyplot": mock_plt}):
+            with pytest.raises(BNGFileError, match="No data columns are found"):
+                p._datplot()
+
+    def test_plot_invalid_x_bounds_raise(self, tmp_path):
+        gdat = tmp_path / "test.gdat"
+        gdat.write_text("# time A\n0.0 1.0\n1.0 3.0\n")
+        out = tmp_path / "out.png"
+        from bionetgen.core.tools.plot import BNGPlotter
+        p = BNGPlotter(str(gdat), str(out), xmin=2, xmax=1)
+        mock_sbrn = mock.MagicMock()
+        mock_plt = mock.MagicMock()
+        mock_ax = mock.MagicMock()
+        mock_fig = mock.MagicMock()
+        mock_gca = mock.MagicMock()
+        mock_gca.get_xlim.return_value = (0, 1)
+        mock_gca.get_ylim.return_value = (0, 4)
+        mock_gca.legend.return_value = mock.MagicMock()
+        mock_fig.gca.return_value = mock_gca
+        mock_ax.get_figure.return_value = mock_fig
+        mock_sbrn.lineplot.return_value = mock_ax
+        with mock.patch.dict("sys.modules", {"seaborn": mock_sbrn, "matplotlib.pyplot": mock_plt}):
+            with pytest.raises(ValueError, match="--xmin must be smaller than --xmax"):
+                p._datplot()
+
+    def test_plot_invalid_y_bounds_raise(self, tmp_path):
+        gdat = tmp_path / "test.gdat"
+        gdat.write_text("# time A\n0.0 1.0\n1.0 3.0\n")
+        out = tmp_path / "out.png"
+        from bionetgen.core.tools.plot import BNGPlotter
+        p = BNGPlotter(str(gdat), str(out), ymin=4, ymax=1)
+        mock_sbrn = mock.MagicMock()
+        mock_plt = mock.MagicMock()
+        mock_ax = mock.MagicMock()
+        mock_fig = mock.MagicMock()
+        mock_gca = mock.MagicMock()
+        mock_gca.get_xlim.return_value = (0, 1)
+        mock_gca.get_ylim.return_value = (0, 4)
+        mock_gca.legend.return_value = mock.MagicMock()
+        mock_fig.gca.return_value = mock_gca
+        mock_ax.get_figure.return_value = mock_fig
+        mock_sbrn.lineplot.return_value = mock_ax
+        with mock.patch.dict("sys.modules", {"seaborn": mock_sbrn, "matplotlib.pyplot": mock_plt}):
+            with pytest.raises(ValueError, match="--ymin must be smaller than --ymax"):
+                p._datplot()
+
 
 # ── BNGVisualize tests ──────────────────────────────────────────────
 
@@ -132,6 +188,34 @@ class TestBNGVisualize:
         with mock.patch.object(v, "_normal_mode", return_value=mock.MagicMock()) as m:
             v.run()
             m.assert_called_once()
+
+    @pytest.mark.parametrize("use_output", [False, True])
+    def test_normal_mode_logs_and_reraises_cli_failures(
+        self, tmp_path, capsys, use_output
+    ):
+        from bionetgen.core.tools.visualize import BNGVisualize
+
+        fake_model = mock.MagicMock()
+        fake_model.model_name = "test_model"
+        output = str(tmp_path / "viz") if use_output else None
+        v = BNGVisualize("test.bngl", output=output)
+        v.logger = mock.MagicMock()
+
+        with mock.patch(
+            "bionetgen.core.tools.visualize.bionetgen.modelapi.bngmodel",
+            return_value=fake_model,
+        ), mock.patch("bionetgen.core.main.BNGCLI") as mock_cli_cls:
+            mock_cli_cls.return_value.run.side_effect = RuntimeError("boom")
+
+            with pytest.raises(RuntimeError, match="boom"):
+                v._normal_mode()
+
+        captured = capsys.readouterr()
+        assert captured.out == ""
+        v.logger.error.assert_called_once()
+        error_args, error_kwargs = v.logger.error.call_args
+        assert "Failed to generate visualization files: boom" in error_args[0]
+        assert "BNGVisualize._normal_mode()" in error_kwargs["loc"]
 
     # _normal_mode requires complex mocking of bionetgen.modelapi.bngmodel
     # which is a module-level import — skip to focus on bngsim_bridge
@@ -223,14 +307,14 @@ class TestLibRRSimulator:
             sim.simulator = "/fake/model.bngl"
             mock_rr.RoadRunner.assert_called_once_with("/fake/model.bngl")
 
-    def test_simulator_setter_no_roadrunner(self, capsys):
+    def test_simulator_setter_no_roadrunner(self):
+        from bionetgen.core.exc import BNGSimError
         from bionetgen.simulator.librrsimulator import libRRSimulator
         sim = libRRSimulator.__new__(libRRSimulator)
         # Simulate ImportError for roadrunner
         with mock.patch.dict("sys.modules", {"roadrunner": None}):
-            sim.simulator = "/fake/model.bngl"
-            captured = capsys.readouterr()
-            assert "not installed" in captured.out
+            with pytest.raises(BNGSimError, match="libroadrunner is not installed"):
+                sim.simulator = "/fake/model.bngl"
 
     def test_simulate(self):
         from bionetgen.simulator.librrsimulator import libRRSimulator

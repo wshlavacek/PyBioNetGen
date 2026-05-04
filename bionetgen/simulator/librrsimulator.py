@@ -1,3 +1,5 @@
+from bionetgen.core.exc import BNGSimError
+
 from .bngsimulator import BNGSimulator
 
 
@@ -42,8 +44,10 @@ class libRRSimulator(BNGSimulator):
             import roadrunner as rr
 
             self._simulator = rr.RoadRunner(model)
-        except ImportError:
-            print("libroadrunner is not installed!")
+        except ImportError as exc:
+            raise BNGSimError(
+                "libroadrunner is not installed. Install it with: pip install libroadrunner"
+            ) from exc
 
     @property
     def sbml(self):

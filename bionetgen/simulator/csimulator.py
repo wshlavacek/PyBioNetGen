@@ -60,16 +60,21 @@ class CSimWrapper:
         """
         Set the initial species values array
         """
-        # TODO: Transition to BNGErrors and logging
-        assert len(arr) == self.num_spec_init
+        if len(arr) != self.num_spec_init:
+            raise ValueError(
+                "Expected "
+                f"{self.num_spec_init} initial species values, got {len(arr)}"
+            )
         self.species_init = np.array(arr, dtype=np.float64)
 
     def set_parameters(self, arr):
         """
         Set the parameter values array
         """
-        # TODO: Transition to BNGErrors and logging
-        assert len(arr) == self.num_params
+        if len(arr) != self.num_params:
+            raise ValueError(
+                f"Expected {self.num_params} parameter values, got {len(arr)}"
+            )
         self.parameters = np.array(arr, dtype=np.float64)
 
     def simulate(self, t_start=0, t_end=100, n_steps=100):
