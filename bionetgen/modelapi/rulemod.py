@@ -1,3 +1,6 @@
+from bionetgen.core.exc import BNGParseError
+
+
 class RuleMod:
     """
     Rule modifiers class for storage and printing.
@@ -26,4 +29,6 @@ class RuleMod:
         if val in self.valid_mod_names or val is None:
             self._type = val
         else:
-            print(f"Rule modifier type {val} is not a valid type")
+            raise BNGParseError(
+                message=f": Rule modifier type {val} is not a valid type"
+            )

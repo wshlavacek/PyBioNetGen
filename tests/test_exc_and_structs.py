@@ -440,6 +440,26 @@ class TestRule:
         assert r.bidirectional is True
         assert r.rate_constants == ["k1", "k2"]
 
+    def test_set_rate_constants_invalid_length_raises(self):
+        r = Rule(
+            name="r",
+            reactants=[FakePattern("A()")],
+            products=[FakePattern("B()")],
+            rate_constants=("k1",),
+        )
+        with pytest.raises(BNGParseError, match="1 or 2 rate constants"):
+            r.set_rate_constants(("k1", "k2", "k3"))
+        assert r.bidirectional is False
+        assert r.rate_constants == ["k1"]
+
+    def test_init_without_rate_constants_raises(self):
+        with pytest.raises(BNGParseError, match="1 or 2 rate constants"):
+            Rule(
+                name="r",
+                reactants=[FakePattern("A()")],
+                products=[FakePattern("B()")],
+            )
+
     def test_side_string(self):
         r = Rule(
             name="r",
@@ -488,12 +508,9 @@ class TestRuleMod:
         rm = RuleMod(mod_type="DeleteMolecules")
         assert rm.type == "DeleteMolecules"
 
-    def test_init_invalid_ignored(self):
-        # Invalid type prints a warning and _type is never set,
-        # so accessing .type raises AttributeError
-        rm = RuleMod(mod_type="InvalidMod")
-        with pytest.raises(AttributeError):
-            _ = rm.type
+    def test_init_invalid_raises(self):
+        with pytest.raises(BNGParseError, match="Rule modifier type InvalidMod"):
+            RuleMod(mod_type="InvalidMod")
 
     def test_str_none(self):
         rm = RuleMod()
@@ -518,8 +535,8 @@ class TestRuleMod:
 
     def test_type_setter_invalid(self):
         rm = RuleMod()
-        rm.type = "BadType"
-        # Invalid assignment is silently rejected; type stays as it was (None)
+        with pytest.raises(BNGParseError, match="Rule modifier type BadType"):
+            rm.type = "BadType"
         assert rm.type is None
 
     def test_type_setter_none(self):
