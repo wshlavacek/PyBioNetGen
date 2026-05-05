@@ -338,10 +338,13 @@ class ObservableBlock(ModelBlock):
                         changed = True
                         self.items[name]["name"] = value
                 else:
-                    print(
-                        "can't set observable {} to {}".format(
-                            self.items[name]["name"], value
-                        )
+                    logger.warning(
+                        "Unable to set observable {!r} to {!r}; keeping existing observable {!r}".format(
+                            self.items[name]["name"],
+                            value,
+                            self.items[name]["name"],
+                        ),
+                        loc=f"{__file__} : ObservableBlock.__setattr__()",
                     )
                 if changed:
                     self._changes[name] = value

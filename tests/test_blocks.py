@@ -394,14 +394,25 @@ class TestObservableBlock:
         ob.obsA = "obsB"
         assert ob.items["obsA"]["name"] == "obsB"
 
-    def test_setattr_invalid_type_prints(self, capsys):
+    def test_setattr_invalid_type_logs_warning(self):
+        from bionetgen.modelapi import blocks as blocks_module
+
         ob = ObservableBlock()
         fp = FakePattern("A()")
-        o = Observable("obsA", "Molecules", [fp])
-        ob.add_item(("obsA", o))
-        ob.obsA = 42
-        captured = capsys.readouterr()
-        assert "can't set observable" in captured.out
+        ob.add_observable("obsA", "Molecules", [fp])
+        ob._changes.clear()
+        existing_observable = ob.items["obsA"]
+
+        with patch.object(blocks_module, "logger") as mock_logger:
+            ob.obsA = 42
+
+        mock_logger.warning.assert_called_once()
+        warning_args, warning_kwargs = mock_logger.warning.call_args
+        assert "Unable to set observable 'obsA'" in warning_args[0]
+        assert "keeping existing observable" in warning_args[0]
+        assert "ObservableBlock.__setattr__()" in warning_kwargs["loc"]
+        assert ob.items["obsA"] is existing_observable
+        assert len(ob._changes) == 0
 
 
 # ---- SpeciesBlock tests ----

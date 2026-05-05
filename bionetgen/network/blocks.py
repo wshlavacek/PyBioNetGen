@@ -295,10 +295,13 @@ class NetworkGroupBlock(NetworkBlock):
                         changed = True
                         self.items[name]["name"] = value
                 else:
-                    print(
-                        "can't set group {} to {}".format(
-                            self.items[name]["name"], value
-                        )
+                    logger.warning(
+                        "Unable to set group {!r} to {!r}; keeping existing group {!r}".format(
+                            self.items[name]["name"],
+                            value,
+                            self.items[name]["name"],
+                        ),
+                        loc=f"{__file__} : NetworkGroupBlock.__setattr__()",
                     )
                 if changed:
                     self._changes[name] = value

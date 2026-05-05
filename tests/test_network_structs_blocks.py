@@ -540,6 +540,44 @@ class TestNetworkGroupBlock:
         assert isinstance(gb["Atot"], NetworkGroup)
         assert gb["Atot"].members == ["1", "2"]
 
+    def test_setattr_with_group_object(self):
+        gb = NetworkGroupBlock()
+        group = NetworkGroup(1, "Atot", members=["1", "2"])
+        gb.add_item(("Atot", group))
+        new_group = NetworkGroup(2, "Atot", members=["3"])
+
+        gb.Atot = new_group
+
+        assert gb["Atot"] is new_group
+        assert gb._changes["Atot"] is new_group
+
+    def test_setattr_with_string_updates_name(self):
+        gb = NetworkGroupBlock()
+        gb.add_group(1, "Atot", members=["1", "2"])
+
+        gb.Atot = "Btot"
+
+        assert gb["Atot"]["name"] == "Btot"
+
+    def test_setattr_invalid_type_logs_warning(self):
+        from bionetgen.network import blocks as blocks_module
+
+        gb = NetworkGroupBlock()
+        gb.add_group(1, "Atot", members=["1", "2"])
+        gb._changes.clear()
+        existing_group = gb["Atot"]
+
+        with patch.object(blocks_module, "logger") as mock_logger:
+            gb.Atot = 42
+
+        mock_logger.warning.assert_called_once()
+        warning_args, warning_kwargs = mock_logger.warning.call_args
+        assert "Unable to set group 'Atot'" in warning_args[0]
+        assert "keeping existing group" in warning_args[0]
+        assert "NetworkGroupBlock.__setattr__()" in warning_kwargs["loc"]
+        assert gb["Atot"] is existing_group
+        assert len(gb._changes) == 0
+
 
 # ===== NetworkSpeciesBlock =====
 
