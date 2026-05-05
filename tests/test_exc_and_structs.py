@@ -251,6 +251,11 @@ class TestModelObj:
         p.line_label = "myLabel"
         assert p.line_label == "myLabel: "
 
+    def test_line_label_none_uses_string_fallback(self):
+        p = Parameter("k1", "1")
+        p.line_label = None
+        assert p.line_label == "None: "
+
     def test_print_line_no_label_no_comment(self):
         p = Parameter("k1", "1")
         result = p.print_line()

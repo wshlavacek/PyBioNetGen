@@ -67,6 +67,11 @@ class TestNetworkObj:
         obj.line_label = "myLabel"
         assert obj.line_label == "myLabel: "
 
+    def test_line_label_none_uses_string_fallback(self):
+        obj = NetworkObj()
+        obj.line_label = None
+        assert obj.line_label == "None: "
+
     def test_print_line_no_label_no_comment(self):
         obj = NetworkObj()
         obj.comment = None
