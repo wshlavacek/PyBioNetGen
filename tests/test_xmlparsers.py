@@ -1,9 +1,11 @@
 """Tests for bionetgen/modelapi/xmlparsers.py"""
 
 from collections import OrderedDict
+from unittest.mock import patch
 
 import pytest
 
+from bionetgen.core.exc import BNGParseError
 from bionetgen.modelapi.blocks import (
     CompartmentBlock,
     EnergyPatternBlock,
@@ -219,6 +221,12 @@ class TestPatternXML:
         px = PatternXML(pat_xml)
         assert px.parsed_obj.relation == "=="
         assert px.parsed_obj.quantity == "5"
+
+    def test_pattern_relation_quantity_non_integer_raises(self):
+        mol = _simple_molecule_xml("A")
+        pat_xml = _simple_pattern_xml(mol, relation="==", quantity="1.5")
+        with pytest.raises(BNGParseError, match="Pattern quantity must be an integer"):
+            PatternXML(pat_xml)
 
     def test_molecule_with_components(self):
         comp = _simple_component_xml("O1_P1_M1_C1", "x", state="active")
@@ -715,6 +723,19 @@ class TestRuleBlockXML:
         result = rb.resolve_ratelaw(rate_xml)
         assert result == "Sat(k1)"
 
+    def test_parse_rule_missing_rate_law_raises(self):
+        xml = _make_rule_xml("r1", "A", "B", "0.1")
+        del xml["RateLaw"]
+        with pytest.raises(BNGParseError, match="missing a RateLaw entry"):
+            RuleBlockXML(xml)
+
+    def test_resolve_ratelaw_unknown_type_raises(self):
+        xml = _make_rule_xml("r1", "A", "B", "0.5")
+        rb = RuleBlockXML(xml)
+        rate_xml = OrderedDict([("@type", "mystery")])
+        with pytest.raises(BNGParseError, match="Unrecognized rate law type"):
+            rb.resolve_ratelaw(rate_xml)
+
     def test_resolve_rxn_side_none(self):
         xml = _make_rule_xml("r1", "A", "B", "0.5")
         rb = RuleBlockXML(xml)
@@ -752,6 +773,15 @@ class TestRuleBlockXML:
         rb = RuleBlockXML(dummy)
         result = rb.resolve_rxn_side(xml_side)
         assert len(result) == 2
+
+    def test_resolve_rxn_side_invalid_xml_raises(self):
+        dummy = _make_rule_xml("r1", "A", "B", "0.5")
+        rb = RuleBlockXML(dummy)
+        with pytest.raises(
+            BNGParseError,
+            match="Reaction side XML must contain ReactantPattern or ProductPattern",
+        ):
+            rb.resolve_rxn_side(OrderedDict([("NotAPattern", OrderedDict())]))
 
     def test_consolidate_reverse_rules(self):
         r1 = _make_rule_xml("bind", "A", "B", "0.1")
@@ -795,6 +825,18 @@ class TestRuleBlockXML:
         rb = RuleBlockXML(xml)
         ops = rb.get_operations(OrderedDict())
         assert ops == []
+
+    def test_get_rule_mod_include_exclude_logs_warning(self):
+        xml = _make_rule_xml("r1", "A", "B", "0.1")
+        rb = RuleBlockXML(xml)
+        rule_xml = OrderedDict([
+            ("@name", "r1"),
+            ("ListOfOperations", OrderedDict()),
+            ("ListOfIncludeReactants", OrderedDict()),
+        ])
+        with patch("bionetgen.modelapi.xmlparsers.logger.warning") as mock_warning:
+            rb.get_rule_mod(rule_xml)
+        mock_warning.assert_called_once()
 
     def test_resolve_ratelaw_hill(self):
         xml = _make_rule_xml("r1", "A", "B", "0.5")
@@ -936,3 +978,10 @@ class TestPopulationMapBlockXML:
         ])
         result = pm.resolve_ratelaw(rate_xml)
         assert result == "MM(kcat,Km)"
+
+    def test_resolve_ratelaw_unknown_type_raises(self):
+        xml = self._pm_xml("pm1", "A", "Apop", "0.5")
+        pm = PopulationMapBlockXML(xml)
+        rate_xml = OrderedDict([("@type", "mystery")])
+        with pytest.raises(BNGParseError, match="Unrecognized rate law type"):
+            pm.resolve_ratelaw(rate_xml)

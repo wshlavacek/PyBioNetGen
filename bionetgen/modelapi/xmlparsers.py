@@ -1,3 +1,8 @@
+from typing import NoReturn
+
+from bionetgen.core.exc import BNGParseError
+from bionetgen.core.utils.logging import BNGLogger
+
 from .blocks import (
     CompartmentBlock,
     EnergyPatternBlock,
@@ -11,6 +16,40 @@ from .blocks import (
 )
 from .pattern import Component, Molecule, Pattern
 from .rulemod import RuleMod
+
+logger = BNGLogger()
+_PARSE_SOURCE = "<BNG-XML>"
+
+
+def _raise_parse_error(message: str, *, loc: str) -> NoReturn:
+    logger.error(message, loc=loc)
+    raise BNGParseError(_PARSE_SOURCE, message=f": {message}")
+
+
+def _resolve_ratelaw(xml, *, context: str, loc: str) -> str:
+    rate_type = str(xml["@type"])
+    if rate_type == "Ele":
+        rate_cts_xml = xml["ListOfRateConstants"]
+        return str(rate_cts_xml["RateConstant"]["@value"])
+    if rate_type == "Function":
+        return str(xml["@name"])
+    if rate_type in ("MM", "Sat", "Hill", "Arrhenius"):
+        # A function type
+        rate_cts = rate_type + "("
+        args = xml["ListOfRateConstants"]["RateConstant"]
+        if isinstance(args, list):
+            for iarg, arg in enumerate(args):
+                if iarg > 0:
+                    rate_cts += ","
+                rate_cts += str(arg["@value"])
+        else:
+            rate_cts += str(args["@value"])
+        rate_cts += ")"
+        return rate_cts
+    _raise_parse_error(
+        f"Unrecognized rate law type {rate_type!r} in {context}",
+        loc=loc,
+    )
 
 
 ###### Base object  ######
@@ -84,7 +123,7 @@ class BondsXML:
         comp_id = comp["@id"]
         try:
             num_bonds = int(num_bonds)
-        except:
+        except (TypeError, ValueError):
             # This means we have something like +/?
             return num_bonds
         # use the comp_id to find the bond index from
@@ -182,10 +221,17 @@ class PatternXML(XMLObj):
             try:
                 n = int(quantity)
                 f = float(quantity)
-                if n == f:
-                    pattern.quantity = quantity
-            except ValueError:
-                print("Quantity needs to be an integer")
+            except (TypeError, ValueError):
+                _raise_parse_error(
+                    f"Pattern quantity must be an integer, got {quantity!r}",
+                    loc=f"{__file__} : PatternXML.parse_xml()",
+                )
+            if n != f:
+                _raise_parse_error(
+                    f"Pattern quantity must be an integer, got {quantity!r}",
+                    loc=f"{__file__} : PatternXML.parse_xml()",
+                )
+            pattern.quantity = quantity
         # check for either list of molecules or single molecule, add if exist
         mols = xml["ListOfMolecules"]["Molecule"]
         molecules = []
@@ -555,8 +601,9 @@ class RuleBlockXML(XMLObj):
                 reactants = self.resolve_rxn_side(rule["ListOfReactantPatterns"])
                 products = self.resolve_rxn_side(rule["ListOfProductPatterns"])
                 if "RateLaw" not in rule:
-                    print(
-                        "Rule seems to be missing a rate law, please make sure that XML exporter of BNGL supports whatever you are doing!"
+                    _raise_parse_error(
+                        f"Reaction rule {name!r} is missing a RateLaw entry",
+                        loc=f"{__file__} : RuleBlockXML.parse_xml()",
                     )
                 rate_constants = [self.resolve_ratelaw(rule["RateLaw"])]
                 rule_modifier = self.get_rule_mod(rule)
@@ -577,8 +624,9 @@ class RuleBlockXML(XMLObj):
             reactants = self.resolve_rxn_side(xml["ListOfReactantPatterns"])
             products = self.resolve_rxn_side(xml["ListOfProductPatterns"])
             if "RateLaw" not in xml:
-                print(
-                    "Rule seems to be missing a rate law, please make sure that XML exporter of BNGL supports whatever you are doing!"
+                _raise_parse_error(
+                    f"Reaction rule {name!r} is missing a RateLaw entry",
+                    loc=f"{__file__} : RuleBlockXML.parse_xml()",
                 )
             rate_constants = [self.resolve_ratelaw(xml["RateLaw"])]
             rule_modifier = self.get_rule_mod(xml)
@@ -596,32 +644,11 @@ class RuleBlockXML(XMLObj):
         return block
 
     def resolve_ratelaw(self, xml):
-        rate_type = xml["@type"]
-        if rate_type == "Ele":
-            rate_cts_xml = xml["ListOfRateConstants"]
-            rate_cts = rate_cts_xml["RateConstant"]["@value"]
-        elif rate_type == "Function":
-            rate_cts = xml["@name"]
-        elif (
-            rate_type == "MM"
-            or rate_type == "Sat"
-            or rate_type == "Hill"
-            or rate_type == "Arrhenius"
-        ):
-            # A function type
-            rate_cts = rate_type + "("
-            args = xml["ListOfRateConstants"]["RateConstant"]
-            if isinstance(args, list):
-                for iarg, arg in enumerate(args):
-                    if iarg > 0:
-                        rate_cts += ","
-                    rate_cts += arg["@value"]
-            else:
-                rate_cts += args["@value"]
-            rate_cts += ")"
-        else:
-            print("don't recognize rate law type")
-        return rate_cts
+        return _resolve_ratelaw(
+            xml,
+            context="reaction rule",
+            loc=f"{__file__} : RuleBlockXML.resolve_ratelaw()",
+        )
 
     def resolve_rxn_side(self, xml):
         # this is either reactant or product
@@ -658,8 +685,10 @@ class RuleBlockXML(XMLObj):
                 sl.append(PatternXML(side).parsed_obj)
             return sl
         else:
-            print(f"Can't parse rule XML {xml}")
-        return None
+            _raise_parse_error(
+                "Reaction side XML must contain ReactantPattern or ProductPattern",
+                loc=f"{__file__} : RuleBlockXML.resolve_rxn_side()",
+            )
 
     def get_operations(self, xml):
         # TODO: create working operations class
@@ -757,8 +786,9 @@ class RuleBlockXML(XMLObj):
             or "ListOfExcludeReactants" in xml
             or "ListOfExcludeProducts" in xml
         ):
-            print(
-                "WARNING: Include/Exclude Reactants/Products not currently supported as rule modifiers"
+            logger.warning(
+                "Include/Exclude Reactants/Products are not currently supported as rule modifiers",
+                loc=f"{__file__} : RuleBlockXML.get_rule_mod()",
             )
         return rule_mod
 
@@ -846,32 +876,11 @@ class PopulationMapBlockXML(XMLObj):
         return block
 
     def resolve_ratelaw(self, xml):
-        rate_type = xml["@type"]
-        if rate_type == "Ele":
-            rate_cts_xml = xml["ListOfRateConstants"]
-            rate_cts = rate_cts_xml["RateConstant"]["@value"]
-        elif rate_type == "Function":
-            rate_cts = xml["@name"]
-        elif (
-            rate_type == "MM"
-            or rate_type == "Sat"
-            or rate_type == "Hill"
-            or rate_type == "Arrhenius"
-        ):
-            # A function type
-            rate_cts = rate_type + "("
-            args = xml["ListOfRateConstants"]["RateConstant"]
-            if isinstance(args, list):
-                for iarg, arg in enumerate(args):
-                    if iarg > 0:
-                        rate_cts += ","
-                    rate_cts += arg["@value"]
-            else:
-                rate_cts += args["@value"]
-            rate_cts += ")"
-        else:
-            print("don't recognize rate law type")
-        return rate_cts
+        return _resolve_ratelaw(
+            xml,
+            context="population map",
+            loc=f"{__file__} : PopulationMapBlockXML.resolve_ratelaw()",
+        )
 
 
 # TODO: Store operations!
