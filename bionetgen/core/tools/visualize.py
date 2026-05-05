@@ -1,8 +1,10 @@
 import glob
 import os
 from tempfile import TemporaryDirectory
+from typing import NoReturn
 
 import bionetgen
+from bionetgen.core.exc import BNGError, BNGFileError
 from bionetgen.core.utils.logging import BNGLogger
 
 
@@ -135,9 +137,9 @@ class BNGVisualize:
 
     def run(self) -> VisResult:
         self.logger.debug("Running", loc=f"{__file__} : BNGVisualize.run()")
-        return self._normal_mode()  # type: ignore[no-any-return]
+        return self._normal_mode()
 
-    def _normal_mode(self):
+    def _normal_mode(self) -> VisResult:
         self.logger.debug(
             f"Running on normal mode, loading model {self.input}",
             loc=f"{__file__} : BNGVisualize._normal_mode()",
@@ -184,44 +186,56 @@ class BNGVisualize:
             with TemporaryDirectory() as out:
                 # instantiate a CLI object with the info
                 cli = BNGCLI(model, out, self.bngpath, suppress=self.suppress)
-                try:
-                    cli.run()
-                    # load vis
-                    vis_res = VisResult(
-                        os.path.abspath(os.getcwd()),
-                        name=model.model_name,
-                        vtype=self.vtype,
-                    )
-                    # go back
-                    os.chdir(cur_dir)
-                    # dump files
-                    vis_res._dump_files(cur_dir)
-                    return vis_res
-                except Exception as exc:
-                    self.logger.error(
-                        f"Failed to generate visualization files: {exc}",
-                        loc=f"{__file__} : BNGVisualize._normal_mode()",
-                    )
-                    os.chdir(cur_dir)
-                    raise
-        else:
-            # instantiate a CLI object with the info
-            cli = BNGCLI(model, self.output, self.bngpath, suppress=self.suppress)
-            try:
-                cli.run()
-                # load vis
-                vis_res = VisResult(
-                    os.path.abspath(os.getcwd()),
-                    name=model.model_name,
-                    vtype=self.vtype,
+                return self._run_and_collect_vis(
+                    cli,
+                    model_name=model.model_name,
+                    cur_dir=cur_dir,
+                    dump_dir=cur_dir,
                 )
-                # go back
-                os.chdir(cur_dir)
-                return vis_res
-            except Exception as exc:
-                self.logger.error(
-                    f"Failed to generate visualization files: {exc}",
-                    loc=f"{__file__} : BNGVisualize._normal_mode()",
-                )
-                os.chdir(cur_dir)
-                raise
+
+        # instantiate a CLI object with the info
+        cli = BNGCLI(model, self.output, self.bngpath, suppress=self.suppress)
+        return self._run_and_collect_vis(
+            cli,
+            model_name=model.model_name,
+            cur_dir=cur_dir,
+        )
+
+    def _run_and_collect_vis(
+        self,
+        cli,
+        *,
+        model_name: str,
+        cur_dir: str,
+        dump_dir: str | None = None,
+    ) -> VisResult:
+        try:
+            cli.run()
+            vis_res = VisResult(
+                os.path.abspath(os.getcwd()),
+                name=model_name,
+                vtype=self.vtype,
+            )
+            if dump_dir is not None:
+                vis_res._dump_files(dump_dir)
+            return vis_res
+        except BNGError as exc:
+            self._log_visualization_failure(exc)
+            raise
+        except OSError as exc:
+            self._raise_visualization_file_error(exc)
+        finally:
+            os.chdir(cur_dir)
+
+    def _log_visualization_failure(self, exc: BaseException) -> None:
+        self.logger.error(
+            f"Failed to generate visualization files: {exc}",
+            loc=f"{__file__} : BNGVisualize._normal_mode()",
+        )
+
+    def _raise_visualization_file_error(self, exc: OSError) -> NoReturn:
+        self._log_visualization_failure(exc)
+        raise BNGFileError(
+            self.input,
+            message=f"Failed to generate visualization files: {exc}",
+        ) from exc
