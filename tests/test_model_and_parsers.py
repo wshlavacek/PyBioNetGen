@@ -892,6 +892,29 @@ class TestBngmodel:
         model.add_empty_block("reaction_rules")
         assert hasattr(model, "rules")
 
+    def test_add_block_invalid_name_raises_attribute_error(self):
+        """Characterize current dynamic dispatch failure for unknown block names."""
+        model = _make_model_bypass_init()
+
+        class FakeBlock:
+            name = "not a block"
+
+        with pytest.raises(AttributeError, match="add_not_a_block_block"):
+            model.add_block(FakeBlock())
+
+        assert "not_a_block" not in model.active_blocks
+        assert not hasattr(model, "not_a_block")
+
+    def test_add_empty_block_invalid_name_raises_attribute_error(self):
+        """Characterize current add_empty_block failure for unknown block names."""
+        model = _make_model_bypass_init()
+
+        with pytest.raises(AttributeError, match="add_not_a_block_block"):
+            model.add_empty_block("not a block")
+
+        assert "not_a_block" not in model.active_blocks
+        assert not hasattr(model, "not_a_block")
+
     def test_str_actions_block(self):
         """Actions should appear after end model."""
         model = _make_model_bypass_init()

@@ -169,6 +169,55 @@ class TestNetwork:
         # Parameters block already exists
         assert "parameters" in net.active_blocks
 
+    @pytest.mark.parametrize(
+        ("block_cls", "attr_name"),
+        [
+            (NetworkParameterBlock, "parameters"),
+            (NetworkSpeciesBlock, "species"),
+            (NetworkReactionBlock, "reactions"),
+            (NetworkGroupBlock, "groups"),
+        ],
+    )
+    def test_add_block_dispatches_supported_block(self, block_cls, attr_name):
+        net = _make_network_bypass_init()
+        block = block_cls()
+
+        net.add_block(block)
+
+        assert getattr(net, attr_name) is block
+        assert attr_name in net.active_blocks
+
+    def test_add_empty_block_dispatches_supported_name(self):
+        net = _make_network_bypass_init()
+        delattr(net, "groups")
+
+        net.add_empty_block("groups")
+
+        assert isinstance(net.groups, NetworkGroupBlock)
+
+    def test_add_block_invalid_name_raises_attribute_error(self):
+        """Characterize current dynamic dispatch failure for unknown block names."""
+        net = _make_network_bypass_init()
+
+        class FakeBlock:
+            name = "not a block"
+
+        with pytest.raises(AttributeError, match="add_not_a_block_block"):
+            net.add_block(FakeBlock())
+
+        assert "not_a_block" not in net.active_blocks
+        assert not hasattr(net, "not_a_block")
+
+    def test_add_empty_block_invalid_name_raises_attribute_error(self):
+        """Characterize current add_empty_block failure for unknown block names."""
+        net = _make_network_bypass_init()
+
+        with pytest.raises(AttributeError, match="add_not_a_block_block"):
+            net.add_empty_block("not a block")
+
+        assert "not_a_block" not in net.active_blocks
+        assert not hasattr(net, "not_a_block")
+
     def test_empty_blocks_added(self, tmp_path):
         net_file = tmp_path / "test.net"
         # Network with only parameters — need header line so line 0 isn't begin
