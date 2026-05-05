@@ -4,6 +4,7 @@ from collections import OrderedDict
 
 import pytest
 
+from bionetgen.core.exc import BNGParseError
 from bionetgen.modelapi.blocks import (
     ActionBlock,
     CompartmentBlock,
@@ -585,11 +586,10 @@ class TestActionBlock:
         ab.add_action("simulate", {"method": '"ode"', "t_end": "100", "n_steps": "10"})
         assert len(ab.items) == 1
 
-    def test_add_action_invalid_type(self, capsys):
+    def test_add_action_invalid_type_raises_parse_error(self):
         ab = ActionBlock()
-        ab.add_action("not_a_real_action", {})
-        captured = capsys.readouterr()
-        assert "not recognized" in captured.out
+        with pytest.raises(BNGParseError, match="Action type not_a_real_action not recognized!"):
+            ab.add_action("not_a_real_action", {})
         assert len(ab.items) == 0
 
     def test_clear_actions(self):

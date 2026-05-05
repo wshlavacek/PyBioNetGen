@@ -624,13 +624,8 @@ class ActionBlock(ModelBlock):
         adds action, needs type as string and args as list of tuples
         (which preserve order) of (argument, value) pairs
         """
-        if action_type in self._action_list:
-            a = Action(action_type=action_type, action_args=action_args)
-            self.add_item((action_type, a))
-        else:
-            print(
-                f"Action type {action_type} is not recognized as a BNGL action"
-            )
+        a = Action(action_type=action_type, action_args=action_args)
+        self.add_item((action_type, a))
 
     def clear_actions(self) -> None:
         self.items.clear()
