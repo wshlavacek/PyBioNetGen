@@ -22,17 +22,18 @@ Expected state at the start of the next session:
 
 - branch: `main`
 - working tree: clean
-- `HEAD`: `928de43`
-- latest cleanup commit message: `Unify modelapi rule error handling`
+- `HEAD`: `45c6cd9`
+- latest commit message: `Add blocks cleanup session handoff`
+- latest code-cleanup commit message: `Unify modelapi rule error handling`
 
 Recent cleanup commits:
 
+- `45c6cd9` `Add blocks cleanup session handoff`
 - `928de43` `Unify modelapi rule error handling`
 - `1a091df` `Unify structs line label error handling`
 - `7471165` `Unify gdiff keylist traversal error handling`
 - `c3c729b` `Unify networkparser species error handling`
 - `43dda43` `Unify csimulator error handling`
-- `141d596` `Unify xmlparsers error handling`
 
 Important note:
 
