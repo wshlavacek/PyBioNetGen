@@ -96,10 +96,7 @@ class ModelBlock:
         self.items[key] = value
 
     def __delitem__(self, key) -> None:
-        if key in self.items:
-            self.items.pop(key)
-        else:
-            print(f"Item {key} not found")
+        self.items.pop(key)
 
     def __iter__(self):
         return self.items.keys().__iter__()
@@ -614,11 +611,7 @@ class ActionBlock(ModelBlock):
         self.items[key] = value
 
     def __delitem__(self, key) -> None:
-        try:
-            return self.items.pop(key)  # type: ignore[no-any-return]
-        # TODO: more specific except statements
-        except:
-            print(f"Item {key} not found")
+        return self.items.pop(key)  # type: ignore[no-any-return]
 
     def __iter__(self):
         return range(len(self.items)).__iter__()

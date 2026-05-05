@@ -2,6 +2,8 @@
 
 from collections import OrderedDict
 
+import pytest
+
 from bionetgen.modelapi.blocks import (
     ActionBlock,
     CompartmentBlock,
@@ -100,11 +102,10 @@ class TestModelBlock:
         del b["k1"]
         assert "k1" not in b.items
 
-    def test_delitem_missing_prints(self, capsys):
+    def test_delitem_missing_raises_keyerror(self):
         b = ModelBlock()
-        del b["nonexistent"]
-        captured = capsys.readouterr()
-        assert "nonexistent" in captured.out
+        with pytest.raises(KeyError, match="nonexistent"):
+            del b["nonexistent"]
 
     def test_iter(self):
         b = ModelBlock()
@@ -631,11 +632,10 @@ class TestActionBlock:
         del ab[0]
         assert len(ab.items) == 0
 
-    def test_delitem_invalid(self, capsys):
+    def test_delitem_invalid_raises_indexerror(self):
         ab = ActionBlock()
-        del ab[99]
-        captured = capsys.readouterr()
-        assert "99" in captured.out
+        with pytest.raises(IndexError):
+            del ab[99]
 
     def test_iter(self):
         ab = ActionBlock()

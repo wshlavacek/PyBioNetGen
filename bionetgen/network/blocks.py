@@ -75,10 +75,7 @@ class NetworkBlock:
         self.items[key] = value
 
     def __delitem__(self, key) -> None:
-        if key in self.items:
-            self.items.pop(key)
-        else:
-            print(f"Item {key} not found")
+        self.items.pop(key)
 
     def __iter__(self):
         return self.items.keys().__iter__()

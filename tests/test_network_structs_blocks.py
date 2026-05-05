@@ -1,6 +1,8 @@
 """Tests for bionetgen.network.structs and bionetgen.network.blocks."""
 
 
+import pytest
+
 from bionetgen.network.blocks import (
     NetworkBlock,
     NetworkCompartmentBlock,
@@ -332,11 +334,10 @@ class TestNetworkBlock:
         del b["k1"]
         assert "k1" not in b
 
-    def test_delitem_nonexistent(self, capsys):
+    def test_delitem_nonexistent_raises_keyerror(self):
         b = NetworkBlock()
-        del b["missing"]
-        captured = capsys.readouterr()
-        assert "Item missing not found" in captured.out
+        with pytest.raises(KeyError, match="missing"):
+            del b["missing"]
 
     def test_iter(self):
         b = NetworkBlock()
