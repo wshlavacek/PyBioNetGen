@@ -8,6 +8,7 @@ from unittest.mock import patch
 
 import pytest
 
+from bionetgen.core.exc import BNGParseError
 from bionetgen.network.blocks import (
     NetworkGroupBlock,
     NetworkParameterBlock,
@@ -63,6 +64,13 @@ end reactions
 begin groups
   1 Xtot 1
 end groups
+"""
+
+NET_MALFORMED_SPECIES = """\
+# NET file
+begin species
+  1 A(b)
+end species
 """
 
 
@@ -211,3 +219,20 @@ class TestNetwork:
 
         with pytest.raises(TypeError, match=expected_type_name):
             adder(object())
+
+    def test_malformed_species_line_raises_parse_error(self, tmp_path):
+        net_file = tmp_path / "bad_species.net"
+        net_file.write_text(NET_MALFORMED_SPECIES)
+        from bionetgen.network import networkparser as networkparser_module
+        from bionetgen.network.network import Network
+
+        with patch.object(networkparser_module, "logger") as mock_logger:
+            with pytest.raises(BNGParseError, match="Malformed species line"):
+                Network(str(net_file))
+
+        mock_logger.error.assert_called_once()
+        error_args, error_kwargs = mock_logger.error.call_args
+        assert "Malformed species line" in error_args[0]
+        assert "expected '<id> <species> <count>'" in error_args[0]
+        assert "bad_species.net:3" in error_args[0]
+        assert "BNGNetworkParser.parse_network()" in error_kwargs["loc"]

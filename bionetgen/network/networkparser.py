@@ -1,6 +1,8 @@
 import os
 import re
 
+from bionetgen.core.exc import BNGParseError
+from bionetgen.core.utils.logging import BNGLogger
 from bionetgen.main import BioNetGen
 from bionetgen.network.blocks import (
     NetworkGroupBlock,
@@ -14,6 +16,7 @@ app = BioNetGen()
 app.setup()
 conf = app.config["bionetgen"]  # type: ignore[index]
 def_bng_path = conf["bngpath"]
+logger = BNGLogger()
 
 
 class BNGNetworkParser:
@@ -90,16 +93,25 @@ class BNGNetworkParser:
             spec_block = NetworkSpeciesBlock()
             for iline in range(sblock[0] + 1, sblock[1]):
                 m = re.match("([^#]*)(#.*)?", self.network_lines[iline])
-                if m.group(1).strip() != "":  # type: ignore[union-attr]
-                    splt = m.group(1).split()  # type: ignore[union-attr]
+                if m is None:
+                    continue
+                line_text = m.group(1) or ""
+                if line_text.strip() != "":
+                    splt = line_text.split()
+                    if len(splt) < 3:
+                        msg = (
+                            f"Malformed species line at {self.path}:{iline + 1}; "
+                            "expected '<id> <species> <count>', "
+                            f"got {line_text.strip()!r}"
+                        )
+                        logger.error(
+                            msg,
+                            loc=f"{__file__} : BNGNetworkParser.parse_network()",
+                        )
+                        raise BNGParseError(self.path, message=f": {msg}")
                     sid = splt[0]
                     name = splt[1]
-                    try:
-                        count = splt[2]
-                    except:
-                        import IPython
-
-                        IPython.embed()
+                    count = splt[2]
                     spec_block.add_species(sid, name, count)
             network_obj.add_block(spec_block)
         # add reactions
@@ -135,4 +147,3 @@ class BNGNetworkParser:
                     comment = m.group(2)  # type: ignore[union-attr]
                     grps_block.add_group(rid, name, members, comment=comment)
             network_obj.add_block(grps_block)
-        # import IPython,sys;IPython.embed();sys.exit()
