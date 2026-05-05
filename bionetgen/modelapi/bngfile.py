@@ -3,8 +3,10 @@ import os
 import re
 import shutil
 import tempfile
+from typing import NoReturn
 
 from bionetgen.core.exc import BNGFileError
+from bionetgen.core.utils.logging import BNGLogger
 from bionetgen.core.utils.utils import ActionList, find_BNG_path, run_command
 from bionetgen.main import BioNetGen
 
@@ -47,6 +49,7 @@ class BNGFile:
         self, path, BNGPATH=def_bng_path, generate_network=False, suppress=True
     ) -> None:
         self.path = path
+        self.logger = BNGLogger()
         self.generate_network = generate_network
         self.suppress = suppress
         AList = ActionList()
@@ -55,6 +58,11 @@ class BNGFile:
         self.BNGPATH = BNGPATH
         self.bngexec = bngexec
         self.parsed_actions: list = []
+
+    def _raise_file_error(self, message, path=None, loc=None) -> NoReturn:
+        error_path = self.path if path is None else path
+        self.logger.error(message, loc=loc)
+        raise BNGFileError(error_path, message=message)
 
     def generate_xml(self, xml_file, model_file=None) -> bool:
         """
@@ -81,7 +89,12 @@ class BNGFile:
                 ["perl", self.bngexec, "--xml", stripped_bngl], suppress=self.suppress
             )
             if rc != 0:
-                return False
+                msg = f"BNG-XML generation failed for {model_file}"
+                self._raise_file_error(
+                    msg,
+                    path=model_file,
+                    loc=f"{__file__} : BNGFile.generate_xml()",
+                )
 
             # we should now have the XML file
             path, model_name = os.path.split(stripped_bngl)
@@ -98,7 +111,12 @@ class BNGFile:
                     ]
                     xml_path = preferred[0] if preferred else candidates[0]
             if not os.path.exists(xml_path):
-                return False
+                msg = f"BNG-XML generation did not produce an XML file for {model_file}"
+                self._raise_file_error(
+                    msg,
+                    path=model_file,
+                    loc=f"{__file__} : BNGFile.generate_xml()",
+                )
             with open(xml_path, "r", encoding="UTF-8") as f:
                 content = f.read()
                 xml_file.write(content)
@@ -217,14 +235,26 @@ class BNGFile:
             # run with --xml
             # TODO: Make output supression an option somewhere
             if xml_type == "bngxml":
+                if self.bngexec is None:
+                    msg = "BNG-XML generation requires BNG2.pl (BioNetGen) to be installed."
+                    self._raise_file_error(
+                        msg, loc=f"{__file__} : BNGFile.write_xml()"
+                    )
                 rc, _ = run_command(
                     ["perl", self.bngexec, "--xml", "temp.bngl"], suppress=self.suppress
                 )
                 if rc != 0:
-                    print("XML generation failed")
-                    return False
+                    msg = f"BNG-XML generation failed for {self.path}"
+                    self._raise_file_error(
+                        msg, loc=f"{__file__} : BNGFile.write_xml()"
+                    )
                 else:
                     # we should now have the XML file
+                    if not os.path.exists("temp.xml"):
+                        msg = "BNG-XML generation did not produce temp.xml"
+                        self._raise_file_error(
+                            msg, loc=f"{__file__} : BNGFile.write_xml()"
+                        )
                     with open("temp.xml", "r", encoding="UTF-8") as f:
                         content = f.read()
                         open_file.write(content)
@@ -233,25 +263,32 @@ class BNGFile:
                     return True
             elif xml_type == "sbml":
                 if self.bngexec is None:
-                    print(
-                        "SBML generation requires BNG2.pl (BioNetGen) to be installed."
+                    msg = "SBML generation requires BNG2.pl (BioNetGen) to be installed."
+                    self._raise_file_error(
+                        msg, loc=f"{__file__} : BNGFile.write_xml()"
                     )
-                    return False
                 command = ["perl", self.bngexec, "temp.bngl"]
                 rc, _ = run_command(command, suppress=self.suppress)
                 if rc != 0:
-                    print("SBML generation failed")
-                    return False
+                    msg = f"SBML generation failed for {self.path}"
+                    self._raise_file_error(
+                        msg, loc=f"{__file__} : BNGFile.write_xml()"
+                    )
                 else:
                     # we should now have the SBML file
+                    if not os.path.exists("temp_sbml.xml"):
+                        msg = "SBML generation did not produce temp_sbml.xml"
+                        self._raise_file_error(
+                            msg, loc=f"{__file__} : BNGFile.write_xml()"
+                        )
                     with open("temp_sbml.xml", "r", encoding="UTF-8") as f:
                         content = f.read()
                         open_file.write(content)
                     open_file.seek(0)
                     return True
             else:
-                print(f"XML type {xml_type} not recognized")
-                return False
+                msg = f"XML type {xml_type} not recognized"
+                self._raise_file_error(msg, loc=f"{__file__} : BNGFile.write_xml()")
         finally:
             os.chdir(cur_dir)
             try:

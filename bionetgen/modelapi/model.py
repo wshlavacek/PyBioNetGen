@@ -2,7 +2,7 @@ import copy
 import shutil
 import tempfile
 
-from bionetgen.core.exc import BNGModelError, BNGSimError
+from bionetgen.core.exc import BNGFileError, BNGModelError, BNGSimError
 from bionetgen.core.utils.logging import BNGLogger
 from bionetgen.main import BioNetGen
 
@@ -359,20 +359,24 @@ class bngmodel:
             self.add_action("writeSBML", {})
             # temporary folder instead to make it work
             # with windows
+            tmp_folder = None
             try:
                 tmp_folder = tempfile.mkdtemp()
                 sbml_name = f"{self.model_name}_sbml.xml"
                 # write the sbml
                 with open(sbml_name, "w+") as f:
-                    if not (
+                    try:
                         self.bngparser.bngfile.write_xml(
                             f, xml_type="sbml", bngl_str=str(self)
                         )
-                    ):
+                    except BNGFileError as exc:
                         raise BNGModelError(
                             self.model_path,
-                            message="SBML couldn't be generated for libRR simulator",
-                        )
+                            message=(
+                                "SBML couldn't be generated for libRR simulator: "
+                                f"{exc.message}"
+                            ),
+                        ) from exc
                 self.actions.clear_actions()
                 # get the simulator
                 import bionetgen as bng
@@ -382,8 +386,9 @@ class bngmodel:
                 selections = ["time"] + list(self.observables)
                 self.simulator.simulator.timeCourseSelections = selections
             finally:
-                shutil.rmtree(tmp_folder)
-            self.actions = curr_actions
+                if tmp_folder is not None:
+                    shutil.rmtree(tmp_folder)
+                self.actions = curr_actions
         elif sim_type == "cpy":
             # get the simulator
             import bionetgen as bng

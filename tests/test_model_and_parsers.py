@@ -297,7 +297,8 @@ class TestBNGFile:
 
     @patch("bionetgen.modelapi.bngfile.find_BNG_path", return_value=("/fake", "/fake/BNG2.pl"))
     @patch("bionetgen.modelapi.bngfile.run_command", return_value=(1, "error"))
-    def test_generate_xml_failure_returns_false(self, mock_run, mock_find):
+    def test_generate_xml_failure_raises_bngfile_error(self, mock_run, mock_find):
+        from bionetgen.core.exc import BNGFileError
         from bionetgen.modelapi.bngfile import BNGFile
 
         bf = BNGFile("/some/model.bngl")
@@ -308,8 +309,29 @@ class TestBNGFile:
                 f.write(SAMPLE_BNGL)
 
             xml_file = StringIO()
-            result = bf.generate_xml(xml_file, model_file=src)
-            assert result is False
+            with patch.object(bf.logger, "error") as mock_error:
+                with pytest.raises(BNGFileError, match="BNG-XML generation failed"):
+                    bf.generate_xml(xml_file, model_file=src)
+            mock_error.assert_called_once()
+
+    @patch("bionetgen.modelapi.bngfile.find_BNG_path", return_value=("/fake", "/fake/BNG2.pl"))
+    @patch("bionetgen.modelapi.bngfile.run_command", return_value=(0, ""))
+    def test_generate_xml_missing_output_raises_bngfile_error(self, mock_run, mock_find):
+        from bionetgen.core.exc import BNGFileError
+        from bionetgen.modelapi.bngfile import BNGFile
+
+        bf = BNGFile("/some/model.bngl")
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            src = os.path.join(tmpdir, "model.bngl")
+            with open(src, "w") as f:
+                f.write(SAMPLE_BNGL)
+
+            xml_file = StringIO()
+            with pytest.raises(
+                BNGFileError, match="did not produce an XML file"
+            ):
+                bf.generate_xml(xml_file, model_file=src)
 
     @patch("bionetgen.modelapi.bngfile.find_BNG_path", return_value=("/fake", None))
     def test_generate_xml_no_bngexec_uses_minimal(self, mock_find):
@@ -347,9 +369,20 @@ class TestBNGFile:
                 return StringIO(MINIMAL_XML)
             return original_open(path, *args, **kwargs)
 
+        original_exists = os.path.exists
+
+        def patched_exists(path):
+            if path == "temp.xml":
+                return True
+            return original_exists(path)
+
         out = StringIO()
-        with patch("builtins.open", side_effect=patched_open):
-            result = bf.write_xml(out, xml_type="bngxml", bngl_str="begin model\nend model\n")
+        with patch("builtins.open", side_effect=patched_open), patch(
+            "bionetgen.modelapi.bngfile.os.path.exists", side_effect=patched_exists
+        ):
+            result = bf.write_xml(
+                out, xml_type="bngxml", bngl_str="begin model\nend model\n"
+            )
 
         assert result is True
         out.seek(0)
@@ -358,21 +391,38 @@ class TestBNGFile:
     @patch("bionetgen.modelapi.bngfile.find_BNG_path", return_value=("/fake", "/fake/BNG2.pl"))
     @patch("bionetgen.modelapi.bngfile.run_command", return_value=(1, "error"))
     def test_write_xml_bngxml_failure(self, mock_run, mock_find):
+        from bionetgen.core.exc import BNGFileError
         from bionetgen.modelapi.bngfile import BNGFile
 
         bf = BNGFile("/some/model.bngl")
         out = StringIO()
-        result = bf.write_xml(out, xml_type="bngxml", bngl_str="begin model\nend model\n")
-        assert result is False
+        with patch.object(bf.logger, "error") as mock_error:
+            with pytest.raises(BNGFileError, match="BNG-XML generation failed"):
+                bf.write_xml(out, xml_type="bngxml", bngl_str="begin model\nend model\n")
+        mock_error.assert_called_once()
+
+    @patch("bionetgen.modelapi.bngfile.find_BNG_path", return_value=("/fake", None))
+    def test_write_xml_bngxml_no_bngexec(self, mock_find):
+        from bionetgen.core.exc import BNGFileError
+        from bionetgen.modelapi.bngfile import BNGFile
+
+        bf = BNGFile("/some/model.bngl")
+        out = StringIO()
+        with pytest.raises(
+            BNGFileError,
+            match="BNG-XML generation requires BNG2.pl",
+        ):
+            bf.write_xml(out, xml_type="bngxml", bngl_str="begin model\nend model\n")
 
     @patch("bionetgen.modelapi.bngfile.find_BNG_path", return_value=("/fake", "/fake/BNG2.pl"))
     def test_write_xml_unknown_type(self, mock_find):
+        from bionetgen.core.exc import BNGFileError
         from bionetgen.modelapi.bngfile import BNGFile
 
         bf = BNGFile("/some/model.bngl")
         out = StringIO()
-        result = bf.write_xml(out, xml_type="unknown", bngl_str="begin model\nend model\n")
-        assert result is False
+        with pytest.raises(BNGFileError, match="XML type unknown not recognized"):
+            bf.write_xml(out, xml_type="unknown", bngl_str="begin model\nend model\n")
 
     @patch("bionetgen.modelapi.bngfile.find_BNG_path", return_value=("/fake", "/fake/BNG2.pl"))
     def test_write_xml_no_bngl_str_raises(self, mock_find):
@@ -385,12 +435,16 @@ class TestBNGFile:
 
     @patch("bionetgen.modelapi.bngfile.find_BNG_path", return_value=("/fake", None))
     def test_write_xml_sbml_no_bngexec(self, mock_find):
+        from bionetgen.core.exc import BNGFileError
         from bionetgen.modelapi.bngfile import BNGFile
 
         bf = BNGFile("/some/model.bngl")
         out = StringIO()
-        result = bf.write_xml(out, xml_type="sbml", bngl_str="begin model\nend model\n")
-        assert result is False
+        with pytest.raises(
+            BNGFileError,
+            match="SBML generation requires BNG2.pl",
+        ):
+            bf.write_xml(out, xml_type="sbml", bngl_str="begin model\nend model\n")
 
     @patch("bionetgen.modelapi.bngfile.find_BNG_path", return_value=("/fake", "/fake/BNG2.pl"))
     def test_strip_actions_with_generate_network(self, mock_find):
@@ -544,12 +598,15 @@ class TestBNGParser:
     @patch("bionetgen.modelapi.bngparser.BNGFile")
     def test_parse_model_xml_generation_fails(self, MockBNGFile):
         from bionetgen.core.exc import BNGModelError
+        from bionetgen.core.exc import BNGFileError
         from bionetgen.modelapi.bngparser import BNGParser
 
         mock_bf = MagicMock()
         mock_bf.path = "/some/model.bngl"
         mock_bf.parsed_actions = []
-        mock_bf.generate_xml.return_value = False
+        mock_bf.generate_xml.side_effect = BNGFileError(
+            "/some/model.bngl", message="BNG-XML generation failed"
+        )
         MockBNGFile.return_value = mock_bf
 
         parser = BNGParser("/some/model.bngl")
@@ -938,6 +995,25 @@ class TestBngmodel:
 
         with pytest.raises(BNGSimError, match="Simulator type 'unknown' is not supported"):
             model.setup_simulator(sim_type="unknown")
+
+    def test_setup_simulator_write_xml_failure_raises_bngmodel_error(
+        self, tmp_path, monkeypatch
+    ):
+        from bionetgen.core.exc import BNGFileError, BNGModelError
+
+        monkeypatch.chdir(tmp_path)
+        model = _make_model_bypass_init()
+        model.add_action("simulate", {"method": '"ode"'})
+        model.bngparser = MagicMock()
+        model.bngparser.bngfile.write_xml.side_effect = BNGFileError(
+            model.model_path, message="SBML generation failed for /fake/test.bngl"
+        )
+
+        with pytest.raises(BNGModelError, match="SBML couldn't be generated"):
+            model.setup_simulator(sim_type="libRR")
+
+        assert len(model.actions.items) == 1
+        assert model.actions.items[0].type == "simulate"
 
     def test_add_all_block_types(self):
         """Test adding each block type to a model."""
