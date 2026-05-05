@@ -378,7 +378,11 @@ class SpeciesBlock(ModelBlock):
                         self.items[name]["name"] = value
                 else:
                     logger.warning(
-                        f"can't set species {self.items[name]['name']} to {value}",
+                        "Unable to set species {!r} to {!r}; keeping existing species {!r}".format(
+                            self.items[name]["name"],
+                            value,
+                            self.items[name]["name"],
+                        ),
                         loc=f"{__file__} : SpeciesBlock.__setattr__()",
                     )
                 if changed:

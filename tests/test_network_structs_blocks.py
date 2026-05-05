@@ -615,6 +615,46 @@ class TestNetworkSpeciesBlock:
         sb[0] = s
         assert sb[0] is s
 
+    def test_setattr_with_species_object(self):
+        sb = NetworkSpeciesBlock()
+        s = NetworkSpecies(1, "A(b)", count=100)
+        sb.items["A(b)"] = s
+        new_s = NetworkSpecies(2, "A(b)", count=200)
+
+        setattr(sb, "A(b)", new_s)
+
+        assert sb["A(b)"] is new_s
+        assert sb._changes["A(b)"] is new_s
+
+    def test_setattr_with_string_updates_name(self):
+        sb = NetworkSpeciesBlock()
+        s = NetworkSpecies(1, "A(b)", count=100)
+        sb.items["A(b)"] = s
+
+        setattr(sb, "A(b)", "B(a)")
+
+        assert sb["A(b)"]["name"] == "B(a)"
+        assert sb._changes["A(b)"] == "B(a)"
+
+    def test_setattr_invalid_type_logs_warning(self):
+        from bionetgen.network import blocks as blocks_module
+
+        sb = NetworkSpeciesBlock()
+        existing_species = NetworkSpecies(1, "A(b)", count=100)
+        sb.items["A(b)"] = existing_species
+        sb._changes.clear()
+
+        with patch.object(blocks_module, "logger") as mock_logger:
+            setattr(sb, "A(b)", 42)
+
+        mock_logger.warning.assert_called_once()
+        warning_args, warning_kwargs = mock_logger.warning.call_args
+        assert "Unable to set species 'A(b)'" in warning_args[0]
+        assert "keeping existing species" in warning_args[0]
+        assert "NetworkSpeciesBlock.__setattr__()" in warning_kwargs["loc"]
+        assert sb["A(b)"] is existing_species
+        assert len(sb._changes) == 0
+
 
 # ===== NetworkFunctionBlock =====
 

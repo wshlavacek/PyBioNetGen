@@ -455,6 +455,38 @@ class TestSpeciesBlock:
         # Use attribute to update
         setattr(sb, "A()", new_s)
         assert sb.items["A()"] is new_s
+        assert sb._changes["A()"] is new_s
+
+    def test_setattr_with_string_updates_name(self):
+        sb = SpeciesBlock()
+        fp = FakePattern("A()")
+        s = Species(pattern=fp, count=100)
+        sb.items["A()"] = s
+
+        setattr(sb, "A()", "B()")
+
+        assert sb.items["A()"]["name"] == "B()"
+        assert sb._changes["A()"] == "B()"
+
+    def test_setattr_invalid_type_logs_warning(self):
+        from bionetgen.modelapi import blocks as blocks_module
+
+        sb = SpeciesBlock()
+        fp = FakePattern("A()")
+        existing_species = Species(pattern=fp, count=100)
+        sb.items["A()"] = existing_species
+        sb._changes.clear()
+
+        with patch.object(blocks_module, "logger") as mock_logger:
+            setattr(sb, "A()", 42)
+
+        mock_logger.warning.assert_called_once()
+        warning_args, warning_kwargs = mock_logger.warning.call_args
+        assert "Unable to set species 'A()'" in warning_args[0]
+        assert "keeping existing species" in warning_args[0]
+        assert "SpeciesBlock.__setattr__()" in warning_kwargs["loc"]
+        assert sb.items["A()"] is existing_species
+        assert len(sb._changes) == 0
 
 
 # ---- MoleculeTypeBlock tests ----

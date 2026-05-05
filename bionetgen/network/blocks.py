@@ -337,7 +337,11 @@ class NetworkSpeciesBlock(NetworkBlock):
                         self.items[name]["name"] = value
                 else:
                     logger.warning(
-                        f"can't set species {self.items[name]['name']} to {value}",
+                        "Unable to set species {!r} to {!r}; keeping existing species {!r}".format(
+                            self.items[name]["name"],
+                            value,
+                            self.items[name]["name"],
+                        ),
                         loc=f"{__file__} : NetworkSpeciesBlock.__setattr__()",
                     )
                 if changed:
