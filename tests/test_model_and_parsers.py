@@ -858,58 +858,62 @@ class TestBngmodel:
         finally:
             os.unlink(fname)
 
-    def test_add_block_parameters(self):
+    @pytest.mark.parametrize(
+        ("block_cls", "attr_name", "item_name"),
+        [
+            (ParameterBlock, "parameters", "kf"),
+            (RuleBlock, "rules", None),
+        ],
+    )
+    def test_add_block_dispatches_supported_block(self, block_cls, attr_name, item_name):
         model = _make_model_bypass_init()
-        pb = ParameterBlock()
-        mock_param = MagicMock()
-        mock_param.print_line.return_value = "  kf 1.0"
-        pb.items["kf"] = mock_param
+        block = block_cls()
+        if item_name is not None:
+            mock_item = MagicMock()
+            mock_item.print_line.return_value = "  kf 1.0"
+            block.items[item_name] = mock_item
 
-        model.add_block(pb)
-        assert "parameters" in model.active_blocks
-        assert "kf" in model.parameters.items
+        model.add_block(block)
 
-    def test_add_block_reaction_rules(self):
-        """reaction_rules name should map to 'rules' block."""
+        assert getattr(model, attr_name) is block
+        assert attr_name in model.active_blocks
+        if item_name is not None:
+            assert item_name in getattr(model, attr_name).items
+
+    @pytest.mark.parametrize(
+        ("block_name", "attr_name", "block_cls"),
+        [
+            ("observables", "observables", ObservableBlock),
+            ("reaction_rules", "rules", RuleBlock),
+        ],
+    )
+    def test_add_empty_block_dispatches_supported_name(
+        self, block_name, attr_name, block_cls
+    ):
         model = _make_model_bypass_init()
-        rb = RuleBlock()
-        # RuleBlock has name "reaction rules"
-        model.add_block(rb)
-        assert hasattr(model, "rules")
+        delattr(model, attr_name)
 
-    def test_add_empty_block(self):
-        model = _make_model_bypass_init()
-        # Remove observables to test adding empty
-        delattr(model, "observables")
-        model.add_empty_block("observables")
-        assert hasattr(model, "observables")
-        assert len(model.observables) == 0
+        model.add_empty_block(block_name)
 
-    def test_add_empty_block_reaction_rules(self):
-        """Should handle 'reaction_rules' -> 'rules' mapping."""
-        model = _make_model_bypass_init()
-        delattr(model, "rules")
-        model.add_empty_block("reaction_rules")
-        assert hasattr(model, "rules")
+        assert isinstance(getattr(model, attr_name), block_cls)
+        assert len(getattr(model, attr_name)) == 0
 
-    def test_add_block_invalid_name_raises_attribute_error(self):
-        """Characterize current dynamic dispatch failure for unknown block names."""
+    def test_add_block_invalid_name_raises_value_error(self):
         model = _make_model_bypass_init()
 
         class FakeBlock:
             name = "not a block"
 
-        with pytest.raises(AttributeError, match="add_not_a_block_block"):
+        with pytest.raises(ValueError, match="Unsupported block name 'not a block'"):
             model.add_block(FakeBlock())
 
         assert "not_a_block" not in model.active_blocks
         assert not hasattr(model, "not_a_block")
 
-    def test_add_empty_block_invalid_name_raises_attribute_error(self):
-        """Characterize current add_empty_block failure for unknown block names."""
+    def test_add_empty_block_invalid_name_raises_value_error(self):
         model = _make_model_bypass_init()
 
-        with pytest.raises(AttributeError, match="add_not_a_block_block"):
+        with pytest.raises(ValueError, match="Unsupported block name 'not a block'"):
             model.add_empty_block("not a block")
 
         assert "not_a_block" not in model.active_blocks

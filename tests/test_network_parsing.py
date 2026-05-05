@@ -195,24 +195,22 @@ class TestNetwork:
 
         assert isinstance(net.groups, NetworkGroupBlock)
 
-    def test_add_block_invalid_name_raises_attribute_error(self):
-        """Characterize current dynamic dispatch failure for unknown block names."""
+    def test_add_block_invalid_name_raises_value_error(self):
         net = _make_network_bypass_init()
 
         class FakeBlock:
             name = "not a block"
 
-        with pytest.raises(AttributeError, match="add_not_a_block_block"):
+        with pytest.raises(ValueError, match="Unsupported block name 'not a block'"):
             net.add_block(FakeBlock())
 
         assert "not_a_block" not in net.active_blocks
         assert not hasattr(net, "not_a_block")
 
-    def test_add_empty_block_invalid_name_raises_attribute_error(self):
-        """Characterize current add_empty_block failure for unknown block names."""
+    def test_add_empty_block_invalid_name_raises_value_error(self):
         net = _make_network_bypass_init()
 
-        with pytest.raises(AttributeError, match="add_not_a_block_block"):
+        with pytest.raises(ValueError, match="Unsupported block name 'not a block'"):
             net.add_empty_block("not a block")
 
         assert "not_a_block" not in net.active_blocks

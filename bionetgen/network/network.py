@@ -108,16 +108,34 @@ class Network:
         return active_ordered_blocks.__iter__()
 
     def add_block(self, block):
-        bname = block.name.replace(" ", "_")
-        # TODO: fix this exception
-        block_adder = getattr(self, f"add_{bname}_block")
+        block_adder = self._resolve_block_adder(block.name)
         block_adder(block)
 
     def add_empty_block(self, block_name):
-        bname = block_name.replace(" ", "_")
-        # TODO: fix this exception
-        block_adder = getattr(self, f"add_{bname}_block")
+        block_adder = self._resolve_block_adder(block_name)
         block_adder()
+
+    def _resolve_block_adder(self, block_name):
+        """
+        Resolve supported block names to block adders.
+
+        Block names are normalized by replacing spaces with underscores before
+        dispatch so callers can use parser-style or attribute-style names.
+        """
+        normalized_name = block_name.replace(" ", "_")
+        block_adders = {
+            "parameters": self.add_parameters_block,
+            "species": self.add_species_block,
+            "reactions": self.add_reactions_block,
+            "groups": self.add_groups_block,
+        }
+        if normalized_name not in block_adders:
+            supported_names = ", ".join(block_adders)
+            raise ValueError(
+                f"Unsupported block name '{block_name}'. "
+                f"Supported block names: {supported_names}"
+            )
+        return block_adders[normalized_name]
 
     def _set_typed_block(self, block, expected_type, attr_name, active_name):
         if not isinstance(block, expected_type):
