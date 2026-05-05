@@ -6,7 +6,8 @@ import numpy as np
 from distutils import ccompiler
 
 import bionetgen
-from bionetgen.core.exc import BNGCompileError
+from bionetgen.core.exc import BNGCompileError, BNGFormatError, BNGSimError
+from bionetgen.core.utils.logging import BNGLogger
 from bionetgen.main import BioNetGen
 
 from .bngsimulator import BNGSimulator
@@ -16,6 +17,7 @@ app = BioNetGen()
 app.setup()
 conf = app.config["bionetgen"]  # type: ignore[index]
 def_bng_path = conf["bngpath"]
+logger = BNGLogger()
 
 
 class RESULT(ctypes.Structure):
@@ -151,7 +153,10 @@ class CSimulator(BNGSimulator):
     def __init__(self, model_file, generate_network=False):
         # check cvode library paths
         if (conf.get("cvode_include") is None) or (conf.get("cvode_lib") is None):
-            print("CVODE include and library paths are not set, compilation won't work")
+            logger.warning(
+                "CVODE include and library paths are not set, compilation won't work",
+                loc=f"{__file__} : CSimulator.__init__()",
+            )
         # let's load the model first
         if isinstance(model_file, str):
             # load model file
@@ -172,7 +177,12 @@ class CSimulator(BNGSimulator):
                 )
             os.chdir(cd)
         else:
-            print(f"model format not recognized: {model_file}")
+            msg = (
+                "CSimulator model input must be a BNGL path or bngmodel instance, "
+                f"got {type(model_file).__name__}"
+            )
+            logger.error(msg, loc=f"{__file__} : CSimulator.__init__()")
+            raise BNGFormatError(message=msg)
         # set compiler
         self.compiler = ccompiler.new_compiler()
         self.compiler.add_include_dir(conf.get("cvode_include"))
@@ -213,6 +223,33 @@ class CSimulator(BNGSimulator):
         lib_file = f"lib{self.model.model_name}_cvode_py.so"
         self.lib_file = os.path.abspath(lib_file)
 
+    def _get_numeric_parameter_values(self):
+        valid_params = []
+        for pname in self.model.parameters:
+            if pname.startswith("_"):
+                continue
+            val = self.model.parameters[pname]
+            try:
+                valid_params.append(float(val.expr))
+            except (AttributeError, TypeError, ValueError):
+                continue
+        return valid_params
+
+    def _resolve_species_count(self, spc_name):
+        count_value = self.model.species[spc_name].count
+        try:
+            return float(count_value)
+        except (TypeError, ValueError):
+            try:
+                return float(self.model.parameters[count_value].value)
+            except (AttributeError, KeyError, TypeError, ValueError) as exc:
+                msg = (
+                    f"Could not resolve initial species value for '{spc_name}' "
+                    f"from '{count_value}'"
+                )
+                logger.error(msg, loc=f"{__file__} : CSimulator.simulate()")
+                raise BNGSimError(msg) from exc
+
     @property
     def simulator(self):
         """
@@ -227,50 +264,25 @@ class CSimulator(BNGSimulator):
     def simulator(self, lib_file):
         # use CSimWrapper under the hood
         try:
-            valid_params = []
-            for pname in self.model.parameters:
-                if pname.startswith("_"):
-                    continue
-                val = self.model.parameters[pname]
-                try:
-                    ftry = float(val.expr)
-                    valid_params.append(ftry)
-                except:
-                    pass
+            valid_params = self._get_numeric_parameter_values()
             n_param = len(valid_params)
             self._simulator = CSimWrapper(
                 os.path.abspath(lib_file),
                 num_params=n_param,
                 num_spec_init=len(self.model.species),
             )
-        except:
-            raise BNGCompileError(self.model) from None
+        except (AttributeError, KeyError, OSError, TypeError, ValueError) as exc:
+            logger.error(
+                f"Failed to initialize C simulator wrapper: {exc}",
+                loc=f"{__file__} : CSimulator.simulator.setter()",
+            )
+            raise BNGCompileError(self.model) from exc
 
     def simulate(self, t_start=0, t_end=10, n_steps=10):
         # set parameters and initial species values
-        spcs = []
-        for spc_name in self.model.species:
-            try:
-                count = float(self.model.species[spc_name].count)
-                spcs.append(count)
-            except:
-                p_name = self.model.species[spc_name].count
-                count = float(self.model.parameters[p_name].value)
-                spcs.append(count)
+        spcs = [self._resolve_species_count(spc_name) for spc_name in self.model.species]
         self.simulator.set_species_init(spcs)
-        params = []
-        for pname in self.model.parameters:
-            if pname.startswith("_"):
-                continue
-            try:
-                val = self.model.parameters[pname]
-                ftry = float(val.expr)
-                params.append(ftry)
-            except:
-                pass
-
-        # params = list(filter(lambda x: not x.startswith("_"), self.model.parameters))
-        # params = [float(self.model.parameters[p].value) for p in params]
+        params = self._get_numeric_parameter_values()
         self.simulator.set_parameters(params)
         # now that we have CSimWrapper setup correctly, run the simulation
         timepoints, obs_all, spcs_all = self.simulator.simulate(t_start, t_end, n_steps)
