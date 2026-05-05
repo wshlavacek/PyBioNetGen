@@ -594,29 +594,34 @@ class BNGGdiff:
             # we only have "graphml" as key
             return g[gkey]
         # we are out of group nodes
-        if "graph" not in g[gkey].keys():
+        graph = g[gkey].get("graph")
+        if not isinstance(graph, dict) or "node" not in graph:
             return None
         # everything up to here is good,
         # loop over to find the node
-        nodes = g[gkey]["graph"]["node"]
+        nodes = graph["node"]
+        node = None
         while len(copy_keylist) > 0:
             key = copy_keylist.pop(0)
-            found = False
             if isinstance(nodes, list):
                 for cnode in nodes:
-                    if cnode["@id"] == key:
-                        found = True
+                    if cnode.get("@id") == key:
                         node = cnode
-                        try:
-                            nodes = node["graph"]["node"]
-                        except:
-                            break
+                        break
+                else:
+                    node = None
+            elif isinstance(nodes, dict) and nodes.get("@id") == key:
+                node = nodes
             else:
-                if cnode["@id"] == key:
-                    found = True
-                    node = cnode
-            if not found:
+                node = None
+            if node is None:
                 return None
+            if len(copy_keylist) == 0:
+                return node
+            graph = node.get("graph")
+            if not isinstance(graph, dict) or "node" not in graph:
+                return None
+            nodes = graph["node"]
         return node
 
     def _color_node(self, node, color) -> bool:

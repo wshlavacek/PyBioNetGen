@@ -762,3 +762,15 @@ class TestGetNodeFromKeylist:
         g = copy.deepcopy(gdiff_obj.gdict_1)
         result = gdiff_obj._get_node_from_keylist(g, ["graphml", "nonexistent"])
         assert result is None
+
+    def test_keylist_finds_nested_leaf_node(self, gdiff_obj):
+        g = copy.deepcopy(gdiff_obj.gdict_1)
+        result = gdiff_obj._get_node_from_keylist(g, ["graphml", "n0", "n0::n0"])
+        assert result["@id"] == "n0::n0"
+        assert gdiff_obj._get_node_name(result) == "a1"
+
+    def test_keylist_finds_leaf_in_single_dict_child_graph(self, gdiff_obj):
+        g = copy.deepcopy(gdiff_obj.gdict_1)
+        result = gdiff_obj._get_node_from_keylist(g, ["graphml", "n1", "n1::n0"])
+        assert result["@id"] == "n1::n0"
+        assert gdiff_obj._get_node_name(result) == "b1"
