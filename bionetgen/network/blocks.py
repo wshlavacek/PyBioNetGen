@@ -2,6 +2,7 @@ try:
     from collections import OrderedDict
 except ImportError:
     from collections import OrderedDict
+from bionetgen.core.utils.logging import BNGLogger
 from .structs import (
     NetworkCompartment,
     NetworkEnergyPattern,
@@ -18,6 +19,8 @@ try:
     from collections import OrderedDict
 except ImportError:
     from collections import OrderedDict
+
+logger = BNGLogger()
 
 
 ###### BLOCK OBJECTS ######
@@ -90,10 +93,11 @@ class NetworkBlock:
             if name in self.items.keys():
                 try:
                     new_value = float(value)
+                except (TypeError, ValueError):
+                    self.items[name] = value
+                else:
                     changed = True
                     self.items[name] = new_value
-                except:
-                    self.items[name] = value
                 if changed:
                     self._changes[name] = new_value
                     self.__dict__[name] = new_value
@@ -132,9 +136,13 @@ class NetworkBlock:
         if isinstance(name, str):
             try:
                 setattr(self, name, value)
-            except:
-                # print("can't set {} to {}".format(name, value))
-                pass
+            except Exception as exc:
+                logger.warning(
+                    f"Unable to bind attribute {name!r} for the {self.name} block;"
+                    " the item remains available via block.items. "
+                    f"Original error: {exc}",
+                    loc=f"{__file__} : NetworkBlock.add_item()",
+                )
         # we just added an item to a block, let's assume we need
         # to recompile if we have a compiled simulator
         self._recompile = True
@@ -177,16 +185,20 @@ class NetworkParameterBlock(NetworkBlock):
                     try:
                         # try a new value, we need to make sure
                         # to stop printing out the expression
-                        value = float(value)
-                        if self.items[name]["value"] != value:
+                        new_value = float(value)
+                        if self.items[name]["value"] != new_value:
                             changed = True
-                            self.items[name]["value"] = value
+                            self.items[name]["value"] = new_value
                             self.items[name].write_expr = False
-                    except:
-                        print(
-                            "can't set parameter {} to {}".format(
-                                self.items[name]["name"], value
-                            )
+                            value = new_value
+                    except (TypeError, ValueError):
+                        logger.warning(
+                            "Unable to set parameter {!r} to {!r}; keeping existing value {!r}".format(
+                                self.items[name]["name"],
+                                value,
+                                self.items[name]["value"],
+                            ),
+                            loc=f"{__file__} : NetworkParameterBlock.__setattr__()",
                         )
                 if changed:
                     self._changes[name] = value

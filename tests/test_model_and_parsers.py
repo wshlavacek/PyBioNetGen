@@ -919,6 +919,62 @@ class TestBngmodel:
         assert "not_a_block" not in model.active_blocks
         assert not hasattr(model, "not_a_block")
 
+    def test_model_block_setattr_propagates_unexpected_float_error(self):
+        from bionetgen.modelapi.blocks import ModelBlock
+
+        class ExplodingFloat:
+            def __float__(self):
+                raise RuntimeError("boom")
+
+        block = ModelBlock()
+        block.items["k1"] = 1.0
+
+        with pytest.raises(RuntimeError, match="boom"):
+            block.k1 = ExplodingFloat()
+
+        assert block.items["k1"] == 1.0
+        assert "k1" not in block._changes
+
+    def test_model_block_add_item_logs_unexpected_setattr_failure(self):
+        from bionetgen.modelapi import blocks as blocks_module
+        from bionetgen.modelapi.blocks import ModelBlock
+
+        class BrokenSetattrBlock(ModelBlock):
+            def __setattr__(self, name, value) -> None:
+                if name == "broken" and hasattr(self, "items") and name in self.items:
+                    raise RuntimeError("boom")
+                super().__setattr__(name, value)
+
+        block = BrokenSetattrBlock()
+
+        with patch.object(blocks_module, "logger") as mock_logger:
+            block.add_item(("broken", "value"))
+
+        mock_logger.warning.assert_called_once()
+        warning_args, warning_kwargs = mock_logger.warning.call_args
+        assert "Unable to bind attribute 'broken'" in warning_args[0]
+        assert "Original error: boom" in warning_args[0]
+        assert "ModelBlock.add_item()" in warning_kwargs["loc"]
+        assert block.items["broken"] == "value"
+
+    def test_parameter_block_invalid_numeric_assignment_logs_warning(self):
+        from bionetgen.modelapi import blocks as blocks_module
+
+        block = ParameterBlock()
+        block.add_parameter("k1", 0.5)
+        block._changes.clear()
+
+        with patch.object(blocks_module, "logger") as mock_logger:
+            block.k1 = object()
+
+        mock_logger.warning.assert_called_once()
+        warning_args, warning_kwargs = mock_logger.warning.call_args
+        assert "Unable to set parameter 'k1'" in warning_args[0]
+        assert "keeping existing value" in warning_args[0]
+        assert "ParameterBlock.__setattr__()" in warning_kwargs["loc"]
+        assert block.items["k1"]["value"] == 0.5
+        assert len(block._changes) == 0
+
     def test_str_actions_block(self):
         """Actions should appear after end model."""
         model = _make_model_bypass_init()

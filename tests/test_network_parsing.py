@@ -216,6 +216,62 @@ class TestNetwork:
         assert "not_a_block" not in net.active_blocks
         assert not hasattr(net, "not_a_block")
 
+    def test_network_block_setattr_propagates_unexpected_float_error(self):
+        from bionetgen.network.blocks import NetworkBlock
+
+        class ExplodingFloat:
+            def __float__(self):
+                raise RuntimeError("boom")
+
+        block = NetworkBlock()
+        block.items["k1"] = 1.0
+
+        with pytest.raises(RuntimeError, match="boom"):
+            block.k1 = ExplodingFloat()
+
+        assert block.items["k1"] == 1.0
+        assert "k1" not in block._changes
+
+    def test_network_block_add_item_logs_unexpected_setattr_failure(self):
+        from bionetgen.network import blocks as blocks_module
+        from bionetgen.network.blocks import NetworkBlock
+
+        class BrokenSetattrBlock(NetworkBlock):
+            def __setattr__(self, name, value) -> None:
+                if name == "broken" and hasattr(self, "items") and name in self.items:
+                    raise RuntimeError("boom")
+                super().__setattr__(name, value)
+
+        block = BrokenSetattrBlock()
+
+        with patch.object(blocks_module, "logger") as mock_logger:
+            block.add_item(("broken", "value"))
+
+        mock_logger.warning.assert_called_once()
+        warning_args, warning_kwargs = mock_logger.warning.call_args
+        assert "Unable to bind attribute 'broken'" in warning_args[0]
+        assert "Original error: boom" in warning_args[0]
+        assert "NetworkBlock.add_item()" in warning_kwargs["loc"]
+        assert block.items["broken"] == "value"
+
+    def test_network_parameter_block_invalid_numeric_assignment_logs_warning(self):
+        from bionetgen.network import blocks as blocks_module
+
+        block = NetworkParameterBlock()
+        block.add_parameter(1, "k1", "0.5")
+        block._changes.clear()
+
+        with patch.object(blocks_module, "logger") as mock_logger:
+            block.k1 = object()
+
+        mock_logger.warning.assert_called_once()
+        warning_args, warning_kwargs = mock_logger.warning.call_args
+        assert "Unable to set parameter 'k1'" in warning_args[0]
+        assert "keeping existing value" in warning_args[0]
+        assert "NetworkParameterBlock.__setattr__()" in warning_kwargs["loc"]
+        assert block.items["k1"]["value"] == "0.5"
+        assert len(block._changes) == 0
+
     def test_empty_blocks_added(self, tmp_path):
         net_file = tmp_path / "test.net"
         # Network with only parameters — need header line so line 0 isn't begin
