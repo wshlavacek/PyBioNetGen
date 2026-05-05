@@ -22,13 +22,11 @@ Expected state at the start of the next session:
 
 - branch: `main`
 - working tree: clean
-- `HEAD`: `45c6cd9`
-- latest commit message: `Add blocks cleanup session handoff`
-- latest code-cleanup commit message: `Unify modelapi rule error handling`
+- one or more doc-only handoff commits may appear above the latest code-cleanup commit; that is expected
+- latest code-cleanup commit in recent history: `928de43` `Unify modelapi rule error handling`
 
-Recent cleanup commits:
+Recent relevant code-cleanup commits:
 
-- `45c6cd9` `Add blocks cleanup session handoff`
 - `928de43` `Unify modelapi rule error handling`
 - `1a091df` `Unify structs line label error handling`
 - `7471165` `Unify gdiff keylist traversal error handling`
