@@ -1,6 +1,8 @@
 """Tests for bionetgen.network.structs and bionetgen.network.blocks."""
 
 
+from unittest.mock import patch
+
 import pytest
 
 from bionetgen.network.blocks import (
@@ -454,6 +456,73 @@ class TestNetworkCompartmentBlock:
         cb = NetworkCompartmentBlock()
         cb.add_compartment("membrane", 2, "0.5", outside="cytoplasm")
         assert cb["membrane"].outside == "cytoplasm"
+
+    def test_setattr_with_compartment_object(self):
+        cb = NetworkCompartmentBlock()
+        compartment = NetworkCompartment("cytoplasm", 3, "1.0")
+        cb.add_item(("cytoplasm", compartment))
+        cb._changes.clear()
+
+        new_compartment = NetworkCompartment("cytoplasm", 3, "2.0")
+        cb.cytoplasm = new_compartment
+
+        assert cb["cytoplasm"] is new_compartment
+        assert cb._changes["cytoplasm"] is new_compartment
+
+    def test_setattr_with_float_updates_size(self):
+        cb = NetworkCompartmentBlock()
+        cb.add_compartment("cytoplasm", 3, "1.0")
+        cb._changes.clear()
+
+        cb.cytoplasm = 5.0
+
+        assert cb["cytoplasm"]["size"] == 5.0
+        assert cb._changes["cytoplasm"] == 5.0
+
+    def test_setattr_with_string_updates_name(self):
+        cb = NetworkCompartmentBlock()
+        cb.add_compartment("cytoplasm", 3, "1.0")
+
+        cb.cytoplasm = "cell"
+
+        assert cb["cytoplasm"]["name"] == "cell"
+
+    def test_setattr_invalid_numeric_assignment_logs_warning(self):
+        from bionetgen.network import blocks as blocks_module
+
+        cb = NetworkCompartmentBlock()
+        cb.add_compartment("cytoplasm", 3, "1.0")
+        cb._changes.clear()
+
+        with patch.object(blocks_module, "logger") as mock_logger:
+            cb.cytoplasm = object()
+
+        mock_logger.warning.assert_called_once()
+        warning_args, warning_kwargs = mock_logger.warning.call_args
+        assert "Unable to set compartment 'cytoplasm'" in warning_args[0]
+        assert "keeping existing size" in warning_args[0]
+        assert "NetworkCompartmentBlock.__setattr__()" in warning_kwargs["loc"]
+        assert cb["cytoplasm"]["size"] == "1.0"
+        assert len(cb._changes) == 0
+
+    def test_setattr_propagates_unexpected_float_error(self):
+        from bionetgen.network import blocks as blocks_module
+
+        class ExplodingFloat:
+            def __float__(self):
+                raise RuntimeError("boom")
+
+        cb = NetworkCompartmentBlock()
+        cb.add_compartment("cytoplasm", 3, "1.0")
+        cb._changes.clear()
+
+        with patch.object(blocks_module, "logger") as mock_logger:
+            with pytest.raises(RuntimeError, match="boom"):
+                cb.cytoplasm = ExplodingFloat()
+
+        mock_logger.warning.assert_not_called()
+        assert cb["cytoplasm"]["size"] == "1.0"
+        assert len(cb._changes) == 0
 
 
 # ===== NetworkGroupBlock =====

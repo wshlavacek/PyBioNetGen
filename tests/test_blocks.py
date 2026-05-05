@@ -1,6 +1,7 @@
 """Tests for bionetgen/modelapi/blocks.py block classes."""
 
 from collections import OrderedDict
+from unittest.mock import patch
 
 import pytest
 
@@ -321,6 +322,43 @@ class TestCompartmentBlock:
         cb.add_item(("EC", c))
         cb.EC = "newname"
         assert cb.items["EC"]["name"] == "newname"
+
+    def test_setattr_invalid_numeric_assignment_logs_warning(self):
+        from bionetgen.modelapi import blocks as blocks_module
+
+        cb = CompartmentBlock()
+        cb.add_compartment("EC", 3, 1.0)
+        cb._changes.clear()
+
+        with patch.object(blocks_module, "logger") as mock_logger:
+            cb.EC = object()
+
+        mock_logger.warning.assert_called_once()
+        warning_args, warning_kwargs = mock_logger.warning.call_args
+        assert "Unable to set compartment 'EC'" in warning_args[0]
+        assert "keeping existing size" in warning_args[0]
+        assert "CompartmentBlock.__setattr__()" in warning_kwargs["loc"]
+        assert cb.items["EC"]["size"] == 1.0
+        assert len(cb._changes) == 0
+
+    def test_setattr_propagates_unexpected_float_error(self):
+        from bionetgen.modelapi import blocks as blocks_module
+
+        class ExplodingFloat:
+            def __float__(self):
+                raise RuntimeError("boom")
+
+        cb = CompartmentBlock()
+        cb.add_compartment("EC", 3, 1.0)
+        cb._changes.clear()
+
+        with patch.object(blocks_module, "logger") as mock_logger:
+            with pytest.raises(RuntimeError, match="boom"):
+                cb.EC = ExplodingFloat()
+
+        mock_logger.warning.assert_not_called()
+        assert cb.items["EC"]["size"] == 1.0
+        assert len(cb._changes) == 0
 
 
 # ---- ObservableBlock tests ----

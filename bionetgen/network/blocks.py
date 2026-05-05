@@ -241,15 +241,19 @@ class NetworkCompartmentBlock(NetworkBlock):
                         self.items[name]["name"] = value
                 else:
                     try:
-                        value = float(value)
-                        if self.items[name]["size"] != value:
+                        new_value = float(value)
+                        if self.items[name]["size"] != new_value:
                             changed = True
-                            self.items[name]["size"] = value
-                    except:
-                        print(
-                            "can't set compartment {} to {}".format(
-                                self.items[name]["name"], value
-                            )
+                            self.items[name]["size"] = new_value
+                            value = new_value
+                    except (TypeError, ValueError):
+                        logger.warning(
+                            "Unable to set compartment {!r} to {!r}; keeping existing size {!r}".format(
+                                self.items[name]["name"],
+                                value,
+                                self.items[name]["size"],
+                            ),
+                            loc=f"{__file__} : NetworkCompartmentBlock.__setattr__()",
                         )
                 if changed:
                     self._changes[name] = value
