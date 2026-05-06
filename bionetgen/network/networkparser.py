@@ -3,7 +3,6 @@ import re
 
 from bionetgen.core.exc import BNGParseError
 from bionetgen.core.utils.logging import BNGLogger
-from bionetgen.main import BioNetGen
 from bionetgen.network.blocks import (
     NetworkGroupBlock,
     NetworkParameterBlock,
@@ -11,11 +10,6 @@ from bionetgen.network.blocks import (
     NetworkSpeciesBlock,
 )
 
-# This allows access to the CLIs config setup
-app = BioNetGen()
-app.setup()
-conf = app.config["bionetgen"]  # type: ignore[index]
-def_bng_path = conf["bngpath"]
 logger = BNGLogger()
 
 

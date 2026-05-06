@@ -1,7 +1,6 @@
 """Tests for bionetgen/network/network.py and networkparser.py.
 
-These modules have module-level `app = BioNetGen()` calls, so they get
-imported indirectly. We test by creating fixture .net files.
+We test by creating fixture .net files.
 """
 
 from unittest.mock import patch

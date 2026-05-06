@@ -1,4 +1,3 @@
-from bionetgen.main import BioNetGen
 from bionetgen.core.utils.logging import BNGLogger
 from bionetgen.network.blocks import (
     NetworkGroupBlock,
@@ -8,11 +7,6 @@ from bionetgen.network.blocks import (
 )
 from bionetgen.network.networkparser import BNGNetworkParser
 
-# This allows access to the CLIs config setup
-app = BioNetGen()
-app.setup()
-conf = app.config["bionetgen"]  # type: ignore[index]
-def_bng_path = conf["bngpath"]
 logger = BNGLogger()
 
 
@@ -44,7 +38,7 @@ class Network:
         add an empty block of the given type to the network
     """
 
-    def __init__(self, bngl_model, BNGPATH=def_bng_path):
+    def __init__(self, bngl_model, BNGPATH=None):
         self.active_blocks = []
         # We want blocks to be printed in the same order every time
         self.block_order = [
