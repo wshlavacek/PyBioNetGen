@@ -113,7 +113,7 @@ class TestFindBNGPath:
         assert result == ("/env/bng/dir", os.path.join("/env/bng/dir", "BNG2.pl"))
 
     @patch("bionetgen.core.utils.utils.test_bngexec", return_value=True)
-    @patch("bionetgen.core.utils.utils.spawn.find_executable", return_value="/usr/bin/BNG2.pl")
+    @patch("bionetgen.core.utils.utils.shutil.which", return_value="/usr/bin/BNG2.pl")
     @patch.dict(os.environ, {}, clear=True)
     def test_bng_on_path(self, mock_find, mock_exec):
         result = find_BNG_path()
@@ -121,7 +121,7 @@ class TestFindBNGPath:
         mock_find.assert_called_once_with("BNG2.pl")
 
     @patch("bionetgen.core.utils.utils.test_bngexec", return_value=False)
-    @patch("bionetgen.core.utils.utils.spawn.find_executable", return_value=None)
+    @patch("bionetgen.core.utils.utils.shutil.which", return_value=None)
     @patch.dict(os.environ, {}, clear=True)
     def test_nothing_found(self, mock_find, mock_exec):
         result = find_BNG_path()
@@ -135,19 +135,19 @@ class TestFindBNGPath:
 
 class TestTestPerl:
     @patch("bionetgen.core.utils.utils.run_command", return_value=(0, None))
-    @patch("bionetgen.core.utils.utils.spawn.find_executable", return_value="/usr/bin/perl")
+    @patch("bionetgen.core.utils.utils.shutil.which", return_value="/usr/bin/perl")
     def test_success(self, mock_find, mock_run):
         # Should not raise
         check_perl()
         mock_run.assert_called_once_with(["/usr/bin/perl", "-v"])
 
-    @patch("bionetgen.core.utils.utils.spawn.find_executable", return_value=None)
+    @patch("bionetgen.core.utils.utils.shutil.which", return_value=None)
     def test_perl_not_found_raises(self, mock_find):
         with pytest.raises(BNGPerlError):
             check_perl()
 
     @patch("bionetgen.core.utils.utils.run_command", return_value=(1, None))
-    @patch("bionetgen.core.utils.utils.spawn.find_executable", return_value="/usr/bin/perl")
+    @patch("bionetgen.core.utils.utils.shutil.which", return_value="/usr/bin/perl")
     def test_perl_fails_raises(self, mock_find, mock_run):
         with pytest.raises(BNGPerlError):
             check_perl()
