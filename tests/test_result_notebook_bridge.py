@@ -308,6 +308,36 @@ class TestEvalNumeric:
         result = _eval_numeric("k * 2", extra_ns={"k": 5.0})
         assert result == pytest.approx(10.0)
 
+    def test_power_operator(self):
+        assert _eval_numeric("2 ** 10") == pytest.approx(1024.0)
+
+    def test_unary_minus(self):
+        assert _eval_numeric("-5 + 3") == pytest.approx(-2.0)
+
+    def test_modulo(self):
+        assert _eval_numeric("17 % 5") == pytest.approx(2.0)
+
+    def test_floor_div(self):
+        assert _eval_numeric("17 // 5") == pytest.approx(3.0)
+
+    @pytest.mark.parametrize(
+        "expr",
+        [
+            "__import__('os').system('echo pwned')",
+            "(0).__class__.__base__",
+            "[1, 2, 3]",
+            "(lambda: 42)()",
+            "1 if True else 2",
+            "[x for x in range(10)]",
+            "'a' + 'b'",
+            "exp(k=1)",
+            "1 << 2",
+        ],
+    )
+    def test_rejects_disallowed_syntax(self, expr):
+        with pytest.raises(ValueError, match="Cannot evaluate"):
+            _eval_numeric(expr)
+
 
 class TestParseNetSpeciesInitializers:
     def test_parses_species_block(self, tmp_path):
