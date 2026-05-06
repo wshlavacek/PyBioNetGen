@@ -195,6 +195,7 @@ class TestRunCommand:
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
             cwd=None,
+            check=False,
         )
 
     @patch("bionetgen.core.utils.utils.subprocess.run")
@@ -210,6 +211,7 @@ class TestRunCommand:
             timeout=30,
             capture_output=True,
             cwd=None,
+            check=False,
         )
 
     @patch("bionetgen.core.utils.utils.subprocess.Popen")
@@ -267,6 +269,7 @@ class TestRunCommand:
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
             cwd="/tmp",
+            check=False,
         )
 
 
