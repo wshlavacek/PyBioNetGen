@@ -1,9 +1,6 @@
+from collections import OrderedDict
 from typing import Any
 
-try:
-    from collections import OrderedDict
-except ImportError:
-    from collections import OrderedDict
 from bionetgen.core.utils.logging import BNGLogger
 from bionetgen.core.utils.utils import ActionList
 
@@ -19,12 +16,6 @@ from .structs import (
     Rule,
     Species,
 )
-
-# this import fails on some python versions
-try:
-    from collections import OrderedDict
-except ImportError:
-    from collections import OrderedDict
 
 logger = BNGLogger()
 

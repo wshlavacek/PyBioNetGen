@@ -1,8 +1,7 @@
-try:
-    from collections import OrderedDict
-except ImportError:
-    from collections import OrderedDict
+from collections import OrderedDict
+
 from bionetgen.core.utils.logging import BNGLogger
+
 from .structs import (
     NetworkCompartment,
     NetworkEnergyPattern,
@@ -13,12 +12,6 @@ from .structs import (
     NetworkReaction,
     NetworkSpecies,
 )
-
-# this import fails on some python versions
-try:
-    from collections import OrderedDict
-except ImportError:
-    from collections import OrderedDict
 
 logger = BNGLogger()
 
