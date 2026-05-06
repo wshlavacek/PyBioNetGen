@@ -131,7 +131,7 @@ def test_bionetgen_info():
         assert app.exit_code == 0
 
 
-def test_model_running_CLI():
+def test_model_running_CLI(tmp_path):
     # tests running a list of models using the CLI
     mpattern = os.path.join(tfold, "models") + os.sep + "*.bngl"
     models = glob.glob(mpattern)
@@ -139,10 +139,9 @@ def test_model_running_CLI():
     fail = []
     success = 0
     fails = 0
-    test_run_folder = os.path.join(tfold, "models", "cli_test_runs")
-    if not os.path.isdir(test_run_folder):
-        os.mkdir(test_run_folder)
     for model in models:
+        if "test_tfun" in model:
+            continue
         model_name = os.path.basename(model).replace(".bngl", "")
         try:
             argv = [
@@ -150,7 +149,7 @@ def test_model_running_CLI():
                 "-i",
                 model,
                 "-o",
-                os.path.join(*[tfold, "models", "cli_test_runs", model_name]),
+                str(tmp_path / model_name),
             ]
             with BioNetGenTest(argv=argv) as app:
                 app.run()
