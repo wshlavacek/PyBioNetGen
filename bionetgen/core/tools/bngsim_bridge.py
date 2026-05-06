@@ -843,20 +843,21 @@ def _sync_species_concentrations(bngsim_model, initializers):
     for pname in bngsim_model.param_names:
         try:
             param_values[pname] = bngsim_model.get_param(pname)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning("conc-sync: get_param(%s) failed: %s", pname, exc)
 
     ns = _safe_math_namespace(param_values)
 
     for species_name, expr_text in initializers:
         try:
             value = float(_safe_eval_expr(expr_text, ns))
-        except Exception:
+        except ValueError as exc:
+            logger.warning("conc-sync: could not evaluate %r for %s: %s", expr_text, species_name, exc)
             continue
         try:
             bngsim_model.set_concentration(species_name, value)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning("conc-sync: set_concentration(%s, %s) failed: %s", species_name, value, exc)
 
     bngsim_model.save_concentrations()
 
