@@ -1,3 +1,5 @@
+import functools
+
 import cement
 from cement.core.exc import CaughtSignal
 
@@ -729,6 +731,24 @@ class BioNetGenTest(cement.TestApp, BioNetGen):
 
     class Meta:
         label = "bionetgen"
+
+
+@functools.cache
+def get_app():
+    """Return a configured BioNetGen cement app, initialized once per process."""
+    app = BioNetGen()
+    app.setup()
+    return app
+
+
+def get_conf():
+    """Return the bionetgen config section from the shared app."""
+    return get_app().config["bionetgen"]
+
+
+def get_default_bng_path():
+    """Return the default BNG2.pl path from config."""
+    return get_conf()["bngpath"]
 
 
 def main():
