@@ -147,11 +147,9 @@ class BNGCLI:
         )
         if self.log_file is not None:
             self.logger.debug("Setting up log file", loc=f"{__file__} : BNGCLI.run()")
-            # test if we were given a path
-            # TODO: This is a simple hack, might need to adjust it
-            # trying to check if given file is an absolute/relative
-            # path and if so, use that one. Otherwise, divine the
-            # current path.
+            # If log_file already points to an existing file or directory, use
+            # that path directly. Otherwise, resolve it relative to the output
+            # directory for this run.
             if os.path.exists(self.log_file):
                 # file or folder exists, check if folder
                 if os.path.isdir(self.log_file):

@@ -73,7 +73,6 @@ class BNGBase(cement.Controller):
         description = "A simple CLI to bionetgen <https://bionetgen.org>. Note that you need Perl installed."
         help = "bionetgen"
         arguments = [
-            # TODO: Auto-load in BioNetGen version here
             (["-v", "--version"], {"action": "version", "version": VERSION_BANNER}),
             # (['-s','--sedml'],dict(type=str,
             #                        default=CONF.config['bionetgen']['bngpath'],
@@ -508,8 +507,7 @@ class BNGBase(cement.Controller):
         ],
     )
     def graphdiff(self):
-        # TODO: add documentation here
-        """ """
+        """Compare two BioNetGen-generated GraphML files."""
         test_perl(app=self.app)
         graphDiff(self.app)
 
@@ -759,12 +757,6 @@ def main():
         except BNGError as e:
             app.log.error(str(e), f"{__file__} : main()")
             app.exit_code = 1
-            # TODO: figure out if this is what we want,
-            # rn it prints stuff twice
-            # if app.debug is True:
-            #     import traceback
-
-            #     traceback.print_exc()
 
         except CaughtSignal as e:
             # Default Cement signals are SIGINT and SIGTERM, exit 0 (non-error)

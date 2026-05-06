@@ -172,9 +172,8 @@ class BNGFile:
         with open(model_path, "r", encoding="UTF-8") as mf:
             # read and strip actions
             mstr = mf.read()
-            # TODO: Clean this up _a lot_
-            # this removes any new line escapes (\ \n) to continue
-            # to another line, so we can just remove the action lines
+            # Collapse line continuations before stripping action lines so the
+            # action parser sees the same logical command boundaries as BNG.
             mstr = re.sub(r"\\\n", "", mstr)
             mlines = mstr.split("\n")
             stripped_lines = list(filter(self._not_action, mlines))

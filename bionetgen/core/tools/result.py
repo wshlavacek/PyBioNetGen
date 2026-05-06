@@ -154,10 +154,9 @@ class BNGResult:
         """
         This function takes a path to a gdat/cdat file as a string and loads that
         file into a numpy structured array, including the correct header info.
-        TODO: Add link
 
         Optional argument allows you to set the data type for every column. See
-        numpy dtype/data type strings for what's allowed. TODO: Add link
+        numpy dtype/data type strings for supported values.
         """
         # First step is to read the header,
         # we gotta open the file and pull that line in
