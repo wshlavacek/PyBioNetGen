@@ -1093,7 +1093,7 @@ class TestCSimulator:
         ), mock.patch.object(csim_module, "logger") as mock_logger, mock.patch.object(
             csim_module.bionetgen, "bngmodel", return_value=fake_model
         ), mock.patch.object(
-            csim_module.ccompiler, "new_compiler", return_value=fake_compiler
+            csim_module, "_new_ccompiler", return_value=fake_compiler
         ), mock.patch.object(
             csim_module.CSimulator, "compile_shared_lib", fake_compile
         ), mock.patch.object(

@@ -154,6 +154,7 @@ module = [
     "networkx",
     "bngsim.*",
     "pyyed",
+    "setuptools._distutils.*",
 ]
 ignore_missing_imports = true
 
@@ -161,8 +162,3 @@ ignore_missing_imports = true
 [[tool.mypy.overrides]]
 module = "bionetgen.atomizer.*"
 ignore_errors = true
-
-# distutils removed in 3.12
-[[tool.mypy.overrides]]
-module = "distutils.*"
-ignore_missing_imports = true

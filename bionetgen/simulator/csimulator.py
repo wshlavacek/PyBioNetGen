@@ -3,7 +3,6 @@ import os
 import tempfile
 
 import numpy as np
-from distutils import ccompiler
 
 import bionetgen
 from bionetgen.core.exc import BNGCompileError, BNGFormatError, BNGSimError
@@ -11,6 +10,26 @@ from bionetgen.core.utils.logging import BNGLogger
 from bionetgen.main import BioNetGen
 
 from .bngsimulator import BNGSimulator
+
+
+def _new_ccompiler():
+    """Return a distutils ccompiler instance, sourced from setuptools.
+
+    distutils was removed from the stdlib in Python 3.12; setuptools vendors
+    the same API as ``setuptools._distutils``. Imported lazily so that
+    ``import bionetgen`` does not require setuptools at runtime — only
+    instantiating ``CSimulator`` does.
+    """
+    try:
+        from setuptools._distutils import ccompiler
+    except ImportError as exc:
+        raise BNGCompileError(
+            None,
+            "CSimulator requires the distutils ccompiler API, which was "
+            "removed from the stdlib in Python 3.12. Install setuptools "
+            "(pip install setuptools) to provide it.",
+        ) from exc
+    return ccompiler.new_compiler()
 
 # This allows access to the CLIs config setup
 app = BioNetGen()
@@ -184,7 +203,7 @@ class CSimulator(BNGSimulator):
             logger.error(msg, loc=f"{__file__} : CSimulator.__init__()")
             raise BNGFormatError(message=msg)
         # set compiler
-        self.compiler = ccompiler.new_compiler()
+        self.compiler = _new_ccompiler()
         self.compiler.add_include_dir(conf.get("cvode_include"))
         self.compiler.add_library_dir(conf.get("cvode_lib"))
         # compile shared library
