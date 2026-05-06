@@ -734,7 +734,7 @@ class BioNetGenTest(cement.TestApp, BioNetGen):
 
 
 @functools.cache
-def get_app():
+def get_default_app():
     """Return a configured BioNetGen cement app, initialized once per process."""
     app = BioNetGen()
     app.setup()
@@ -743,7 +743,7 @@ def get_app():
 
 def get_conf():
     """Return the bionetgen config section from the shared app."""
-    return get_app().config["bionetgen"]
+    return get_default_app().config["bionetgen"]
 
 
 def get_default_bng_path():
