@@ -128,8 +128,11 @@ class BNGFile:
             os.chdir(cur_dir)
             try:
                 shutil.rmtree(temp_folder)
-            except Exception:
-                pass
+            except Exception as exc:
+                self.logger.debug(
+                    f"could not remove temp folder {temp_folder}: {exc}",
+                    loc=f"{__file__} : BNGFile.generate_xml()",
+                )
 
     def _generate_minimal_xml(self, xml_file, stripped_bngl) -> bool:
         """Generate a minimal BNG-XML representation when BNG2.pl is unavailable.
@@ -293,5 +296,8 @@ class BNGFile:
             os.chdir(cur_dir)
             try:
                 shutil.rmtree(temp_folder)
-            except Exception:
-                pass
+            except Exception as exc:
+                self.logger.debug(
+                    f"could not remove temp folder {temp_folder}: {exc}",
+                    loc=f"{__file__} : BNGFile.write_xml()",
+                )
