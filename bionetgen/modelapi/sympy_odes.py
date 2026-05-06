@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import glob
+import logging
 import os
 import re
 import tempfile
@@ -9,6 +10,8 @@ from typing import cast
 
 import sympy as sp
 from sympy.parsing.sympy_parser import parse_expr, standard_transformations
+
+logger = logging.getLogger("bionetgen.sympy_odes")
 
 
 @dataclass
@@ -491,5 +494,5 @@ def _safe_rmtree(path: str) -> None:
         import shutil
 
         shutil.rmtree(path)
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("could not remove %s: %s", path, exc)
