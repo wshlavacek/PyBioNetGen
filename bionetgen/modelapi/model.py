@@ -4,7 +4,6 @@ import tempfile
 
 from bionetgen.core.exc import BNGFileError, BNGModelError, BNGSimError
 from bionetgen.core.utils.logging import BNGLogger
-from bionetgen.main import BioNetGen
 
 from .blocks import (
     ActionBlock,
@@ -20,11 +19,6 @@ from .blocks import (
 )
 from .bngparser import BNGParser
 
-# This allows access to the CLIs config setup
-app = BioNetGen()
-app.setup()
-conf = app.config["bionetgen"]  # type: ignore[index]
-def_bng_path = conf["bngpath"]
 logger = BNGLogger()
 
 
@@ -77,7 +71,7 @@ class bngmodel:
     """
 
     def __init__(
-        self, bngl_model, BNGPATH=def_bng_path, generate_network=False, suppress=True
+        self, bngl_model, BNGPATH=None, generate_network=False, suppress=True
     ):
         self.active_blocks = []
         # We want blocks to be printed in the same order every time

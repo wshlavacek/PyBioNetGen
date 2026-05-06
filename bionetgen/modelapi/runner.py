@@ -2,12 +2,7 @@ import os
 from tempfile import TemporaryDirectory
 
 from bionetgen.core.tools import BNGCLI
-from bionetgen.main import BioNetGen
-
-# This allows access to the CLIs config setup
-app = BioNetGen()
-app.setup()
-conf = app.config["bionetgen"]  # type: ignore[index]
+from bionetgen.main import get_conf
 
 
 def run(
@@ -106,6 +101,7 @@ def run(
         )
 
     cur_dir = os.getcwd()
+    conf = get_conf()
 
     def _run_with_output_dir(output_dir):
         try:

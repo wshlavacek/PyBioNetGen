@@ -8,13 +8,7 @@ from typing import NoReturn
 from bionetgen.core.exc import BNGFileError
 from bionetgen.core.utils.logging import BNGLogger
 from bionetgen.core.utils.utils import ActionList, find_BNG_path, run_command
-from bionetgen.main import BioNetGen
-
-# This allows access to the CLIs config setup
-app = BioNetGen()
-app.setup()
-conf = app.config["bionetgen"]  # type: ignore[index]
-def_bng_path = conf["bngpath"]
+from bionetgen.main import get_default_bng_path
 
 
 class BNGFile:
@@ -46,8 +40,10 @@ class BNGFile:
     """
 
     def __init__(
-        self, path, BNGPATH=def_bng_path, generate_network=False, suppress=True
+        self, path, BNGPATH=None, generate_network=False, suppress=True
     ) -> None:
+        if BNGPATH is None:
+            BNGPATH = get_default_bng_path()
         self.path = path
         self.logger = BNGLogger()
         self.generate_network = generate_network
