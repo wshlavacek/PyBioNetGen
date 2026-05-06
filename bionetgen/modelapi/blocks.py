@@ -377,10 +377,9 @@ class SpeciesBlock(ModelBlock):
                         changed = True
                         self.items[name]["name"] = value
                 else:
-                    print(
-                        "can't set species {} to {}".format(
-                            self.items[name]["name"], value
-                        )
+                    logger.warning(
+                        f"can't set species {self.items[name]['name']} to {value}",
+                        loc=f"{__file__} : SpeciesBlock.__setattr__()",
                     )
                 if changed:
                     self._changes[name] = value
@@ -429,10 +428,9 @@ class MoleculeTypeBlock(ModelBlock):
                         changed = True
                         self.items[name]["name"] = value
                 else:
-                    print(
-                        "can't set molecule type {} to {}".format(
-                            self.items[name]["name"], value
-                        )
+                    logger.warning(
+                        f"can't set molecule type {self.items[name]['name']} to {value}",
+                        loc=f"{__file__} : MoleculeTypeBlock.__setattr__()",
                     )
                 if changed:
                     self._changes[name] = value
@@ -474,10 +472,9 @@ class FunctionBlock(ModelBlock):
                         changed = True
                         self.items[name]["expr"] = value
                 else:
-                    print(
-                        "can't set function {} to {}".format(
-                            self.items[name]["name"], value
-                        )
+                    logger.warning(
+                        f"can't set function {self.items[name]['name']} to {value}",
+                        loc=f"{__file__} : FunctionBlock.__setattr__()",
                     )
                 if changed:
                     self._changes[name] = value
@@ -524,10 +521,9 @@ class RuleBlock(ModelBlock):
                         changed = True
                         self.items[name]["name"] = value
                 else:
-                    print(
-                        "can't set rule {} to {}".format(
-                            self.items[name]["name"], value
-                        )
+                    logger.warning(
+                        f"can't set rule {self.items[name]['name']} to {value}",
+                        loc=f"{__file__} : RuleBlock.__setattr__()",
                     )
                 if changed:
                     self._changes[name] = value
@@ -674,10 +670,9 @@ class EnergyPatternBlock(ModelBlock):
                         changed = True
                         self.items[name]["name"] = value
                 else:
-                    print(
-                        "can't set energy pattern {} to {}".format(
-                            self.items[name]["name"], value
-                        )
+                    logger.warning(
+                        f"can't set energy pattern {self.items[name]['name']} to {value}",
+                        loc=f"{__file__} : EnergyPatternBlock.__setattr__()",
                     )
                 if changed:
                     self._changes[name] = value
@@ -719,10 +714,9 @@ class PopulationMapBlock(ModelBlock):
                         changed = True
                         self.items[name]["name"] = value
                 else:
-                    print(
-                        "can't set population map {} to {}".format(
-                            self.items[name]["name"], value
-                        )
+                    logger.warning(
+                        f"can't set population map {self.items[name]['name']} to {value}",
+                        loc=f"{__file__} : PopulationMapBlock.__setattr__()",
                     )
                 if changed:
                     self._changes[name] = value

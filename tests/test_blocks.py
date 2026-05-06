@@ -487,13 +487,16 @@ class TestMoleculeTypeBlock:
         mtb.A = "B"
         assert mtb.items["A"]["name"] == "B"
 
-    def test_setattr_invalid_type_prints(self, capsys):
+    def test_setattr_invalid_type_logs_warning(self):
+        from bionetgen.modelapi import blocks as blocks_module
+
         mtb = MoleculeTypeBlock()
         mt = MoleculeType("A", [])
         mtb.add_item(("A", mt))
-        mtb.A = 42
-        captured = capsys.readouterr()
-        assert "can't set molecule type" in captured.out
+        with patch.object(blocks_module, "logger") as mock_logger:
+            mtb.A = 42
+        mock_logger.warning.assert_called_once()
+        assert "can't set molecule type" in mock_logger.warning.call_args[0][0]
 
 
 # ---- FunctionBlock tests ----
@@ -526,13 +529,16 @@ class TestFunctionBlock:
         fb.f1 = "k2*B"
         assert fb.items["f1"]["expr"] == "k2*B"
 
-    def test_setattr_invalid_type_prints(self, capsys):
+    def test_setattr_invalid_type_logs_warning(self):
+        from bionetgen.modelapi import blocks as blocks_module
+
         fb = FunctionBlock()
         f = Function("f1", "k1*A")
         fb.add_item(("f1", f))
-        fb.f1 = 42
-        captured = capsys.readouterr()
-        assert "can't set function" in captured.out
+        with patch.object(blocks_module, "logger") as mock_logger:
+            fb.f1 = 42
+        mock_logger.warning.assert_called_once()
+        assert "can't set function" in mock_logger.warning.call_args[0][0]
 
 
 # ---- RuleBlock tests ----
@@ -747,14 +753,17 @@ class TestEnergyPatternBlock:
         epb.ep0 = "ep1"
         assert epb.items["ep0"]["name"] == "ep1"
 
-    def test_setattr_invalid_type_prints(self, capsys):
+    def test_setattr_invalid_type_logs_warning(self):
+        from bionetgen.modelapi import blocks as blocks_module
+
         epb = EnergyPatternBlock()
         fp = FakePattern("A(b!1).B(a!1)")
         ep = EnergyPattern("ep0", fp, "Eab")
         epb.add_item(("ep0", ep))
-        epb.ep0 = 42
-        captured = capsys.readouterr()
-        assert "can't set energy pattern" in captured.out
+        with patch.object(blocks_module, "logger") as mock_logger:
+            epb.ep0 = 42
+        mock_logger.warning.assert_called_once()
+        assert "can't set energy pattern" in mock_logger.warning.call_args[0][0]
 
 
 # ---- PopulationMapBlock tests ----
@@ -793,12 +802,15 @@ class TestPopulationMapBlock:
         pmb.pm0 = "pm1"
         assert pmb.items["pm0"]["name"] == "pm1"
 
-    def test_setattr_invalid_type_prints(self, capsys):
+    def test_setattr_invalid_type_logs_warning(self):
+        from bionetgen.modelapi import blocks as blocks_module
+
         pmb = PopulationMapBlock()
         fp1 = FakePattern("A(b~0)")
         fp2 = FakePattern("Apop")
         pm = PopulationMap("pm0", fp1, fp2, "lump_rate")
         pmb.add_item(("pm0", pm))
-        pmb.pm0 = 42
-        captured = capsys.readouterr()
-        assert "can't set population map" in captured.out
+        with patch.object(blocks_module, "logger") as mock_logger:
+            pmb.pm0 = 42
+        mock_logger.warning.assert_called_once()
+        assert "can't set population map" in mock_logger.warning.call_args[0][0]

@@ -1,7 +1,10 @@
 from bionetgen.core.exc import BNGParseError
+from bionetgen.core.utils.logging import BNGLogger
 from bionetgen.core.utils.utils import ActionList
 from bionetgen.modelapi.pattern import Molecule, Pattern
 from bionetgen.modelapi.rulemod import RuleMod
+
+logger = BNGLogger()
 
 
 class ModelObj:
@@ -336,8 +339,9 @@ class Action(ModelObj):
                     )
                 # TODO: If arg_value is the correct type
             if arg_name in seen_args:
-                print(
-                    f"Warning: argument {arg_name} already given, using latter value {arg_value}"
+                logger.warning(
+                    f"argument {arg_name} already given, using latter value {arg_value}",
+                    loc=f"{__file__} : Action.parse_args()",
                 )
             else:
                 seen_args.append(arg_name)

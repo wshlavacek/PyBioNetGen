@@ -336,10 +336,9 @@ class NetworkSpeciesBlock(NetworkBlock):
                         changed = True
                         self.items[name]["name"] = value
                 else:
-                    print(
-                        "can't set species {} to {}".format(
-                            self.items[name]["name"], value
-                        )
+                    logger.warning(
+                        f"can't set species {self.items[name]['name']} to {value}",
+                        loc=f"{__file__} : NetworkSpeciesBlock.__setattr__()",
                     )
                 if changed:
                     self._changes[name] = value
@@ -388,10 +387,9 @@ class NetworkFunctionBlock(NetworkBlock):
                         changed = True
                         self.items[name]["expr"] = value
                 else:
-                    print(
-                        "can't set function {} to {}".format(
-                            self.items[name]["name"], value
-                        )
+                    logger.warning(
+                        f"can't set function {self.items[name]['name']} to {value}",
+                        loc=f"{__file__} : NetworkFunctionBlock.__setattr__()",
                     )
                 if changed:
                     self._changes[name] = value
@@ -438,10 +436,9 @@ class NetworkReactionBlock(NetworkBlock):
                         changed = True
                         self.items[name]["name"] = value
                 else:
-                    print(
-                        "can't set rule {} to {}".format(
-                            self.items[name]["name"], value
-                        )
+                    logger.warning(
+                        f"can't set rule {self.items[name]['name']} to {value}",
+                        loc=f"{__file__} : NetworkReactionBlock.__setattr__()",
                     )
                 if changed:
                     self._changes[name] = value
@@ -483,10 +480,9 @@ class NetworkEnergyPatternBlock(NetworkBlock):
                         changed = True
                         self.items[name]["name"] = value
                 else:
-                    print(
-                        "can't set energy pattern {} to {}".format(
-                            self.items[name]["name"], value
-                        )
+                    logger.warning(
+                        f"can't set energy pattern {self.items[name]['name']} to {value}",
+                        loc=f"{__file__} : NetworkEnergyPatternBlock.__setattr__()",
                     )
                 if changed:
                     self._changes[name] = value
@@ -528,10 +524,9 @@ class NetworkPopulationMapBlock(NetworkBlock):
                         changed = True
                         self.items[name]["name"] = value
                 else:
-                    print(
-                        "can't set population map {} to {}".format(
-                            self.items[name]["name"], value
-                        )
+                    logger.warning(
+                        f"can't set population map {self.items[name]['name']} to {value}",
+                        loc=f"{__file__} : NetworkPopulationMapBlock.__setattr__()",
                     )
                 if changed:
                     self._changes[name] = value
