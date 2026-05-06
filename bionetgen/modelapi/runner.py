@@ -138,11 +138,9 @@ def run(
                 )
                 cli.run()
                 result = cli.result
-            os.chdir(cur_dir)
             return result
-        except Exception:
+        finally:
             os.chdir(cur_dir)
-            raise
 
     if out is None:
         with TemporaryDirectory() as out:
