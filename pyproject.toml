@@ -7,7 +7,7 @@ name = "bionetgen"
 dynamic = ["version"]
 description = "A simple CLI and library for the BioNetGen modeling language"
 readme = {file = "README.md", content-type = "text/markdown"}
-requires-python = ">=3.8"
+requires-python = ">=3.10"
 license = "MIT"
 authors = [
     {name = "Ali Sinan Saglam", email = "bionetgen.main@gmail.com"},
