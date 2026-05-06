@@ -19,29 +19,29 @@ logger = BNGLogger()
 ###### CORE OBJECT AND PARSING FRONT-END ######
 class Network:
     """
-    Main model object and entry point for model API. The goal of this
-    object is to generate and read the BNGXML of a given BNGL model
-    and give the user a pythonic interface to the resulting model object.
+    Entry point for the .net (reaction network) API. Parses a BNG-generated
+    .net file and exposes its parameters, species, reactions, and groups
+    blocks as a pythonic object. Use ``bngmodel`` for full BNGL models;
+    ``Network`` is for pre-generated reaction networks.
 
-    Usage: bngmodel(bng_model)
-           bngmodel(bng_model, BNGPATH)
+    Usage: Network(net_file)
+           Network(net_file, BNGPATH)
 
     Attributes
     ----------
     active_blocks : list[str]
-        a list of the blocks that have been parsed in the model
+        names of blocks that were parsed from the .net file
     bngnetworkparser : BNGNetworkParser
-        BNGParser object that's responsible for .bngl file reading and model setup
+        parser responsible for reading the .net file and populating blocks
     network_name : str
-        name of the model, generally set from the given BNGL file
+        name of the network, generally derived from the .net filename
 
     Methods
     -------
     write_model(model_name)
-        write the model in BNGL format to the path given
-    setup_simulator(sim_type)
-        sets up a simulator in bngmodel.simulator where the only current supported
-        type of simulator is libRR for libRoadRunner simulator.
+        write the network in .net format to the path given
+    add_empty_block(block_type)
+        add an empty block of the given type to the network
     """
 
     def __init__(self, bngl_model, BNGPATH=def_bng_path):
