@@ -6,8 +6,10 @@ This module handles availability detection, input format detection,
 and routing simulation requests to BNGsim when available.
 """
 
+import ast
 import concurrent.futures
 import logging
+import operator
 import os
 
 from bionetgen.core.exc import BNGFormatError, BNGSimError
@@ -713,6 +715,64 @@ def _safe_math_namespace(extra=None):
     return ns
 
 
+_BIN_OPS = {
+    ast.Add: operator.add,
+    ast.Sub: operator.sub,
+    ast.Mult: operator.mul,
+    ast.Div: operator.truediv,
+    ast.FloorDiv: operator.floordiv,
+    ast.Mod: operator.mod,
+    ast.Pow: operator.pow,
+}
+_UNARY_OPS = {
+    ast.UAdd: operator.pos,
+    ast.USub: operator.neg,
+}
+
+
+def _safe_eval_expr(expr_str, ns):
+    """Evaluate ``expr_str`` against ``ns`` using a whitelisted AST walker.
+
+    Supports arithmetic (``+ - * / // % **``), unary ``+``/``-``, name
+    lookup, and calls to whitelisted callables already present in ``ns``.
+    Rejects every other syntax form (attribute access, subscripts,
+    comprehensions, lambdas, comparisons, string/bool/None constants,
+    keyword arguments, etc.) by raising ``ValueError``.
+    """
+    msg = f"Cannot evaluate numeric expression: {expr_str!r}"
+
+    try:
+        tree = ast.parse(expr_str, mode="eval")
+    except SyntaxError:
+        raise ValueError(msg) from None
+
+    def walk(node):
+        if isinstance(node, ast.Expression):
+            return walk(node.body)
+        if isinstance(node, ast.Constant):
+            if isinstance(node.value, bool) or not isinstance(node.value, (int, float)):
+                raise ValueError(msg)
+            return node.value
+        if isinstance(node, ast.Name):
+            if node.id not in ns:
+                raise ValueError(msg)
+            return ns[node.id]
+        if isinstance(node, ast.UnaryOp) and type(node.op) in _UNARY_OPS:
+            return _UNARY_OPS[type(node.op)](walk(node.operand))
+        if isinstance(node, ast.BinOp) and type(node.op) in _BIN_OPS:
+            return _BIN_OPS[type(node.op)](walk(node.left), walk(node.right))
+        if isinstance(node, ast.Call):
+            if node.keywords or not isinstance(node.func, ast.Name):
+                raise ValueError(msg)
+            func = walk(node.func)
+            if not callable(func):
+                raise ValueError(msg)
+            return func(*(walk(arg) for arg in node.args))
+        raise ValueError(msg)
+
+    return walk(tree)
+
+
 def _eval_numeric(expr_str, extra_ns=None):
     """Safely evaluate a numeric expression string.
 
@@ -724,9 +784,9 @@ def _eval_numeric(expr_str, extra_ns=None):
         return float(expr_str)
     except (ValueError, TypeError):
         pass
+    ns = _safe_math_namespace(extra_ns)
     try:
-        ns = _safe_math_namespace(extra_ns)
-        return float(eval(expr_str, ns))
+        return float(_safe_eval_expr(expr_str, ns))
     except Exception:
         raise ValueError(f"Cannot evaluate numeric expression: {expr_str!r}") from None
 
@@ -790,7 +850,7 @@ def _sync_species_concentrations(bngsim_model, initializers):
 
     for species_name, expr_text in initializers:
         try:
-            value = float(eval(expr_text, ns))
+            value = float(_safe_eval_expr(expr_text, ns))
         except Exception:
             continue
         try:
