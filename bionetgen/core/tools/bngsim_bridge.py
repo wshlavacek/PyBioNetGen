@@ -487,8 +487,8 @@ def run_nfsim(
                 for pname, pval in param_overrides.items():
                     try:
                         nfsim.set_param(pname, float(pval))
-                    except Exception:
-                        pass  # param may not exist in NFsim model
+                    except Exception as exc:
+                        logger.debug("NFsim: set_param(%s, %s) skipped: %s", pname, pval, exc)
 
             nfsim.initialize(seed)
             _apply_nfsim_concentration_changes(
@@ -1154,8 +1154,8 @@ def _run_protocol(
     for pname in bngsim_model.param_names:
         try:
             saved_params[pname] = bngsim_model.get_param(pname)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("protocol: initial get_param(%s) failed: %s", pname, exc)
 
     # Simple regex parsers for protocol action lines
     _sim_re = re.compile(
@@ -1284,8 +1284,8 @@ def _run_protocol(
             for pname in bngsim_model.param_names:
                 try:
                     saved_params[pname] = bngsim_model.get_param(pname)
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("protocol: saveParameters get_param(%s) failed: %s", pname, exc)
             continue
 
         # ── resetParameters ──
@@ -1293,8 +1293,8 @@ def _run_protocol(
             for pname, pval in saved_params.items():
                 try:
                     bngsim_model.set_param(pname, pval)
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.warning("protocol: resetParameters set_param(%s, %s) failed: %s", pname, pval, exc)
             # Invalidate simulator — params changed
             sim = bngsim.Simulator(bngsim_model, method=current_method, **codegen_kw)
             continue
@@ -1337,8 +1337,8 @@ def _run_nfsim_scan(
                 for pname, pval in param_overrides.items():
                     try:
                         nfsim.set_param(pname, float(pval))
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        logger.debug("NFsim scan: set_param(%s, %s) skipped: %s", pname, pval, exc)
             if param_name:
                 try:
                     nfsim.set_param(param_name, float(value))
@@ -1805,8 +1805,8 @@ def _execute_bngsim_actions(
         for pname in bngsim_model.param_names:
             try:
                 saved_params[pname] = bngsim_model.get_param(pname)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("actions: initial get_param(%s) failed: %s", pname, exc)
 
     for action in actions_items:
         atype = action.type
@@ -2040,8 +2040,8 @@ def _execute_bngsim_actions(
                 for pname in bngsim_model.param_names:
                     try:
                         saved_params[pname] = bngsim_model.get_param(pname)
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        logger.debug("saveParameters: get_param(%s) failed: %s", pname, exc)
             saved_nf_param_overrides = dict(nf_param_overrides)
             continue
 
@@ -2051,8 +2051,8 @@ def _execute_bngsim_actions(
                 for pname, pval in saved_params.items():
                     try:
                         bngsim_model.set_param(pname, pval)
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        logger.warning("resetParameters: set_param(%s, %s) failed: %s", pname, pval, exc)
             nf_param_overrides = dict(saved_nf_param_overrides)
             # Invalidate simulator cache — params changed
             current_sim = None
