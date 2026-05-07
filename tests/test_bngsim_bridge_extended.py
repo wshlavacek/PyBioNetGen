@@ -2149,6 +2149,58 @@ class TestRunBnglWithBngsim:
             assert added_actions == ["writeXML"]
             assert mock_execute.call_args.args[1] is None
 
+    def test_preserves_generate_network_max_stoich(self):
+        # When the original BNGL specifies max_stoich on generate_network,
+        # the bridge must not silently drop it — without the bound, BNG2.pl
+        # tries to enumerate the full network and hangs/explodes for models
+        # like blbr_dembo1978_with_rings.
+        from bionetgen.core.tools.bngsim_bridge import run_bngl_with_bngsim
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            bngl_path = os.path.join(tmpdir, "test.bngl")
+
+            mock_model = MagicMock()
+            mock_model.model_name = "test"
+            gen_action = _make_action(
+                "generate_network",
+                {"overwrite": "1", "max_stoich": "{R=>6}"},
+            )
+            sim_action = _make_action("simulate_ode", {"t_end": "100", "n_steps": "10"})
+            mock_model.actions.items = [gen_action, sim_action]
+            mock_model.actions.clear_actions = MagicMock()
+            mock_model.add_action = MagicMock()
+            mock_model.write_model = MagicMock()
+
+            mock_cli = MagicMock()
+            mock_cli.result = MagicMock(process_return=0)
+
+            net_path = os.path.join(tmpdir, "test.net")
+            with open(net_path, "w") as f:
+                f.write("# empty net\n")
+
+            mock_bngsim = MagicMock()
+            mock_bngsim.Model.from_net.return_value = _make_mock_model()
+            mock_execute = MagicMock(return_value=MagicMock(process_return=0))
+
+            with patch(f"{BRIDGE}.BNGSIM_AVAILABLE", True), \
+                 patch(f"{BRIDGE}.bngsim", mock_bngsim), \
+                 patch("bionetgen.modelapi.model.bngmodel", return_value=mock_model), \
+                 patch(f"{BRIDGE}._parse_protocol_block", return_value=[]), \
+                 patch(f"{BRIDGE}._parse_table_functions", return_value=[]), \
+                 patch("bionetgen.core.tools.cli.BNGCLI", return_value=mock_cli), \
+                 patch(f"{BRIDGE}._execute_bngsim_actions", mock_execute):
+
+                run_bngl_with_bngsim(bngl_path, tmpdir, "/bngpath")
+
+            gen_calls = [
+                call for call in mock_model.add_action.call_args_list
+                if call.args[0] == "generate_network"
+            ]
+            assert len(gen_calls) == 1
+            args = gen_calls[0].args[1]
+            assert args.get("max_stoich") == "{R=>6}"
+            assert args.get("overwrite") == 1
+
     def test_no_sim_actions_returns_cli_result(self):
         """If no simulate actions and no CLI overrides, return BNG2.pl result."""
         from bionetgen.core.tools.bngsim_bridge import run_bngl_with_bngsim

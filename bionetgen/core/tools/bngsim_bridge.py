@@ -2636,7 +2636,16 @@ def run_bngl_with_bngsim(
     ]
     model.actions.clear_actions()
     if needs_network:
-        model.add_action("generate_network", {"overwrite": 1})
+        # Preserve original generate_network args (e.g. max_stoich, max_iter,
+        # check_iso). Without this, models that rely on max_stoich to bound
+        # network expansion would have BNG2.pl run unbounded.
+        gen_net_args = {}
+        for a in original_actions:
+            if a.type == "generate_network" and a.args:
+                gen_net_args.update(a.args)
+                break
+        gen_net_args["overwrite"] = 1
+        model.add_action("generate_network", gen_net_args)
     if needs_xml:
         model.add_action("writeXML", {})
     # Re-add write/output actions that BNG2.pl should execute
