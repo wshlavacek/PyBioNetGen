@@ -520,9 +520,6 @@ class MoleculeTypeBlockXML(XMLObj):
 
 
 class FunctionBlockXML(XMLObj):
-    # TODO for some reason the resolve_xml doesn't set the full
-    # function string and it's also not used downstream.
-
     """
     FunctionBlock XML parser, derived from XMLObj. Creates
     a FunctionBlock that contains the functions parsed.
@@ -542,24 +539,52 @@ class FunctionBlockXML(XMLObj):
         #
         if isinstance(xml, list):
             for f in xml:
-                # add content to line
                 fname = f["@id"]
-                expr = f["Expression"]
+                expr = self._resolve_expression(f)
                 args = []
                 if "ListOfArguments" in f:
                     args = self.get_arguments(f["ListOfArguments"]["Argument"])
-                #
                 block.add_function(fname, expr, args=args)
         else:
             fname = xml["@id"]
-            expr = xml["Expression"]
+            expr = self._resolve_expression(xml)
             args = []
             if "ListOfArguments" in xml:
                 args = self.get_arguments(xml["ListOfArguments"]["Argument"])
-            #
             block.add_function(fname, expr, args=args)
 
         return block
+
+    def _resolve_expression(self, f) -> str:
+        """Return the BNGL expression body for a Function XML element.
+
+        Most functions serialize their body verbatim into ``<Expression>``,
+        but BNG2.pl rewrites ``tfun(...)`` calls (both the inline-array form
+        and the file-based ``TFUN(arg, "file")`` form) as the placeholder
+        ``__TFUN_VAL__`` and stashes the real arguments in attributes on
+        the ``<Function>`` element. Round-tripping the placeholder back into
+        BNGL is invalid — BNG2.pl can't re-parse it. Reconstruct the call
+        from the attributes when present.
+        """
+        raw = f.get("Expression", "")
+        if f.get("@type") != "TFUN":
+            return raw
+
+        ctr = f.get("@ctrName", "")
+        if "@xData" in f:
+            xs = f.get("@xData", "")
+            ys = f.get("@yData", "")
+            method = f.get("@method", "linear")
+            body = f"tfun([{xs}],[{ys}],{ctr}"
+            if method and method != "linear":
+                body += f',method=>"{method}"'
+            body += ")"
+            return body
+
+        if "@file" in f:
+            return f'TFUN({ctr},"{f.get("@file", "")}")'
+
+        return raw
 
     def get_arguments(self, xml) -> list:
         if isinstance(xml, list):

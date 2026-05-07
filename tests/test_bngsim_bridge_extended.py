@@ -2874,3 +2874,112 @@ class TestSsWorkersEnv:
         assert _resolve_ss_workers(default=2) == 2
         monkeypatch.setenv("BIONETGEN_SS_WORKERS", "-1")
         assert _resolve_ss_workers(default=2) == 2
+
+
+# ─── Regression: backslash-continued tfun() in functions block ──────
+
+
+class TestParseTableFunctionsMultilineTfun:
+    """The inline-array ``tfun()`` form often spans multiple physical
+    lines via BNGL's ``\\`` continuation. ``_parse_table_functions``
+    must join those before scanning, otherwise the table function never
+    gets registered with BNGsim and the codegen path segfaults."""
+
+    def test_multiline_tfun_is_recognized(self, tmp_path):
+        from bionetgen.core.tools.bngsim_bridge import _parse_table_functions
+
+        bngl = tmp_path / "model.bngl"
+        bngl.write_text(
+            "begin model\n"
+            "begin parameters\n  IPTG 0\nend parameters\n"
+            "begin functions\n"
+            "  exp_gfp() = tfun(\\\n"
+            "    [0, 1e-5, 1e-2],\\\n"
+            "    [0.03, 0.5, 0.99],\\\n"
+            "    IPTG)\n"
+            "end functions\n"
+            "end model\n"
+        )
+        specs = _parse_table_functions(str(bngl))
+        assert len(specs) == 1
+        spec = specs[0]
+        assert spec["name"] == "exp_gfp"
+        assert spec["index"] == "IPTG"
+        assert spec["times"] == [0.0, 1e-5, 1e-2]
+        assert spec["values"] == [0.03, 0.5, 0.99]
+        assert spec["method"] == "linear"
+
+    def test_singleline_tfun_still_recognized(self, tmp_path):
+        from bionetgen.core.tools.bngsim_bridge import _parse_table_functions
+
+        bngl = tmp_path / "model.bngl"
+        bngl.write_text(
+            "begin model\n"
+            "begin parameters\n  x 0\nend parameters\n"
+            "begin functions\n"
+            "  f() = tfun([0,1,2], [10,20,30], x)\n"
+            "end functions\n"
+            "end model\n"
+        )
+        specs = _parse_table_functions(str(bngl))
+        assert len(specs) == 1
+        assert specs[0]["times"] == [0.0, 1.0, 2.0]
+
+
+# ─── Regression: codegen+tfun guard ────────────────────────────────
+
+
+class TestCodegenTfunGuard:
+    """BNGsim's codegen .so calls a ``tfun_eval`` function pointer that is
+    set up by NetworkModel post-load. The current code path is fragile
+    (segfaults if the stars don't align), so the bridge skips codegen
+    when the .net file uses ``tfun()``. Interpreted RHS handles tfun fine."""
+
+    def test_net_with_tfun_skips_codegen(self, tmp_path):
+        from bionetgen.core.tools.bngsim_bridge import _try_prepare_codegen
+
+        net = tmp_path / "model.net"
+        net.write_text(
+            "# Created by BioNetGen\n"
+            "begin parameters\n  1 IPTG 0\nend parameters\n"
+            "begin functions\n"
+            "  1 f() tfun([0,1],[10,20],IPTG)\n"
+            "end functions\n"
+        )
+        # _try_prepare_codegen short-circuits to "" when net has tfun
+        assert _try_prepare_codegen(str(net)) == ""
+
+    def test_net_without_tfun_attempts_codegen(self, tmp_path, monkeypatch):
+        """Sanity: net files without tfun() still go through prepare_codegen."""
+        from bionetgen.core.tools import bngsim_bridge as bb
+
+        net = tmp_path / "model.net"
+        net.write_text(
+            "# Created by BioNetGen\n"
+            "begin parameters\n  1 k 0.1\nend parameters\n"
+            "begin functions\n"
+            "  1 g() k*2\n"
+            "end functions\n"
+        )
+        called = {"yes": False}
+
+        def fake_prepare(_):
+            called["yes"] = True
+            return "/tmp/fake.so"
+
+        # Patch the lazy import inside _try_prepare_codegen via the bngsim
+        # module attribute it pulls from.
+        import bngsim
+        monkeypatch.setattr(bngsim, "prepare_codegen", fake_prepare, raising=False)
+
+        out = bb._try_prepare_codegen(str(net))
+        assert called["yes"]
+        assert out == "/tmp/fake.so"
+
+    def test_no_codegen_env_short_circuits(self, tmp_path, monkeypatch):
+        from bionetgen.core.tools.bngsim_bridge import _try_prepare_codegen
+
+        monkeypatch.setenv("BIONETGEN_NO_CODEGEN", "1")
+        net = tmp_path / "model.net"
+        net.write_text("begin parameters\nend parameters\n")
+        assert _try_prepare_codegen(str(net)) == ""

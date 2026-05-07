@@ -5,6 +5,7 @@ tests/test/*
 tests/viz/*
 tests/models/cli_test_runs/*
 bionetgen/bng-*
+bionetgen/assets/BNG_PERL_SOURCE
 temp_testing/*
 .vscode/*
 build

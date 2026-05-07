@@ -604,6 +604,58 @@ class TestFunctionBlockXML:
         ])
         assert args == ["x", "y"]
 
+    def test_inline_tfun_round_trip(self):
+        """Inline-array tfun() must be reconstructed from XML attributes,
+        not echoed as the BNG2.pl placeholder ``__TFUN_VAL__``."""
+        xml = OrderedDict([
+            ("@id", "exp_gfp"),
+            ("@type", "TFUN"),
+            ("@mode", "inline"),
+            ("@ctrName", "IPTG"),
+            ("@xData", "0,3e-6,1e-5,1e-2"),
+            ("@yData", "0.03,0.03,0.04,0.99"),
+            ("@method", "linear"),
+            ("Expression", " __TFUN_VAL__ "),
+        ])
+        fb = FunctionBlockXML(xml)
+        fn = fb.parsed_obj.items["exp_gfp"]
+        # Must NOT contain the BNG2.pl placeholder
+        assert "__TFUN_VAL__" not in fn.expr
+        # Must reconstruct the inline call BNG2.pl can re-parse
+        assert fn.expr == "tfun([0,3e-6,1e-5,1e-2],[0.03,0.03,0.04,0.99],IPTG)"
+
+    def test_inline_tfun_step_method_preserved(self):
+        xml = OrderedDict([
+            ("@id", "f"),
+            ("@type", "TFUN"),
+            ("@mode", "inline"),
+            ("@ctrName", "x"),
+            ("@xData", "0,1"),
+            ("@yData", "1,2"),
+            ("@method", "step"),
+            ("Expression", " __TFUN_VAL__ "),
+        ])
+        fb = FunctionBlockXML(xml)
+        assert fb.parsed_obj.items["f"].expr == 'tfun([0,1],[1,2],x,method=>"step")'
+
+    def test_file_tfun_round_trip(self):
+        """File-based TFUN(arg, "file") must round-trip back to BNGL."""
+        xml = OrderedDict([
+            ("@id", "f"),
+            ("@type", "TFUN"),
+            ("@file", "data.tfun"),
+            ("@ctrName", "x"),
+            ("Expression", " __TFUN_VAL__ "),
+        ])
+        fb = FunctionBlockXML(xml)
+        assert fb.parsed_obj.items["f"].expr == 'TFUN(x,"data.tfun")'
+
+    def test_non_tfun_function_unaffected(self):
+        """Plain functions still go through Expression verbatim."""
+        xml = OrderedDict([("@id", "f"), ("Expression", "k1*A + k2")])
+        fb = FunctionBlockXML(xml)
+        assert fb.parsed_obj.items["f"].expr == "k1*A + k2"
+
 
 # ---- RuleBlockXML ----
 

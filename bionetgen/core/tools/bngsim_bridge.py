@@ -988,13 +988,47 @@ def _sync_species_concentrations(bngsim_model, initializers):
 # ─── Codegen helpers ───────────────────────────────────────────────
 
 
+def _net_has_tfun(net_path):
+    """Return True if the .net file's function block uses tfun(...).
+
+    Codegen+tfun is fragile in current BNGsim (the compiled .so calls a
+    callback that segfaults if the table function dispatch is not wired
+    up exactly right at runtime). The interpreted RHS handles tfun
+    correctly, so we route models containing tfun there until BNGsim's
+    codegen path stabilizes.
+    """
+    try:
+        with open(net_path, "r", errors="replace") as f:
+            in_functions = False
+            for line in f:
+                s = line.strip()
+                if s.startswith("begin functions"):
+                    in_functions = True
+                    continue
+                if s.startswith("end functions"):
+                    return False
+                if in_functions and "tfun(" in s.lower():
+                    return True
+    except OSError as exc:
+        logger.debug("could not scan .net for tfun (%s): %s", net_path, exc)
+    return False
+
+
 def _try_prepare_codegen(net_path):
     """Attempt to compile a code-generated RHS for ODE simulation.
 
     Returns the path to the compiled shared library, or "" if codegen
-    is unavailable or disabled via BIONETGEN_NO_CODEGEN env var.
+    is unavailable, disabled via BIONETGEN_NO_CODEGEN env var, or skipped
+    because the model uses ``tfun(...)`` (BNGsim codegen+tfun is unstable;
+    the interpreted RHS handles tfun correctly).
     """
     if os.environ.get("BIONETGEN_NO_CODEGEN"):
+        return ""
+    if _net_has_tfun(net_path):
+        logger.info(
+            "Codegen disabled for model with tfun() function; "
+            "using interpreted ODE RHS (codegen+tfun is currently unstable in BNGsim)"
+        )
         return ""
     try:
         from bngsim import prepare_codegen
@@ -2291,43 +2325,62 @@ def _parse_table_functions(bngl_path):
     in_functions = False
     try:
         with open(bngl_path, "r", errors="replace") as f:
-            for raw_line in f:
-                stripped = raw_line.strip()
-                # Strip comments for block detection
-                comment_idx = stripped.find("#")
-                clean = stripped[:comment_idx].strip() if comment_idx >= 0 else stripped
-
-                if re.match(r"begin\s+functions", clean):
-                    in_functions = True
-                    continue
-                if re.match(r"end\s+functions", clean):
-                    in_functions = False
-                    continue
-                if not in_functions:
-                    continue
-
-                # Look for: funcname(...) = ... tfun(...) ...
-                # or: funcname = ... tfun(...) ...
-                if "tfun(" not in clean:
-                    continue
-
-                # Extract function name (before '=')
-                eq_match = re.match(r"(\w+)\s*(?:\([^)]*\))?\s*=", clean)
-                if not eq_match:
-                    continue
-                func_name = eq_match.group(1)
-
-                # Extract the tfun(...) call arguments
-                tfun_match = re.search(r"tfun\((.+)\)", clean)
-                if not tfun_match:
-                    continue
-                tfun_body = tfun_match.group(1)
-
-                spec = _parse_tfun_args(func_name, tfun_body, bngl_dir)
-                if spec is not None:
-                    tfun_specs.append(spec)
+            raw_lines = list(f)
     except OSError as exc:
         logger.debug("could not read BNGL for table functions (%s): %s", bngl_path, exc)
+        return tfun_specs
+
+    # Join logical lines: BNGL allows backslash line continuation, and the
+    # inline-array tfun() form often spans multiple physical lines for
+    # readability. Walk through raw lines, glue any line that ends with '\'
+    # to the next, and produce a list of (logical_line, in_functions_block)
+    # tuples to scan for tfun() calls.
+    logical_lines = []
+    pending = ""
+    for raw_line in raw_lines:
+        # Detect backslash continuation. We want to drop the trailing '\'
+        # (and any whitespace before the newline) and concatenate with the
+        # next line's leading content.
+        stripped_eol = raw_line.rstrip("\n").rstrip("\r")
+        if stripped_eol.rstrip().endswith("\\"):
+            # Pull off the trailing backslash and append; do not flush yet.
+            pending += stripped_eol.rstrip()[:-1] + " "
+            continue
+        logical_lines.append(pending + stripped_eol)
+        pending = ""
+    if pending:
+        logical_lines.append(pending)
+
+    for raw_line in logical_lines:
+        stripped = raw_line.strip()
+        comment_idx = stripped.find("#")
+        clean = stripped[:comment_idx].strip() if comment_idx >= 0 else stripped
+
+        if re.match(r"begin\s+functions", clean):
+            in_functions = True
+            continue
+        if re.match(r"end\s+functions", clean):
+            in_functions = False
+            continue
+        if not in_functions:
+            continue
+
+        if "tfun(" not in clean:
+            continue
+
+        eq_match = re.match(r"(\w+)\s*(?:\([^)]*\))?\s*=", clean)
+        if not eq_match:
+            continue
+        func_name = eq_match.group(1)
+
+        tfun_match = re.search(r"tfun\((.+)\)", clean)
+        if not tfun_match:
+            continue
+        tfun_body = tfun_match.group(1)
+
+        spec = _parse_tfun_args(func_name, tfun_body, bngl_dir)
+        if spec is not None:
+            tfun_specs.append(spec)
 
     return tfun_specs
 

@@ -194,14 +194,10 @@ class BNGCLI:
             else:
                 if "BNGPATH" in os.environ:
                     del os.environ["BNGPATH"]
-            if hasattr(out, "stdout"):
-                if out.stdout is not None:
-                    stdout_str = out.stdout.decode("utf-8")
-            else:
-                stdout_str = None
-            if hasattr(out, "stderr"):
-                if out.stderr is not None:
-                    stderr_str = out.stderr.decode("utf-8")
-            else:
-                stderr_str = None
+            stdout_str = None
+            stderr_str = None
+            if getattr(out, "stdout", None) is not None:
+                stdout_str = out.stdout.decode("utf-8")
+            if getattr(out, "stderr", None) is not None:
+                stderr_str = out.stderr.decode("utf-8")
             raise BNGRunError(command, stdout=stdout_str, stderr=stderr_str)
