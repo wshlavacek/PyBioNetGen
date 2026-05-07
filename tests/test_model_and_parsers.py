@@ -688,6 +688,56 @@ class TestBNGParser:
         assert "actions" in model_obj.active_blocks
 
     @patch("bionetgen.modelapi.bngparser.BNGFile")
+    def test_parse_actions_generate_network_max_stoich(self, MockBNGFile):
+        # max_stoich is a nested {key=>int} hash. Both bareword and quoted
+        # keys must parse, and the round-trip must preserve the literal
+        # nested form so BNG2.pl receives the bound when the bridge
+        # rewrites the BNGL.
+        from bionetgen.modelapi.bngparser import BNGParser
+
+        mock_bf = MagicMock()
+        mock_bf.path = "/some/model.bngl"
+        mock_bf.parsed_actions = [
+            "generate_network({overwrite=>1,max_stoich=>{R=>6}})",
+        ]
+        MockBNGFile.return_value = mock_bf
+
+        parser = BNGParser("/some/model.bngl")
+        model_obj = _make_model_bypass_init()
+        parser.parse_actions(model_obj)
+
+        actions = list(model_obj.actions.items)
+        assert len(actions) == 1
+        a = actions[0]
+        assert a.type == "generate_network"
+        assert a.args["overwrite"] == "1"
+        assert a.args["max_stoich"] == "{R=>6}"
+        assert str(a) == "generate_network({overwrite=>1,max_stoich=>{R=>6}})"
+
+    @patch("bionetgen.modelapi.bngparser.BNGFile")
+    def test_parse_actions_generate_network_max_stoich_multi(self, MockBNGFile):
+        from bionetgen.modelapi.bngparser import BNGParser
+
+        mock_bf = MagicMock()
+        mock_bf.path = "/some/model.bngl"
+        mock_bf.parsed_actions = [
+            'generate_network({max_stoich=>{R=>6,L=>3},max_iter=>100})',
+        ]
+        MockBNGFile.return_value = mock_bf
+
+        parser = BNGParser("/some/model.bngl")
+        model_obj = _make_model_bypass_init()
+        parser.parse_actions(model_obj)
+
+        a = list(model_obj.actions.items)[0]
+        assert a.args["max_stoich"] == "{R=>6,L=>3}"
+        assert a.args["max_iter"] == "100"
+        assert (
+            str(a)
+            == "generate_network({max_stoich=>{R=>6,L=>3},max_iter=>100})"
+        )
+
+    @patch("bionetgen.modelapi.bngparser.BNGFile")
     def test_parse_actions_no_arg_action(self, MockBNGFile):
         from bionetgen.modelapi.bngparser import BNGParser
 

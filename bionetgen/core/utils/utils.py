@@ -486,7 +486,10 @@ class ActionList:
         arg_type_list = "[" + pp.delimitedList(quote_word ^ arg_type_float) + "]"
         arg_type_string = quote_word
         #
-        curly_arg_token = quote_word + "=>" + arg_type_int
+        # BNGL/Perl `=>` auto-quotes its left operand, so dict keys
+        # may be either bareword (max_stoich=>{R=>6}) or quoted
+        # (max_stoich=>{"R"=>6}). Accept both.
+        curly_arg_token = (base_name ^ quote_word) + "=>" + arg_type_int
         # TODO: handle 0 case
         arg_type_curly = "{" + pp.delimitedList(curly_arg_token) + "}"
         arg_types = (
