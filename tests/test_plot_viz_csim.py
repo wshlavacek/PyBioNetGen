@@ -1,10 +1,28 @@
 """Tests for plot.py, visualize.py, csimulator.py, and other remaining gaps."""
 import os
+from contextlib import contextmanager
 from unittest import mock
 
+import matplotlib
 import pytest
 
 from bionetgen.core.exc import BNGFileError, BNGRunError
+
+
+@contextmanager
+def _patched_plot_modules(mock_sbrn, mock_plt):
+    """Patch seaborn and matplotlib.pyplot for BNGPlotter._datplot.
+
+    `import matplotlib.pyplot as plt` resolves via getattr on the matplotlib
+    package once matplotlib has been imported, so a sys.modules-only patch is
+    not enough on a polluted interpreter. Patching the attribute on the
+    matplotlib package as well makes the mock survive earlier real imports.
+    """
+    with mock.patch.dict(
+        "sys.modules", {"seaborn": mock_sbrn, "matplotlib.pyplot": mock_plt}
+    ), mock.patch.object(matplotlib, "pyplot", mock_plt, create=True):
+        yield
+
 
 # ── BNGPlotter tests ──────────────────────────────────────────────
 
@@ -34,7 +52,7 @@ class TestBNGPlotter:
         mock_fig.gca.return_value = mock_gca
         mock_ax.get_figure.return_value = mock_fig
         mock_sbrn.lineplot.return_value = mock_ax
-        with mock.patch.dict("sys.modules", {"seaborn": mock_sbrn, "matplotlib.pyplot": mock_plt}):
+        with _patched_plot_modules(mock_sbrn, mock_plt):
             p._datplot()
             mock_plt.savefig.assert_called_once()
 
@@ -55,7 +73,7 @@ class TestBNGPlotter:
         mock_fig.gca.return_value = mock_gca
         mock_ax.get_figure.return_value = mock_fig
         mock_sbrn.lineplot.return_value = mock_ax
-        with mock.patch.dict("sys.modules", {"seaborn": mock_sbrn, "matplotlib.pyplot": mock_plt}):
+        with _patched_plot_modules(mock_sbrn, mock_plt):
             p._datplot()
             mock_plt.savefig.assert_called_once()
 
@@ -87,7 +105,7 @@ class TestBNGPlotter:
         mock_fig.gca.return_value = mock_gca
         mock_ax.get_figure.return_value = mock_fig
         mock_sbrn.lineplot.return_value = mock_ax
-        with mock.patch.dict("sys.modules", {"seaborn": mock_sbrn, "matplotlib.pyplot": mock_plt}):
+        with _patched_plot_modules(mock_sbrn, mock_plt):
             p._datplot()
             mock_plt.xlabel.assert_called()
             mock_plt.ylabel.assert_called()
@@ -101,7 +119,7 @@ class TestBNGPlotter:
         p = BNGPlotter(str(gdat), str(out))
         mock_sbrn = mock.MagicMock()
         mock_plt = mock.MagicMock()
-        with mock.patch.dict("sys.modules", {"seaborn": mock_sbrn, "matplotlib.pyplot": mock_plt}):
+        with _patched_plot_modules(mock_sbrn, mock_plt):
             with pytest.raises(BNGFileError, match="No data columns are found"):
                 p._datplot()
 
@@ -122,7 +140,7 @@ class TestBNGPlotter:
         mock_fig.gca.return_value = mock_gca
         mock_ax.get_figure.return_value = mock_fig
         mock_sbrn.lineplot.return_value = mock_ax
-        with mock.patch.dict("sys.modules", {"seaborn": mock_sbrn, "matplotlib.pyplot": mock_plt}):
+        with _patched_plot_modules(mock_sbrn, mock_plt):
             with pytest.raises(ValueError, match="--xmin must be smaller than --xmax"):
                 p._datplot()
 
@@ -143,7 +161,7 @@ class TestBNGPlotter:
         mock_fig.gca.return_value = mock_gca
         mock_ax.get_figure.return_value = mock_fig
         mock_sbrn.lineplot.return_value = mock_ax
-        with mock.patch.dict("sys.modules", {"seaborn": mock_sbrn, "matplotlib.pyplot": mock_plt}):
+        with _patched_plot_modules(mock_sbrn, mock_plt):
             with pytest.raises(ValueError, match="--ymin must be smaller than --ymax"):
                 p._datplot()
 
