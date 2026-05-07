@@ -262,6 +262,7 @@ def _append_cdat_rows(cdat_path, result):
 def _write_bngsim_results(
     result, output_dir, model_name,
     print_functions=False, append=False,
+    bngmodel=None, bngmodel_params=None, param_overrides=None,
 ):
     """Write BNGsim Result to .gdat and .cdat files.
 
@@ -283,6 +284,11 @@ def _write_bngsim_results(
         segment's t_end). Used for ``continue=>1``. If the files do not
         yet exist, falls back to a fresh write so the first segment of
         a continuation chain still produces complete output.
+    bngmodel, bngmodel_params, param_overrides
+        Used only as a fallback when *print_functions* is True and
+        BNGsim's ``Result.expressions`` is empty (the NFsim path), so
+        BNGL functions can be evaluated post-hoc per time point. Ignored
+        for non-NF results that already carry function columns.
     """
     import numpy as np
 
@@ -296,12 +302,28 @@ def _write_bngsim_results(
     obs_names = list(result.observable_names)
     obs_array = np.asarray(result.observables) if result.n_observables > 0 else np.empty((result.n_times, 0))
 
+    func_names = []
+    func_array = np.empty((result.n_times, 0))
+    has_funcs = False
     if print_functions:
-        func_names = list(result.expression_names)
-        func_array = np.asarray(result.expressions)
-        has_funcs = len(func_names) > 0 and func_array.ndim == 2 and func_array.shape[1] > 0
-    else:
-        has_funcs = False
+        bngsim_func_names = list(result.expression_names)
+        bngsim_func_array = np.asarray(result.expressions)
+        if (
+            len(bngsim_func_names) > 0
+            and bngsim_func_array.ndim == 2
+            and bngsim_func_array.shape[1] > 0
+        ):
+            func_names = bngsim_func_names
+            func_array = bngsim_func_array
+            has_funcs = True
+        elif bngmodel is not None and obs_array.shape[0] > 0:
+            # NFsim leaves expressions empty — recompute per time point
+            # from the parsed bngmodel.
+            func_names, func_array = _evaluate_functions_per_timepoint(
+                bngmodel, bngmodel_params, param_overrides,
+                obs_names, obs_array,
+            )
+            has_funcs = func_array.shape[1] > 0
 
     if has_funcs:
         combined = np.hstack([obs_array, func_array])
@@ -462,6 +484,9 @@ def run_nfsim(
     param_overrides=None,
     conc_overrides=None,
     conc_deltas=None,
+    print_functions=False,
+    bngmodel=None,
+    bngmodel_params=None,
 ):
     """Run a network-free simulation using BNGsim's NfsimSession.
 
@@ -542,7 +567,13 @@ def run_nfsim(
 
             result = nfsim.simulate(t_span[0], t_span[1], n_points)
 
-        _write_bngsim_results(result, output_dir, model_name)
+        _write_bngsim_results(
+            result, output_dir, model_name,
+            print_functions=print_functions,
+            bngmodel=bngmodel,
+            bngmodel_params=bngmodel_params,
+            param_overrides=param_overrides,
+        )
 
         return _make_bng_result(output_dir, method="nf")
 
@@ -972,6 +1003,48 @@ def _evaluate_bngmodel_functions(bngmodel, base_params, obs_dict):
 
     ordered = [n for n in items if n in resolved]
     return ordered, [resolved[n] for n in ordered]
+
+
+def _evaluate_functions_per_timepoint(
+    bngmodel, bngmodel_params, param_overrides, obs_names, obs_array,
+):
+    """Evaluate parameterless BNGL functions at every time-course row.
+
+    Returns ``(col_names, col_array)`` where *col_names* are the function
+    names rendered as ``name()`` (matching BNG2.pl/NFsim header style) and
+    *col_array* has one column per function and one row per time point.
+    Functions that fail to evaluate at the first row are dropped from all
+    subsequent rows so the output stays rectangular.
+    """
+    import numpy as np
+
+    effective_params = dict(bngmodel_params or {})
+    for k, v in (param_overrides or {}).items():
+        try:
+            effective_params[k] = float(v)
+        except (TypeError, ValueError):
+            continue
+
+    n_times = obs_array.shape[0]
+    rows = []
+    locked_names = None
+    for i in range(n_times):
+        obs_dict = dict(zip(obs_names, obs_array[i]))
+        names, vals = _evaluate_bngmodel_functions(
+            bngmodel, effective_params, obs_dict,
+        )
+        if locked_names is None:
+            locked_names = names
+            rows.append(vals)
+        else:
+            # Restrict to the first row's column set so the result is rectangular.
+            d = dict(zip(names, vals))
+            rows.append([d.get(n, float("nan")) for n in locked_names])
+
+    if not locked_names:
+        return [], np.empty((n_times, 0))
+    arr = np.asarray(rows, dtype=float)
+    return [f"{n}()" for n in locked_names], arr
 
 
 def _strip_zero_arg_calls(expr_str, func_names):
@@ -2199,6 +2272,9 @@ def _execute_bngsim_actions(
                     param_overrides=nf_param_overrides or None,
                     conc_overrides=nf_conc_overrides or None,
                     conc_deltas=nf_conc_deltas or None,
+                    print_functions=print_funcs,
+                    bngmodel=bngmodel,
+                    bngmodel_params=bngmodel_params,
                 )
                 current_method = "nf"
                 current_poplevel = None
