@@ -824,8 +824,8 @@ def _parse_net_species_initializers(net_path):
                     m = pattern.match(stripped)
                     if m:
                         initializers.append((m.group(1), m.group(2)))
-    except OSError:
-        pass
+    except OSError as exc:
+        logger.debug("could not read .net for species initializers (%s): %s", net_path, exc)
     return initializers
 
 
@@ -1253,8 +1253,8 @@ def _run_protocol(
             conc_str = sc.group(2).strip()
             try:
                 bngsim_model.set_concentration(species_name, _eval_numeric(conc_str))
-            except Exception:
-                logger.warning("protocol: setConcentration(%s, %s) failed", species_name, conc_str)
+            except Exception as exc:
+                logger.warning("protocol: setConcentration(%s, %s) failed: %s", species_name, conc_str, exc)
             continue
 
         # ── setParameter ──
@@ -1264,8 +1264,8 @@ def _run_protocol(
             param_str = sp.group(2).strip()
             try:
                 bngsim_model.set_param(param_name, _eval_numeric(param_str))
-            except Exception:
-                logger.warning("protocol: setParameter(%s, %s) failed", param_name, param_str)
+            except Exception as exc:
+                logger.warning("protocol: setParameter(%s, %s) failed: %s", param_name, param_str, exc)
             continue
 
         # ── resetConcentrations ──
@@ -1342,9 +1342,9 @@ def _run_nfsim_scan(
             if param_name:
                 try:
                     nfsim.set_param(param_name, float(value))
-                except Exception:
+                except Exception as exc:
                     logger.warning(
-                        "NFsim scan: could not set %s=%s", param_name, value
+                        "NFsim scan: could not set %s=%s: %s", param_name, value, exc
                     )
             nfsim.initialize((base_seed + i) % (2**31))
             _apply_nfsim_concentration_changes(
@@ -2128,8 +2128,8 @@ def _parse_table_functions(bngl_path):
                 spec = _parse_tfun_args(func_name, tfun_body, bngl_dir)
                 if spec is not None:
                     tfun_specs.append(spec)
-    except OSError:
-        pass
+    except OSError as exc:
+        logger.debug("could not read BNGL for table functions (%s): %s", bngl_path, exc)
 
     return tfun_specs
 
@@ -2277,8 +2277,8 @@ def _parse_protocol_block(bngl_path):
                     continue
                 if in_protocol:
                     protocol_lines.append(raw_line.rstrip("\n"))
-    except OSError:
-        pass
+    except OSError as exc:
+        logger.debug("could not read BNGL for protocol block (%s): %s", bngl_path, exc)
 
     return protocol_lines
 
