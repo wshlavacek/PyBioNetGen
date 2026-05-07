@@ -29,8 +29,8 @@ def test_bionetgen_all_model_loading():
             success += 1
             _mstr = str(_m)
             succ.append(model)
-        except:
-            print(f"can't load model {model}")
+        except Exception as exc:
+            print(f"can't load model {model}: {exc}")
             fails += 1
             fail.append(model)
     print(f"succ: {success}")
@@ -130,8 +130,8 @@ def test_model_running_lib():
             model = os.path.split(model)
             model = model[1]
             succ.append(model)
-        except:
-            print(f"can't run model {model}")
+        except Exception as exc:
+            print(f"can't run model {model}: {exc}")
             fails += 1
             model = os.path.split(model)
             model = model[1]
