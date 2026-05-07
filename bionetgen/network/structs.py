@@ -50,7 +50,6 @@ class NetworkObj:
 
     @comment.setter
     def comment(self, val) -> None:
-        # TODO: regex handling of # instead
         if val is not None:
             if len(val) > 0:
                 if val.startswith("#"):
@@ -68,7 +67,6 @@ class NetworkObj:
 
     @line_label.setter
     def line_label(self, val) -> None:
-        # TODO: specific error handling
         try:
             ll = int(val)
             self._line_label = f"{ll} "
@@ -116,7 +114,6 @@ class NetworkParameter(NetworkObj):
         return s
 
 
-# TODO:
 class NetworkCompartment(NetworkObj):
     """
     Class for all compartments in the network, subclass of NetworkObj.
@@ -209,7 +206,6 @@ class NetworkSpecies(NetworkObj):
         return s
 
 
-# TODO:
 class NetworkFunction(NetworkObj):
     """
     Class for all functions in the network, subclass of NetworkObj.
@@ -241,7 +237,6 @@ class NetworkFunction(NetworkObj):
         return s
 
 
-# TODO:
 class NetworkReaction(NetworkObj):
     """
     Class for all reactions in the network, subclass of NetworkObj.
@@ -281,7 +276,6 @@ class NetworkReaction(NetworkObj):
         return s
 
 
-# TODO:
 class NetworkEnergyPattern(NetworkObj):
     """
     Class for all energy patterns in the network, subclass of NetworkObj.
@@ -310,7 +304,6 @@ class NetworkEnergyPattern(NetworkObj):
         return s
 
 
-# TODO:
 class NetworkPopulationMap(NetworkObj):
     """
     Class for all population maps in the model, subclass of ModelObj.

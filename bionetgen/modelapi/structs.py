@@ -59,7 +59,6 @@ class ModelObj:
 
     @comment.setter
     def comment(self, val) -> None:
-        # TODO: regex handling of # instead
         if val.startswith("#"):
             self._comment = val[1:]
         else:
@@ -71,7 +70,6 @@ class ModelObj:
 
     @line_label.setter
     def line_label(self, val) -> None:
-        # TODO: specific error handling
         try:
             ll = int(val)
             self._line_label = f"{ll} "
@@ -337,7 +335,6 @@ class Action(ModelObj):
                     raise BNGParseError(
                         message=f"Action argument {arg_name} not recognized!\nCheck to make sure action is correctly formatted"
                     )
-                # TODO: If arg_value is the correct type
             if arg_name in seen_args:
                 logger.warning(
                     f"argument {arg_name} already given, using latter value {arg_value}",

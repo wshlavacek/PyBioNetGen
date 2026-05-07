@@ -111,7 +111,6 @@ class bngmodel:
             recompile = recompile or getattr(self, block)._recompile
         return recompile
 
-    # TODO: Ensure this works when you edit attributes
     @property
     def changes(self):
         changes = {}

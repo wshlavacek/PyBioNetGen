@@ -191,7 +191,6 @@ class PatternXML(XMLObj):
         # initialize
         pattern = Pattern()
         if "ListOfBonds" in xml:
-            # TODO: FIX THIS
             bonds = BondsXML(xml["ListOfBonds"]["Bond"])
             pattern._bonds = bonds
             self._bonds = bonds

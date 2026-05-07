@@ -79,7 +79,6 @@ class NetworkBlock:
     def __contains__(self, key) -> bool:
         return key in self.items
 
-    # TODO: Think extensively how this is going to work
     def __setattr__(self, name, value) -> None:
         changed = False
         if hasattr(self, "items"):

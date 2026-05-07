@@ -80,7 +80,6 @@ class BNGFile:
             if self.bngexec is None:
                 return self._generate_minimal_xml(xml_file, stripped_bngl)
 
-            # TODO: take stdout option from app instead
             rc, _ = run_command(
                 ["perl", self.bngexec, "--xml", stripped_bngl], suppress=self.suppress
             )

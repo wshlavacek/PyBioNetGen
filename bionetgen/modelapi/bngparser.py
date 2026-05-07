@@ -80,8 +80,6 @@ class BNGParser:
         # this route runs BNG2.pl on the bngl and parses
         # the XML instead
         if model_file.endswith(".bngl"):
-            # TODO: Add verbosity option to the library
-            # print("Attempting to generate XML")
             with TemporaryFile("w+") as xml_file:
                 try:
                     self.bngfile.generate_xml(xml_file)
@@ -90,7 +88,6 @@ class BNGParser:
                         self.bngfile.path,
                         message=f"XML file couldn't be generated: {exc.message}",
                     ) from exc
-                # TODO: Add verbosity option to the library
                 xmlstr = xml_file.read()
                 # < is not a valid XML character, we need to replace it
                 xmlstr = xmlstr.replace('relation="<', 'relation="&lt;')
@@ -155,7 +152,6 @@ class BNGParser:
                         ablock.add_action(atype, {action_list[0]: None})
                         continue
                     if len(action_list) == 3:
-                        # TODO: Error checking here!
                         if action_list[1] == ",":
                             # this is of the form action(argument, value)
                             ablock.add_action(
@@ -164,7 +160,6 @@ class BNGParser:
                             continue
                 elif atype in self.alist.square_braces:
                     # these are actions like saveParameters(["a","b"])
-                    # TODO: Error checking here!
                     if action_list[0] == "[":
                         # remove square braces
                         action_list = action_list[1:-1]
@@ -175,7 +170,6 @@ class BNGParser:
                     continue
                 elif atype in self.alist.normal_types:
                     # finally a normal action, we have {} and => syntax
-                    # TODO: Error checking here!
                     if action_list[0] == "{":
                         # remove curly braces
                         action_list = action_list[1:-1]
@@ -313,7 +307,6 @@ class BNGParser:
                     model_obj.add_block(xml_parser.parsed_obj)
             elif listkey == "ListOfFunctions":
                 # TODO: Optional expression parsing?
-                # TODO: Add arguments correctly
                 func_list = xml_model[listkey]
                 if func_list is not None:
                     funcs = func_list["Function"]
@@ -332,5 +325,3 @@ class BNGParser:
                     xml_parser = PopulationMapBlockXML(pms)
                     model_obj.add_block(xml_parser.parsed_obj)
         # And that's the end of parsing
-        # TODO: Add verbosity option to the library
-        # print("Parsing complete")

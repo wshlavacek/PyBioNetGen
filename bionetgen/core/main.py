@@ -243,7 +243,6 @@ def generate_notebook(app):
     app.log.debug(f"Writing notebook to file: {fname}", f"{__file__} : notebook()")
     notebook.write(fname)
     # open the notebook with nbopen
-    # TODO: deal with stdout/err
     app.log.debug(
         f"Attempting to open notebook {fname} with nbopen",
         f"{__file__} : notebook()",

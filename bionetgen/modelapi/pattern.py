@@ -305,8 +305,6 @@ class Pattern:
                                 != other.canonical_certificate
                             ):
                                 return False
-                        # TODO: molecules match, check bonds
-                        # Bonds match, patterns are the same
                         logger.debug("patterns match!", loc=loc)
                         return True
         return False
@@ -317,9 +315,6 @@ class Pattern:
 
     @compartment.setter
     def compartment(self, value):
-        # TODO: Build in logic to set the
-        # outer compartment
-        # print("Warning: Logical checks are not complete")
         self._compartment = value
 
     def consolidate_molecule_compartments(self):
@@ -337,9 +332,6 @@ class Pattern:
 
     @label.setter
     def label(self, value):
-        # TODO: Build in logic to set
-        # the outer label
-        # print("Warning: Logical checks are not complete")
         self._label = value
 
     def __str__(self):
@@ -457,7 +449,7 @@ class Molecule:
     def __iter__(self):
         return self.components.__iter__()
 
-    # TODO: implement __setitem__,  __contains__
+    # TODO: implement __setitem__
 
     def __str__(self):
         mol_str = self.name
@@ -518,7 +510,6 @@ class Molecule:
 
     @name.setter
     def name(self, value):
-        # print("Warning: Logical checks are not complete")
         # TODO: Check for invalid characters
         self._name = value
 
@@ -528,7 +519,6 @@ class Molecule:
 
     @components.setter
     def components(self, value):
-        # print("Warning: Logical checks are not complete")
         self._components = value
 
     def __repr__(self):
@@ -540,7 +530,6 @@ class Molecule:
 
     @compartment.setter
     def compartment(self, value):
-        # print("Warning: Logical checks are not complete")
         self._compartment = value
 
     @property
@@ -549,7 +538,6 @@ class Molecule:
 
     @label.setter
     def label(self, value):
-        # print("Warning: Logical checks are not complete")
         self._label = value
 
     def _add_component(self, name, state=None, states=[]):
@@ -560,8 +548,6 @@ class Molecule:
         self.components.append(comp_obj)
 
     def add_component(self, name, state=None, states=[]):
-        # TODO: Add built-in logic here
-        # print("Warning: Logical checks are not complete")
         self._add_component(name, state, states)
 
 
@@ -688,8 +674,6 @@ class Component:
 
     @name.setter
     def name(self, value):
-        # TODO: Add built-in logic here
-        # print("Warning: Logical checks are not complete")
         self._name = value
 
     @property
@@ -698,8 +682,6 @@ class Component:
 
     @label.setter
     def label(self, value):
-        # TODO: Add built-in logic here
-        # print("Warning: Logical checks are not complete")
         self._label = value
 
     @property
@@ -708,8 +690,6 @@ class Component:
 
     @state.setter
     def state(self, value):
-        # TODO: Add built-in logic here
-        # print("Warning: Logical checks are not complete")
         self._state = value
 
     @property
@@ -718,8 +698,6 @@ class Component:
 
     @states.setter
     def states(self, value):
-        # TODO: Add built-in logic here
-        # print("Warning: Logical checks are not complete")
         self._states = value
 
     @property
@@ -728,8 +706,6 @@ class Component:
 
     @bonds.setter
     def bonds(self, value):
-        # TODO: Add built-in logic here
-        # print("Warning: Logical checks are not complete")
         self._bonds = value
 
     def _add_state(self):

@@ -703,7 +703,6 @@ class BNGGdiff:
                 # now we can add
                 node_to_add_to["graph"]["node"].append(copied_node)
             else:
-                # TODO: check if this is done correctly
                 # it's a single node and we need to turn
                 # it into a list instead
                 copied_original_node = copy.deepcopy(node_to_add_to["graph"]["node"])
