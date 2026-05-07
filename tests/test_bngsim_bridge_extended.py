@@ -2612,6 +2612,89 @@ class TestParamNameResolution:
         resolved = _resolve_bngmodel_params(bngmodel)
         assert resolved == {"good": 42.0}
 
+    def test_evaluate_bngmodel_functions_basic(self):
+        """Functions resolve against parameters + observables in declaration
+        order; the helper is what backfills NFsim scan output where
+        BNGsim's NFsim binding leaves Result.expressions empty."""
+        from bionetgen.core.tools.bngsim_bridge import _evaluate_bngmodel_functions
+
+        bngmodel = MagicMock()
+        bngmodel.functions.items = {
+            "w1": MagicMock(expr="Obs_NCL_R1 / RT_1", args=[]),
+            "w2": MagicMock(expr="Obs_NCL_R2 / RT_2", args=[]),
+            "x_poly": MagicMock(
+                expr="1 - (Obs_NCL_R1 + Obs_NCL_R2) / RT", args=[],
+            ),
+        }
+        names, vals = _evaluate_bngmodel_functions(
+            bngmodel,
+            base_params={"RT": 50.0, "RT_1": 25.0, "RT_2": 25.0},
+            obs_dict={"Obs_NCL_R1": 11.0, "Obs_NCL_R2": 5.0},
+        )
+        assert names == ["w1", "w2", "x_poly"]
+        assert vals == pytest.approx([11.0 / 25.0, 5.0 / 25.0, 1 - 16.0 / 50.0])
+
+    def test_evaluate_bngmodel_functions_chained(self):
+        """One function may reference another via name() — the iterative
+        resolver handles that without forcing the user to pre-order."""
+        from bionetgen.core.tools.bngsim_bridge import _evaluate_bngmodel_functions
+
+        bngmodel = MagicMock()
+        # b() depends on a(), declared after; a() resolves first then b().
+        bngmodel.functions.items = {
+            "b": MagicMock(expr="2 * a()", args=[]),
+            "a": MagicMock(expr="x + 1", args=[]),
+        }
+        names, vals = _evaluate_bngmodel_functions(
+            bngmodel, base_params={"x": 3.0}, obs_dict={},
+        )
+        assert set(names) == {"a", "b"}
+        d = dict(zip(names, vals))
+        assert d["a"] == pytest.approx(4.0)
+        assert d["b"] == pytest.approx(8.0)
+
+    def test_evaluate_bngmodel_functions_skips_parameterized(self):
+        """Functions taking arguments aren't scan columns — skip them."""
+        from bionetgen.core.tools.bngsim_bridge import _evaluate_bngmodel_functions
+
+        bngmodel = MagicMock()
+        bngmodel.functions.items = {
+            "f": MagicMock(expr="x*2", args=["x"]),
+            "g": MagicMock(expr="42", args=[]),
+        }
+        names, vals = _evaluate_bngmodel_functions(
+            bngmodel, base_params={}, obs_dict={},
+        )
+        assert names == ["g"]
+        assert vals == [42.0]
+
+    def test_evaluate_bngmodel_functions_drops_unresolvable(self):
+        """Functions referencing unknown names are dropped, not raised."""
+        from bionetgen.core.tools.bngsim_bridge import _evaluate_bngmodel_functions
+
+        bngmodel = MagicMock()
+        bngmodel.functions.items = {
+            "good": MagicMock(expr="x + 1", args=[]),
+            "bad": MagicMock(expr="some_unknown_name * 2", args=[]),
+        }
+        names, vals = _evaluate_bngmodel_functions(
+            bngmodel, base_params={"x": 5.0}, obs_dict={},
+        )
+        assert names == ["good"]
+        assert vals == [6.0]
+
+    def test_evaluate_bngmodel_functions_empty(self):
+        """No functions block, or empty items — return ([], []) cleanly."""
+        from bionetgen.core.tools.bngsim_bridge import _evaluate_bngmodel_functions
+
+        assert _evaluate_bngmodel_functions(None, {}, {}) == ([], [])
+        empty = MagicMock()
+        empty.functions = None
+        assert _evaluate_bngmodel_functions(empty, {}, {}) == ([], [])
+        empty.functions = MagicMock()
+        empty.functions.items = {}
+        assert _evaluate_bngmodel_functions(empty, {}, {}) == ([], [])
+
     def test_pure_nf_uses_bngmodel_params_fallback(self):
         """Pure-NF runs (bngsim_model is None) must resolve parameter
         names from the parsed bngmodel parameter block."""

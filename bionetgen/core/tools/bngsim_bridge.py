@@ -914,6 +914,82 @@ def _resolve_bngmodel_params(bngmodel):
     return resolved
 
 
+def _evaluate_bngmodel_functions(bngmodel, base_params, obs_dict):
+    """Evaluate parameterless BNGL functions for a single time point.
+
+    BNGsim's NFsim binding returns an empty ``Result.expressions`` array, so
+    NFsim parameter_scan output drops any ``begin functions`` columns even
+    when the action requests ``print_functions=>1``. This helper recomputes
+    those columns by evaluating each function's expression against a
+    namespace built from resolved parameters and the observable values at
+    the requested time point.
+
+    Functions that take arguments are skipped — they require user-supplied
+    arg values and don't appear as scan columns. Function-to-function
+    references (``f() = 1 + g()``) resolve via fixed-point iteration.
+
+    Returns ``(names, values)`` in declaration order; functions that fail
+    to evaluate are silently dropped.
+    """
+    if bngmodel is None:
+        return [], []
+    fb = getattr(bngmodel, "functions", None)
+    items = getattr(fb, "items", None) if fb is not None else None
+    if not items:
+        return [], []
+
+    pending = {}
+    for name, fn in items.items():
+        if getattr(fn, "args", None):
+            continue
+        expr = getattr(fn, "expr", None)
+        if not expr:
+            continue
+        pending[name] = str(expr)
+
+    if not pending:
+        return [], []
+
+    func_names_set = set(items.keys())
+    ns = dict(base_params or {})
+    ns.update(obs_dict or {})
+
+    resolved = {}
+    while pending:
+        progressed = False
+        for name in list(pending):
+            expr = _strip_zero_arg_calls(pending[name], func_names_set)
+            try:
+                val = float(_safe_eval_expr(expr, _safe_math_namespace(ns)))
+            except Exception:
+                continue
+            resolved[name] = val
+            ns[name] = val
+            del pending[name]
+            progressed = True
+        if not progressed:
+            break
+
+    ordered = [n for n in items if n in resolved]
+    return ordered, [resolved[n] for n in ordered]
+
+
+def _strip_zero_arg_calls(expr_str, func_names):
+    """Replace ``name()`` with ``name`` for each name in *func_names*.
+
+    The safe expression walker treats ``f()`` as a call (looks up *f* in
+    the namespace and calls it with no args). When *f* is a model function
+    we have only a numeric value, not a callable, so rewrite the call form
+    to a bare name lookup before evaluation.
+    """
+    import re
+
+    out = expr_str
+    for name in func_names:
+        out = re.sub(rf"\b{re.escape(name)}\s*\(\s*\)", name, out)
+    return out
+
+
 # ─── Species initializer re-evaluation ─────────────────────────────
 
 
@@ -1491,12 +1567,20 @@ def _run_nfsim_scan(
     param_overrides=None,
     conc_overrides=None,
     conc_deltas=None,
+    bngmodel=None,
+    bngmodel_params=None,
 ):
     """Execute a parameter_scan with NFsim: fresh NfsimSession per scan point.
 
     NFsim is stateless (no .net model to clone), so each scan point gets a
     fresh session loaded from the BNG XML file.
+
+    When the action requests ``print_functions=>1``, BNGL functions are
+    evaluated post-hoc from the parsed *bngmodel* (BNGsim's NFsim binding
+    does not surface function values directly).
     """
+    import numpy as np
+
     args = action.args
     param_name = _strip_quotes(args.get("parameter", "").strip())
     t_start = float(args.get("t_start", 0))
@@ -1539,6 +1623,30 @@ def _run_nfsim_scan(
             row, row_obs, row_funcs = _scan_result_to_row(
                 result, float(value), print_functions=print_funcs,
             )
+            # NFsim exposes obs values but not BNGL functions; recompute
+            # them from the parsed bngmodel using this point's params + obs.
+            if print_funcs and not row_funcs and bngmodel is not None:
+                obs_dict = dict(zip(row_obs, row[1:1 + len(row_obs)]))
+                point_params = dict(bngmodel_params or {})
+                if param_name:
+                    try:
+                        point_params[param_name] = float(value)
+                    except (TypeError, ValueError):
+                        pass
+                if param_overrides:
+                    for pname, pval in param_overrides.items():
+                        try:
+                            point_params[pname] = float(pval)
+                        except (TypeError, ValueError):
+                            continue
+                fn_names, fn_vals = _evaluate_bngmodel_functions(
+                    bngmodel, point_params, obs_dict,
+                )
+                if fn_names:
+                    row = np.concatenate(
+                        (row, np.asarray(fn_vals, dtype=float))
+                    )
+                    row_funcs = [f"{n}()" for n in fn_names]
             rows.append(row)
             if obs_names is None:
                 obs_names = row_obs
@@ -1690,6 +1798,7 @@ def _run_parameter_scan_bngsim(
     codegen_so="", net_path=None, species_initializers=None,
     protocol_lines=None, xml_path=None, nf_param_overrides=None,
     nf_conc_overrides=None, nf_conc_deltas=None,
+    bngmodel=None, bngmodel_params=None,
 ):
     """Execute a parameter_scan or bifurcate action via BNGsim.
 
@@ -1731,6 +1840,8 @@ def _run_parameter_scan_bngsim(
             param_overrides=nf_param_overrides,
             conc_overrides=nf_conc_overrides,
             conc_deltas=nf_conc_deltas,
+            bngmodel=bngmodel,
+            bngmodel_params=bngmodel_params,
         )
 
     if bngsim_model is None:
@@ -1946,7 +2057,7 @@ def _run_parameter_scan_bngsim(
 def _execute_bngsim_actions(
     actions_items, bngsim_model, output_dir, model_name,
     xml_path=None, net_path=None, protocol_lines=None,
-    bngmodel_params=None,
+    bngmodel_params=None, bngmodel=None,
 ):
     """Walk through BNGL actions in order, executing each via BNGsim.
 
@@ -2164,6 +2275,8 @@ def _execute_bngsim_actions(
                 nf_param_overrides=nf_param_overrides or None,
                 nf_conc_overrides=nf_conc_overrides or None,
                 nf_conc_deltas=nf_conc_deltas or None,
+                bngmodel=bngmodel,
+                bngmodel_params=bngmodel_params,
             )
             continue
 
@@ -2177,6 +2290,8 @@ def _execute_bngsim_actions(
                 nf_param_overrides=nf_param_overrides or None,
                 nf_conc_overrides=nf_conc_overrides or None,
                 nf_conc_deltas=nf_conc_deltas or None,
+                bngmodel=bngmodel,
+                bngmodel_params=bngmodel_params,
             )
             continue
 
@@ -2752,6 +2867,7 @@ def run_bngl_with_bngsim(
             net_path=net_arg,
             protocol_lines=protocol_lines,
             bngmodel_params=bngmodel_params,
+            bngmodel=model,
         )
     else:
         # Pure NF path — execute NF actions directly
@@ -2764,4 +2880,5 @@ def run_bngl_with_bngsim(
             net_path=net_arg,
             protocol_lines=protocol_lines,
             bngmodel_params=bngmodel_params,
+            bngmodel=model,
         )
