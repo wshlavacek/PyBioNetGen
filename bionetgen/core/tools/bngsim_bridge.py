@@ -81,13 +81,16 @@ def _sniff_xml_format(file_path):
     head_lower = head.lower()
 
     is_sbml = "<sbml" in head_lower or "www.sbml.org" in head_lower
+    # BNG XML always reuses an SBML root but has BNG-specific child elements
+    # (capitalization differs: BNG uses "ListOfMoleculeTypes" while SBML uses
+    # "listOfReactions"). Match those tag names directly. Don't match the
+    # bare string "bionetgen" — BNG2.pl writes a "Created by BioNetGen"
+    # comment into its SBML output too, so that substring is ambiguous.
     is_bng = (
         "<listofmoleculetypes" in head_lower
         or "<listofspeciestypes" in head_lower
-        # BNG XML typically has a <model> tag inside a <sbml> root but
-        # with BNG-specific children. Check for BNG-specific structures.
         or "<listofobservables" in head_lower
-        or "bionetgen" in head_lower
+        or "<listofreactionrules" in head_lower
     )
 
     if is_sbml and not is_bng:
@@ -231,7 +234,35 @@ def _write_bng_dat(path, time, data_2d, col_names):
             f.write("  ".join(f"{v:22.12e}" for v in vals) + "\n")
 
 
-def _write_bngsim_results(result, output_dir, model_name, print_functions=False):
+def _append_bng_dat_rows(path, time, data_2d, skip_first=True):
+    """Append data rows to an existing .gdat/.cdat file (no header).
+
+    Used for ``continue=>1`` to extend a prior segment's output. The first
+    row of *time* is normally the previous segment's t_end (a duplicate),
+    so it is skipped by default — matching BNG2.pl's run_network ``-x``.
+    """
+    start = 1 if (skip_first and len(time) > 0) else 0
+    with open(path, "a") as f:
+        for i in range(start, len(time)):
+            vals = [time[i]] + [data_2d[i, j] for j in range(data_2d.shape[1])]
+            f.write("  ".join(f"{v:22.12e}" for v in vals) + "\n")
+
+
+def _append_cdat_rows(cdat_path, result):
+    """Append rows from a fresh BNGsim Result to an existing .cdat file."""
+    import numpy as np
+
+    species = np.asarray(result.species)
+    time = np.asarray(result.time)
+    if species.ndim != 2 or species.shape[0] == 0:
+        return
+    _append_bng_dat_rows(cdat_path, time, species, skip_first=True)
+
+
+def _write_bngsim_results(
+    result, output_dir, model_name,
+    print_functions=False, append=False,
+):
     """Write BNGsim Result to .gdat and .cdat files.
 
     Parameters
@@ -246,6 +277,12 @@ def _write_bngsim_results(result, output_dir, model_name, print_functions=False)
         If True, include BNGL functions (BNGsim "expressions") in .gdat
         output. Matches BNG2.pl's ``print_functions=>1`` behavior.
         Default False, matching BNG2.pl's default.
+    append : bool
+        If True and the target files already exist, append rows from
+        *result* (skipping its first row, which duplicates the prior
+        segment's t_end). Used for ``continue=>1``. If the files do not
+        yet exist, falls back to a fresh write so the first segment of
+        a continuation chain still produces complete output.
     """
     import numpy as np
 
@@ -253,12 +290,9 @@ def _write_bngsim_results(result, output_dir, model_name, print_functions=False)
     gdat_path = os.path.join(output_dir, f"{model_name}.gdat")
     cdat_path = os.path.join(output_dir, f"{model_name}.cdat")
 
-    # .cdat: species concentrations
-    result.to_cdat(cdat_path)
+    do_append = append and os.path.exists(gdat_path) and os.path.exists(cdat_path)
 
-    # .gdat: observables (from "begin groups"), and optionally
-    # BNGL functions (from "begin functions") when print_functions is set.
-    # BNGsim stores BNGL functions as "expressions" in its Result object.
+    # Build the optional functions block once for both write/append paths
     obs_names = list(result.observable_names)
     obs_array = np.asarray(result.observables) if result.n_observables > 0 else np.empty((result.n_times, 0))
 
@@ -269,13 +303,22 @@ def _write_bngsim_results(result, output_dir, model_name, print_functions=False)
     else:
         has_funcs = False
 
+    if has_funcs:
+        combined = np.hstack([obs_array, func_array])
+        combined_names = obs_names + func_names
+    else:
+        combined = obs_array
+        combined_names = obs_names
+
+    if do_append:
+        _append_cdat_rows(cdat_path, result)
+        if result.n_observables > 0 or has_funcs:
+            _append_bng_dat_rows(gdat_path, result.time, combined, skip_first=True)
+        return
+
+    # Fresh write (default and first-segment-of-continuation path)
+    result.to_cdat(cdat_path)
     if result.n_observables > 0 or has_funcs:
-        if has_funcs:
-            combined = np.hstack([obs_array, func_array])
-            combined_names = obs_names + func_names
-        else:
-            combined = obs_array
-            combined_names = obs_names
         _write_bng_dat(gdat_path, result.time, combined, combined_names)
 
 
@@ -812,6 +855,65 @@ def _eval_numeric(expr_str, extra_ns=None):
         raise ValueError(f"Cannot evaluate numeric expression: {expr_str!r}") from None
 
 
+def _model_param_namespace(bngsim_model, fallback=None):
+    """Build a {param_name: float} dict from a BNGsim model.
+
+    Used as ``extra_ns`` for ``_eval_numeric`` so that BNGL actions like
+    ``setConcentration("S0", I0 * kfactor)`` can resolve the parameter
+    names that appear in the value expression.
+
+    If *bngsim_model* is None (pure-NF runs that never load a .net), the
+    optional *fallback* mapping is returned instead — typically the
+    parameter values resolved from the BNGL parameter block.
+    """
+    if bngsim_model is None:
+        return dict(fallback) if fallback else None
+    ns = {}
+    for pname in bngsim_model.param_names:
+        try:
+            ns[pname] = bngsim_model.get_param(pname)
+        except Exception as exc:
+            logger.debug("param ns: get_param(%s) failed: %s", pname, exc)
+    return ns
+
+
+def _resolve_bngmodel_params(bngmodel):
+    """Resolve a parsed bngmodel's parameter block to {name: float}.
+
+    BNGL parameter values are stored as expression strings (e.g. ``"30"``,
+    ``"2*RT"``, ``"koff"``). Iteratively evaluate each one using the
+    already-resolved parameters as a namespace until either all resolve
+    or no further progress is made. Unresolvable parameters are skipped
+    with a debug log — they may be referenced indirectly or be intentional
+    deferred-evaluation expressions.
+    """
+    if bngmodel is None or not getattr(bngmodel, "parameters", None):
+        return {}
+    items = getattr(bngmodel.parameters, "items", None) or {}
+    resolved = {}
+    pending = {name: getattr(p, "value", None) for name, p in items.items()}
+
+    while pending:
+        progressed = False
+        for name in list(pending):
+            expr = pending[name]
+            if expr is None:
+                pending.pop(name)
+                continue
+            try:
+                resolved[name] = _eval_numeric(str(expr), extra_ns=resolved)
+            except ValueError:
+                continue
+            pending.pop(name)
+            progressed = True
+        if not progressed:
+            break
+
+    for name, expr in pending.items():
+        logger.debug("bngmodel param %s=%r unresolved", name, expr)
+    return resolved
+
+
 # ─── Species initializer re-evaluation ─────────────────────────────
 
 
@@ -1273,7 +1375,10 @@ def _run_protocol(
             species_name = sc.group(1)
             conc_str = sc.group(2).strip()
             try:
-                bngsim_model.set_concentration(species_name, _eval_numeric(conc_str))
+                conc_val = _eval_numeric(
+                    conc_str, extra_ns=_model_param_namespace(bngsim_model),
+                )
+                bngsim_model.set_concentration(species_name, conc_val)
             except Exception as exc:
                 logger.warning("protocol: setConcentration(%s, %s) failed: %s", species_name, conc_str, exc)
             # Force a Simulator rebuild on the next simulate line, mirroring
@@ -1288,7 +1393,10 @@ def _run_protocol(
             param_name = sp.group(1)
             param_str = sp.group(2).strip()
             try:
-                bngsim_model.set_param(param_name, _eval_numeric(param_str))
+                param_val = _eval_numeric(
+                    param_str, extra_ns=_model_param_namespace(bngsim_model),
+                )
+                bngsim_model.set_param(param_name, param_val)
             except Exception as exc:
                 logger.warning("protocol: setParameter(%s, %s) failed: %s", param_name, param_str, exc)
             # Force a Simulator rebuild on the next simulate line, mirroring
@@ -1418,17 +1526,51 @@ def _prepare_scan_point(base_model, param_name, value, species_initializers):
     return point_model
 
 
+_DEFAULT_SS_WORKERS = 4
+
+
+def _resolve_ss_workers(default=_DEFAULT_SS_WORKERS):
+    """Resolve the steady-state scan thread pool worker count.
+
+    Reads ``BIONETGEN_SS_WORKERS`` from the environment; falls back to
+    *default* when unset, malformed, or non-positive.
+    """
+    raw = os.environ.get("BIONETGEN_SS_WORKERS")
+    if not raw:
+        return default
+    try:
+        n = int(raw)
+    except (TypeError, ValueError):
+        logger.warning(
+            "BIONETGEN_SS_WORKERS=%r is not an integer; using default %d",
+            raw, default,
+        )
+        return default
+    if n < 1:
+        logger.warning(
+            "BIONETGEN_SS_WORKERS=%d must be >= 1; using default %d",
+            n, default,
+        )
+        return default
+    return n
+
+
 def _run_ss_scan_threaded(
     base_model, param_name, points, species_initializers,
     make_sim_fn, codegen_so, net_path, t_start, t_end, print_funcs,
-    max_workers=4,
+    max_workers=None,
 ):
     """Run steady-state parameter scan with threaded parallelism.
 
     Prepares all point models sequentially (species initializer sync is not
     thread-safe), then submits steady_state() calls to a thread pool.
     Falls back to long time-course per point on non-convergence or error.
+
+    The worker count comes from ``BIONETGEN_SS_WORKERS`` (env var) when
+    *max_workers* is None, falling back to ``_DEFAULT_SS_WORKERS``.
     """
+    if max_workers is None:
+        max_workers = _resolve_ss_workers()
     n_workers = min(len(points), max_workers)
     rows = []
     obs_names = None
@@ -1770,6 +1912,7 @@ def _run_parameter_scan_bngsim(
 def _execute_bngsim_actions(
     actions_items, bngsim_model, output_dir, model_name,
     xml_path=None, net_path=None, protocol_lines=None,
+    bngmodel_params=None,
 ):
     """Walk through BNGL actions in order, executing each via BNGsim.
 
@@ -1807,6 +1950,13 @@ def _execute_bngsim_actions(
     current_poplevel = None
     # Track model time for continue=>1 support
     model_time = 0.0
+    # Track which simulate output basenames have been written this run, so
+    # continue=>1 segments append instead of clobbering the prior segment.
+    written_out_names = set()
+    # For pure-NF runs (bngsim_model is None) we cannot read live parameter
+    # values from a BNGsim Model — track them ourselves so set/setParameter
+    # actions can resolve names like ``setParameter("LT_current","LT_low")``.
+    live_nf_params = dict(bngmodel_params) if bngmodel_params else {}
     # Track parameter overrides for NFsim propagation.
     # NFsim loads from XML and doesn't share state with bngsim_model,
     # so setParameter changes must be explicitly forwarded.
@@ -1962,7 +2112,9 @@ def _execute_bngsim_actions(
                 _write_bngsim_results(
                     result, output_dir, out_name,
                     print_functions=print_funcs,
+                    append=continue_flag and out_name in written_out_names,
                 )
+                written_out_names.add(out_name)
 
             # Update model time for continue=>1 support
             model_time = t_end
@@ -1997,13 +2149,18 @@ def _execute_bngsim_actions(
         # ── setParameter ────────────────────────────────────────
         if atype == "setParameter":
             name, value = _extract_positional_args(action)
-            numeric_value = _eval_numeric(value)
+            numeric_value = _eval_numeric(
+                value,
+                extra_ns=_model_param_namespace(bngsim_model, fallback=live_nf_params),
+            )
             if bngsim_model is not None:
                 try:
                     bngsim_model.set_param(name, numeric_value)
                     logger.debug("setParameter(%s, %s)", name, value)
                 except Exception as e:
                     logger.warning("setParameter(%s, %s) failed: %s", name, value, e)
+            else:
+                live_nf_params[name] = numeric_value
             # Track for NFsim propagation
             nf_param_overrides[name] = numeric_value
             # Invalidate simulator cache — params changed
@@ -2014,7 +2171,10 @@ def _execute_bngsim_actions(
         # ── setConcentration ────────────────────────────────────
         if atype == "setConcentration":
             name, value = _extract_positional_args(action)
-            numeric_value = _eval_numeric(value)
+            numeric_value = _eval_numeric(
+                value,
+                extra_ns=_model_param_namespace(bngsim_model, fallback=live_nf_params),
+            )
             if bngsim_model is not None:
                 try:
                     bngsim_model.set_concentration(name, numeric_value)
@@ -2028,27 +2188,31 @@ def _execute_bngsim_actions(
         # ── addConcentration ────────────────────────────────────
         if atype == "addConcentration":
             name, value = _extract_positional_args(action)
-            numeric_delta = _eval_numeric(value)
+            numeric_delta = _eval_numeric(
+                value,
+                extra_ns=_model_param_namespace(bngsim_model, fallback=live_nf_params),
+            )
             if bngsim_model is not None:
                 try:
                     current = bngsim_model.get_concentration(name)
                     new_val = current + numeric_delta
                     bngsim_model.set_concentration(name, new_val)
                     logger.debug("addConcentration(%s, %s)", name, value)
-                    nf_conc_overrides[name] = round(new_val)
-                    nf_conc_deltas.pop(name, None)
                 except Exception as e:
                     logger.warning("addConcentration(%s, %s) failed: %s", name, value, e)
+            # Track for NFsim propagation as a delta. NFsim's live count can
+            # diverge from the network model (separate stochastic trajectory),
+            # so derive the NFsim target additively rather than from the
+            # network model's concentration.
+            rounded_delta = round(numeric_delta)
+            if name in nf_conc_overrides:
+                nf_conc_overrides[name] += rounded_delta
             else:
-                rounded_delta = round(numeric_delta)
-                if name in nf_conc_overrides:
-                    nf_conc_overrides[name] += rounded_delta
+                new_delta = nf_conc_deltas.get(name, 0) + rounded_delta
+                if new_delta:
+                    nf_conc_deltas[name] = new_delta
                 else:
-                    new_delta = nf_conc_deltas.get(name, 0) + rounded_delta
-                    if new_delta:
-                        nf_conc_deltas[name] = new_delta
-                    else:
-                        nf_conc_deltas.pop(name, None)
+                    nf_conc_deltas.pop(name, None)
             continue
 
         # ── saveConcentrations ──────────────────────────────────
@@ -2510,6 +2674,12 @@ def run_bngl_with_bngsim(
     xml_arg = xml_path if os.path.isfile(xml_path) else None
     net_arg = net_path if os.path.isfile(net_path) else None
 
+    # Resolve the BNGL parameter block once. For pure-NF runs this is the
+    # only source of parameter values; for network-based runs the BNGsim
+    # Model is the source of truth and the dict is used only as a fallback
+    # if a name is missing (defensive — should not happen in practice).
+    bngmodel_params = _resolve_bngmodel_params(model)
+
     if bngsim_model is not None:
         return _execute_bngsim_actions(
             original_actions,
@@ -2519,6 +2689,7 @@ def run_bngl_with_bngsim(
             xml_path=xml_arg,
             net_path=net_arg,
             protocol_lines=protocol_lines,
+            bngmodel_params=bngmodel_params,
         )
     else:
         # Pure NF path — execute NF actions directly
@@ -2530,4 +2701,5 @@ def run_bngl_with_bngsim(
             xml_path=xml_arg,
             net_path=net_arg,
             protocol_lines=protocol_lines,
+            bngmodel_params=bngmodel_params,
         )

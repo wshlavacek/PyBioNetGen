@@ -2460,3 +2460,417 @@ class TestRunNfsimScan:
             # 2 scan points = 2 NfsimSession contexts
             assert mock_bngsim.NfsimSession.call_count == 2
             assert session.initialize.call_count == 2
+
+
+# ─── Regression: parameter-name resolution in setParameter / setConcentration ──
+
+
+class TestParamNameResolution:
+    """setParameter / setConcentration / addConcentration values can reference
+    model parameter names, not just literal numbers. The bridge must resolve
+    those names against the loaded BNGsim model."""
+
+    def _run_actions(self, actions, model):
+        from bionetgen.core.tools.bngsim_bridge import _execute_bngsim_actions
+
+        mock_bngsim = MagicMock()
+        mock_sim = MagicMock()
+        mock_sim.run.return_value = _make_mock_result()
+        mock_bngsim.Simulator.return_value = mock_sim
+
+        with patch(f"{BRIDGE}.bngsim", mock_bngsim), \
+             patch(f"{BRIDGE}.BNGSIM_AVAILABLE", True), \
+             patch(f"{BRIDGE}._try_prepare_codegen", return_value=""), \
+             patch(f"{BRIDGE}._parse_net_species_initializers", return_value=[]), \
+             tempfile.TemporaryDirectory() as tmpdir:
+            _execute_bngsim_actions(actions, model, tmpdir, "test_model")
+
+    def test_set_parameter_resolves_param_name(self):
+        """setParameter("kf", k_init) must look up k_init in the model."""
+        model = _make_mock_model(
+            param_names=["kf", "k_init"],
+            params={"kf": 0.0, "k_init": 0.42},
+        )
+        action = _make_action("setParameter", {'"kf"': None, "k_init": None})
+        self._run_actions([action], model)
+        model.set_param.assert_called_with("kf", 0.42)
+
+    def test_set_concentration_resolves_expression(self):
+        """setConcentration("S0", I0 * kfactor) must resolve both names."""
+        model = _make_mock_model(
+            param_names=["I0", "kfactor"],
+            params={"I0": 100.0, "kfactor": 0.5},
+        )
+        action = _make_action(
+            "setConcentration", {'"S0"': None, "I0*kfactor": None},
+        )
+        self._run_actions([action], model)
+        model.set_concentration.assert_called_with("S0", 50.0)
+
+    def test_add_concentration_resolves_param_name(self):
+        """addConcentration("S0", delta) must resolve `delta` from the model."""
+        model = _make_mock_model(
+            param_names=["delta"],
+            params={"delta": 25.0},
+        )
+        model.get_concentration.return_value = 100.0
+        action = _make_action(
+            "addConcentration", {'"S0"': None, "delta": None},
+        )
+        self._run_actions([action], model)
+        # 100 (current) + 25 (delta) = 125 on the network model side
+        model.set_concentration.assert_called_with("S0", 125.0)
+
+    def test_unresolved_name_still_raises(self):
+        """A value that names an unknown variable must still fail loudly."""
+        from bionetgen.core.tools.bngsim_bridge import _eval_numeric
+
+        with pytest.raises(ValueError, match="Cannot evaluate"):
+            _eval_numeric("not_a_param", extra_ns={"k_known": 1.0})
+
+    def test_resolve_bngmodel_params_iterative(self):
+        """_resolve_bngmodel_params handles parameters that reference each other,
+        regardless of declaration order."""
+        from bionetgen.core.tools.bngsim_bridge import _resolve_bngmodel_params
+
+        bngmodel = MagicMock()
+        bngmodel.parameters.items = {
+            "RT": MagicMock(value="30"),
+            "LT_low": MagicMock(value="150"),
+            "LT_peak": MagicMock(value="2*RT + LT_low"),
+            "koff": MagicMock(value="0.01"),
+            "jm": MagicMock(value="koff"),
+        }
+        resolved = _resolve_bngmodel_params(bngmodel)
+        assert resolved["RT"] == 30.0
+        assert resolved["LT_low"] == 150.0
+        assert resolved["LT_peak"] == 210.0
+        assert resolved["koff"] == 0.01
+        assert resolved["jm"] == 0.01
+
+    def test_resolve_bngmodel_params_unresolvable(self):
+        """Unresolvable parameters are silently dropped, not raised."""
+        from bionetgen.core.tools.bngsim_bridge import _resolve_bngmodel_params
+
+        bngmodel = MagicMock()
+        bngmodel.parameters.items = {
+            "good": MagicMock(value="42"),
+            "bad": MagicMock(value="some_undefined_name"),
+        }
+        resolved = _resolve_bngmodel_params(bngmodel)
+        assert resolved == {"good": 42.0}
+
+    def test_pure_nf_uses_bngmodel_params_fallback(self):
+        """Pure-NF runs (bngsim_model is None) must resolve parameter
+        names from the parsed bngmodel parameter block."""
+        from bionetgen.core.tools.bngsim_bridge import _execute_bngsim_actions
+
+        # Pure-NF action sequence: setParameter then setConcentration
+        # using the parameter that was just set.
+        set_p = _make_action("setParameter", {'"LT_current"': None, "LT_low": None})
+        set_c = _make_action(
+            "setConcentration", {'"L(r,r)"': None, "LT_current": None},
+        )
+        sim_nf = _make_action("simulate_nf", {"t_end": "10", "n_steps": "10"})
+
+        mock_bngsim = MagicMock()
+        with patch(f"{BRIDGE}.bngsim", mock_bngsim), \
+             patch(f"{BRIDGE}.BNGSIM_AVAILABLE", True), \
+             patch(f"{BRIDGE}.BNGSIM_HAS_NFSIM", True), \
+             patch(f"{BRIDGE}._try_prepare_codegen", return_value=""), \
+             patch(f"{BRIDGE}._parse_net_species_initializers", return_value=[]), \
+             patch(f"{BRIDGE}.run_nfsim") as mock_run_nfsim, \
+             tempfile.TemporaryDirectory() as tmpdir:
+            xml_path = os.path.join(tmpdir, "model.xml")
+            with open(xml_path, "w") as f:
+                f.write("<model/>")
+
+            _execute_bngsim_actions(
+                [set_p, set_c, sim_nf], None, tmpdir, "test_model",
+                xml_path=xml_path,
+                bngmodel_params={"LT_low": 150.0, "LT_current": 331.0},
+            )
+
+            kwargs = mock_run_nfsim.call_args.kwargs
+            # setParameter should have stored 150.0 (the resolved value of LT_low)
+            assert kwargs["param_overrides"] == {"LT_current": 150.0}
+            # setConcentration("L(r,r)", LT_current) should see LT_current=150
+            # (the live value after setParameter), not 331 (the BNGL block default).
+            assert kwargs["conc_overrides"] == {"L(r,r)": 150}
+
+
+# ─── Regression: continue=>1 must append, not overwrite ─────────────
+
+
+class TestContinueAppendsOutput:
+    """A second simulate() with continue=>1 and no suffix change must
+    append rows to the prior segment's .gdat / .cdat instead of clobbering
+    them. Matches BNG2.pl ``run_network -x`` semantics."""
+
+    def test_two_segment_continue_appends(self):
+        from bionetgen.core.tools.bngsim_bridge import _execute_bngsim_actions
+
+        # First segment: t = 0..50 (5 rows including endpoints)
+        seg1_n = 6
+        seg1_time = np.linspace(0.0, 50.0, seg1_n)
+        seg1_obs = np.column_stack([
+            np.linspace(100.0, 50.0, seg1_n),
+            np.linspace(0.0, 50.0, seg1_n),
+        ])
+        seg1 = _make_mock_result(
+            obs_names=["A", "B"], obs_data=seg1_obs, n_times=seg1_n, time=seg1_time,
+        )
+        seg1.species = np.zeros((seg1_n, 1))
+
+        # Second segment: t = 50..100 (6 rows; first row duplicates seg1's tail)
+        seg2_n = 6
+        seg2_time = np.linspace(50.0, 100.0, seg2_n)
+        seg2_obs = np.column_stack([
+            np.linspace(50.0, 25.0, seg2_n),
+            np.linspace(50.0, 75.0, seg2_n),
+        ])
+        seg2 = _make_mock_result(
+            obs_names=["A", "B"], obs_data=seg2_obs, n_times=seg2_n, time=seg2_time,
+        )
+        seg2.species = np.zeros((seg2_n, 1))
+
+        model = _make_mock_model()
+        mock_bngsim = MagicMock()
+        mock_sim = MagicMock()
+        mock_sim.run.side_effect = [seg1, seg2]
+        mock_bngsim.Simulator.return_value = mock_sim
+
+        # Make to_cdat write a real file so the append branch sees it exist.
+        def _fake_to_cdat(self_result, path):
+            with open(path, "w") as fh:
+                fh.write("# time S1\n")
+                for t in self_result.time:
+                    fh.write(f"  {t:22.12e}  0.000000000000e+00\n")
+
+        seg1.to_cdat.side_effect = lambda path: _fake_to_cdat(seg1, path)
+        seg2.to_cdat.side_effect = lambda path: _fake_to_cdat(seg2, path)
+
+        action1 = _make_action("simulate_ode", {"t_end": "50", "n_steps": "5"})
+        action2 = _make_action("simulate_ode", {
+            "t_end": "100", "n_steps": "5", "continue": "1",
+        })
+
+        with patch(f"{BRIDGE}.bngsim", mock_bngsim), \
+             patch(f"{BRIDGE}.BNGSIM_AVAILABLE", True), \
+             patch(f"{BRIDGE}._try_prepare_codegen", return_value=""), \
+             patch(f"{BRIDGE}._parse_net_species_initializers", return_value=[]), \
+             tempfile.TemporaryDirectory() as tmpdir:
+            _execute_bngsim_actions(
+                [action1, action2], model, tmpdir, "test_model",
+            )
+
+            gdat = os.path.join(tmpdir, "test_model.gdat")
+            cdat = os.path.join(tmpdir, "test_model.cdat")
+            assert os.path.isfile(gdat)
+            assert os.path.isfile(cdat)
+
+            with open(gdat) as fh:
+                gdat_lines = fh.readlines()
+            # 1 header + 6 (seg1) + 5 (seg2 minus duplicate t=50) = 12 lines
+            assert gdat_lines[0].startswith("# ")
+            assert len(gdat_lines) == 1 + seg1_n + (seg2_n - 1)
+
+            # The duplicate t=50 row from seg2 must be dropped on append
+            time_col_values = [float(line.split()[0]) for line in gdat_lines[1:]]
+            assert time_col_values[seg1_n - 1] == pytest.approx(50.0)
+            assert time_col_values[seg1_n] == pytest.approx(60.0)
+            assert time_col_values[-1] == pytest.approx(100.0)
+
+            # cdat: 1 header + same 11 data rows
+            with open(cdat) as fh:
+                cdat_lines = fh.readlines()
+            assert cdat_lines[0].startswith("# ")
+            assert len(cdat_lines) == 1 + seg1_n + (seg2_n - 1)
+
+    def test_continue_with_different_suffix_does_not_append(self):
+        """If continue=>1 but suffix changes, the second segment is a
+        separate output stream — write fresh, don't append to a foreign file."""
+        from bionetgen.core.tools.bngsim_bridge import _execute_bngsim_actions
+
+        seg1 = _make_mock_result(n_times=4, time=np.linspace(0, 10, 4))
+        seg2 = _make_mock_result(n_times=4, time=np.linspace(10, 20, 4))
+
+        def _fake_to_cdat(self_result, path):
+            with open(path, "w") as fh:
+                fh.write("# time S1\n")
+                for t in self_result.time:
+                    fh.write(f"  {t:22.12e}  0.000000000000e+00\n")
+
+        seg1.to_cdat.side_effect = lambda path: _fake_to_cdat(seg1, path)
+        seg2.to_cdat.side_effect = lambda path: _fake_to_cdat(seg2, path)
+
+        model = _make_mock_model()
+        mock_bngsim = MagicMock()
+        mock_sim = MagicMock()
+        mock_sim.run.side_effect = [seg1, seg2]
+        mock_bngsim.Simulator.return_value = mock_sim
+
+        action1 = _make_action("simulate_ode", {
+            "t_end": "10", "n_steps": "3", "suffix": "first",
+        })
+        action2 = _make_action("simulate_ode", {
+            "t_end": "20", "n_steps": "3", "continue": "1", "suffix": "second",
+        })
+
+        with patch(f"{BRIDGE}.bngsim", mock_bngsim), \
+             patch(f"{BRIDGE}.BNGSIM_AVAILABLE", True), \
+             patch(f"{BRIDGE}._try_prepare_codegen", return_value=""), \
+             patch(f"{BRIDGE}._parse_net_species_initializers", return_value=[]), \
+             tempfile.TemporaryDirectory() as tmpdir:
+            _execute_bngsim_actions(
+                [action1, action2], model, tmpdir, "test_model",
+            )
+
+            first_gdat = os.path.join(tmpdir, "test_model_first.gdat")
+            second_gdat = os.path.join(tmpdir, "test_model_second.gdat")
+            assert os.path.isfile(first_gdat)
+            assert os.path.isfile(second_gdat)
+            with open(second_gdat) as fh:
+                lines = fh.readlines()
+            # Different out_name → fresh write with header + all rows
+            assert lines[0].startswith("# ")
+            assert len(lines) == 1 + 4
+
+
+# ─── Regression: addConcentration must propagate to NFsim as a delta ────
+
+
+class TestAddConcentrationNfsimDelta:
+    """addConcentration must NOT use the network model's count as the
+    NFsim absolute target — NFsim's live count diverges from the network
+    model. Track an additive delta instead."""
+
+    def test_addconcentration_alone_becomes_delta(self):
+        from bionetgen.core.tools.bngsim_bridge import _execute_bngsim_actions
+
+        add = _make_action("addConcentration", {'"A(b)"': None, '50': None})
+        sim_nf = _make_action("simulate_nf", {"t_end": "10", "n_steps": "10"})
+
+        model = _make_mock_model()
+        # Network-model concentration is 100 — older code would have set
+        # nf_conc_overrides["A(b)"] = 150. The fix tracks the delta only.
+        model.get_concentration.return_value = 100.0
+
+        mock_bngsim = MagicMock()
+        with patch(f"{BRIDGE}.bngsim", mock_bngsim), \
+             patch(f"{BRIDGE}.BNGSIM_AVAILABLE", True), \
+             patch(f"{BRIDGE}.BNGSIM_HAS_NFSIM", True), \
+             patch(f"{BRIDGE}._try_prepare_codegen", return_value=""), \
+             patch(f"{BRIDGE}._parse_net_species_initializers", return_value=[]), \
+             patch(f"{BRIDGE}.run_nfsim") as mock_run_nfsim, \
+             tempfile.TemporaryDirectory() as tmpdir:
+            xml_path = os.path.join(tmpdir, "model.xml")
+            with open(xml_path, "w") as f:
+                f.write("<model/>")
+
+            _execute_bngsim_actions(
+                [add, sim_nf], model, tmpdir, "test_model",
+                xml_path=xml_path,
+            )
+
+            mock_run_nfsim.assert_called_once()
+            kwargs = mock_run_nfsim.call_args.kwargs
+            # No prior setConcentration → no overrides, just a delta
+            assert kwargs.get("conc_overrides") in (None, {})
+            assert kwargs.get("conc_deltas") == {"A(b)": 50}
+
+    def test_addconcentration_after_setconcentration_bumps_override(self):
+        """If setConcentration set an absolute target, a subsequent
+        addConcentration should bump that override (not start a new delta)."""
+        from bionetgen.core.tools.bngsim_bridge import _execute_bngsim_actions
+
+        set_c = _make_action("setConcentration", {'"A(b)"': None, '200': None})
+        add = _make_action("addConcentration", {'"A(b)"': None, '50': None})
+        sim_nf = _make_action("simulate_nf", {"t_end": "10", "n_steps": "10"})
+
+        model = _make_mock_model()
+        model.get_concentration.return_value = 200.0
+
+        mock_bngsim = MagicMock()
+        with patch(f"{BRIDGE}.bngsim", mock_bngsim), \
+             patch(f"{BRIDGE}.BNGSIM_AVAILABLE", True), \
+             patch(f"{BRIDGE}.BNGSIM_HAS_NFSIM", True), \
+             patch(f"{BRIDGE}._try_prepare_codegen", return_value=""), \
+             patch(f"{BRIDGE}._parse_net_species_initializers", return_value=[]), \
+             patch(f"{BRIDGE}.run_nfsim") as mock_run_nfsim, \
+             tempfile.TemporaryDirectory() as tmpdir:
+            xml_path = os.path.join(tmpdir, "model.xml")
+            with open(xml_path, "w") as f:
+                f.write("<model/>")
+
+            _execute_bngsim_actions(
+                [set_c, add, sim_nf], model, tmpdir, "test_model",
+                xml_path=xml_path,
+            )
+
+            mock_run_nfsim.assert_called_once()
+            kwargs = mock_run_nfsim.call_args.kwargs
+            assert kwargs.get("conc_overrides") == {"A(b)": 250}
+            # Bumped via override, not a separate delta
+            assert kwargs.get("conc_deltas") in (None, {})
+
+
+# ─── Regression: XML sniffer must not misread BNG-generated SBML ────
+
+
+class TestSbmlWithBioNetGenComment:
+    """BNG2.pl writeSBML emits a 'Created by BioNetGen' comment in the
+    SBML output. The sniffer must not classify that as BNG XML."""
+
+    def _write_xml(self, content):
+        f = tempfile.NamedTemporaryFile(suffix=".xml", mode="w", delete=False)
+        f.write(content)
+        f.close()
+        return f.name
+
+    def test_sbml_with_bionetgen_comment(self):
+        from bionetgen.core.tools.bngsim_bridge import (
+            FORMAT_SBML, _sniff_xml_format,
+        )
+        path = self._write_xml(
+            '<?xml version="1.0" encoding="UTF-8"?>\n'
+            "<!-- Created by BioNetGen 2.9.3  -->\n"
+            '<sbml xmlns="http://www.sbml.org/sbml/level2/version3" level="2" version="3">\n'
+            '  <model id="test">\n'
+            "    <listOfReactions/>\n"
+            "  </model>\n"
+            "</sbml>"
+        )
+        try:
+            assert _sniff_xml_format(path) == FORMAT_SBML
+        finally:
+            os.unlink(path)
+
+
+# ─── Regression: BIONETGEN_SS_WORKERS env var ───────────────────────
+
+
+class TestSsWorkersEnv:
+    def test_default_when_unset(self, monkeypatch):
+        from bionetgen.core.tools.bngsim_bridge import (
+            _DEFAULT_SS_WORKERS, _resolve_ss_workers,
+        )
+        monkeypatch.delenv("BIONETGEN_SS_WORKERS", raising=False)
+        assert _resolve_ss_workers() == _DEFAULT_SS_WORKERS
+
+    def test_overrides_default(self, monkeypatch):
+        from bionetgen.core.tools.bngsim_bridge import _resolve_ss_workers
+        monkeypatch.setenv("BIONETGEN_SS_WORKERS", "8")
+        assert _resolve_ss_workers() == 8
+
+    def test_invalid_falls_back_to_default(self, monkeypatch):
+        from bionetgen.core.tools.bngsim_bridge import _resolve_ss_workers
+        monkeypatch.setenv("BIONETGEN_SS_WORKERS", "not-a-number")
+        assert _resolve_ss_workers(default=3) == 3
+
+    def test_zero_or_negative_falls_back(self, monkeypatch):
+        from bionetgen.core.tools.bngsim_bridge import _resolve_ss_workers
+        monkeypatch.setenv("BIONETGEN_SS_WORKERS", "0")
+        assert _resolve_ss_workers(default=2) == 2
+        monkeypatch.setenv("BIONETGEN_SS_WORKERS", "-1")
+        assert _resolve_ss_workers(default=2) == 2
