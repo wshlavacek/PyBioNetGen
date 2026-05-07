@@ -16,34 +16,51 @@ def test_bionetgen_help():
             assert app.exit_code == 0
 
 
-def test_bionetgen_input():
+def test_bionetgen_input(tmp_path):
+    out_dir = tmp_path / "test"
     argv = [
         "run",
         "-i",
         os.path.join(tfold, "test.bngl"),
         "-o",
-        os.path.join(tfold, "test"),
+        str(out_dir),
     ]
-    to_match = ["test.xml", "test.cdat", "test.gdat", "test.net"]
     with BioNetGenTest(argv=argv) as app:
         app.run()
         assert app.exit_code == 0
-        file_list = os.listdir(os.path.join(tfold, "test"))
-        assert file_list.sort() == to_match.sort()
+        produced = set(os.listdir(out_dir))
+        assert {"test.xml", "test.cdat", "test.gdat", "test.net"} <= produced
 
 
-def test_bionetgen_plot():
-    argv = [
+def test_bionetgen_plot(tmp_path):
+    # generate a fresh .gdat first so the test does not depend on prior runs
+    out_dir = tmp_path / "test"
+    run_argv = [
+        "run",
+        "-i",
+        os.path.join(tfold, "test.bngl"),
+        "-o",
+        str(out_dir),
+    ]
+    with BioNetGenTest(argv=run_argv) as app:
+        app.run()
+        assert app.exit_code == 0
+
+    gdat = out_dir / "test.gdat"
+    png = out_dir / "test.png"
+    assert gdat.is_file()
+
+    plot_argv = [
         "plot",
         "-i",
-        os.path.join(*[tfold, "test", "test.gdat"]),
+        str(gdat),
         "-o",
-        os.path.join(*[tfold, "test", "test.png"]),
+        str(png),
     ]
-    with BioNetGenTest(argv=argv) as app:
+    with BioNetGenTest(argv=plot_argv) as app:
         app.run()
         assert app.exit_code == 0
-        assert os.path.isfile(os.path.join(*[tfold, "test", "test.png"]))
+        assert png.is_file()
 
 
 def test_bionetgen_info():

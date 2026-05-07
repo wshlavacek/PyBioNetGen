@@ -1,6 +1,8 @@
 import glob
 import os
 
+import pytest
+
 import bionetgen as bng
 from bionetgen.main import BioNetGenTest
 
@@ -49,6 +51,26 @@ def test_action_loading():
     assert len(m2.actions) == 0
 
 
+SKIPPED_MODEL_MARKERS = ("test_tfun",)
+
+
+def _is_skipped_model(path):
+    name = os.path.basename(path)
+    return any(marker in name for marker in SKIPPED_MODEL_MARKERS)
+
+
+# Sweeping every model through BNG2.pl + libroadrunner is an integration
+# test that depends on a working perl + BNG vendor + system perf, and it
+# can run for many minutes per model on some builds. Gate it behind an
+# opt-in env var so the default `pytest` is fast and reliable.
+_RUN_MODEL_SWEEPS = os.environ.get("BNG_RUN_MODEL_SWEEPS") == "1"
+_skip_model_sweeps = pytest.mark.skipif(
+    not _RUN_MODEL_SWEEPS,
+    reason="set BNG_RUN_MODEL_SWEEPS=1 to run the full model integration sweep",
+)
+
+
+@_skip_model_sweeps
 def test_model_running_CLI(tmp_path):
     # tests running a list of models using the CLI
     mpattern = os.path.join(tfold, "models") + os.sep + "*.bngl"
@@ -58,7 +80,7 @@ def test_model_running_CLI(tmp_path):
     success = 0
     fails = 0
     for model in models:
-        if "test_tfun" in model:
+        if _is_skipped_model(model):
             continue
         model_name = os.path.basename(model).replace(".bngl", "")
         try:
@@ -90,6 +112,7 @@ def test_model_running_CLI(tmp_path):
     assert fails == 0
 
 
+@_skip_model_sweeps
 def test_model_running_lib():
     # test running a list of models using the library
     mpattern = os.path.join(tfold, "models") + os.sep + "*.bngl"
@@ -99,7 +122,7 @@ def test_model_running_lib():
     success = 0
     fails = 0
     for model in models:
-        if "test_tfun" in model:
+        if _is_skipped_model(model):
             continue
         try:
             bng.run(model)
@@ -121,12 +144,9 @@ def test_model_running_lib():
 
 
 def test_setup_simulator():
-    fpath = os.path.join(tfold, "test.bngl")
-    fpath = os.path.abspath(fpath)
-    try:
-        m = bng.bngmodel(fpath)
-        librr_simulator = m.setup_simulator()
-        res = librr_simulator.simulate(0, 1, 10)
-    except:
-        res = None
+    pytest.importorskip("roadrunner")
+    fpath = os.path.abspath(os.path.join(tfold, "test.bngl"))
+    m = bng.bngmodel(fpath)
+    librr_simulator = m.setup_simulator()
+    res = librr_simulator.simulate(0, 1, 10)
     assert res is not None
