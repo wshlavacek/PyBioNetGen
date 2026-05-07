@@ -1060,10 +1060,15 @@ class TestExecuteBngsimActions:
         result, model, mock_bngsim, mock_sim = self._run([action])
         assert result.process_return == 0
 
-    def test_simulate_pla_raises(self):
+    def test_simulate_pla_skipped_for_bng2pl(self):
+        # BNGsim has no PLA method, so simulate_pla is preserved in the BNGL
+        # for BNG2.pl to run, and the bridge silently skips it during BNGsim
+        # execution. The bridge must not call bngsim.Simulator for it.
         action = _make_action("simulate_pla", {"t_end": "100", "n_steps": "10"})
-        with pytest.raises(BNGSimError, match="pla"):
-            self._run([action])
+        result, model, mock_bngsim, mock_sim = self._run([action])
+        assert result.process_return == 0
+        mock_bngsim.Simulator.assert_not_called()
+        mock_sim.run.assert_not_called()
 
     def test_simulate_with_atol_rtol_seed(self):
         action = _make_action("simulate_ode", {
@@ -1341,6 +1346,88 @@ class TestRunProtocol:
             restore_calls = {c[0][0]: c[0][1] for c in set_calls[1:]}
             assert restore_calls["k1"] == 0.1
             assert restore_calls["k2"] == 0.5
+
+    def test_set_parameter_invalidates_simulator_cache(self):
+        # Pin the protocol path's defensive simulator-rebuild behavior on
+        # setParameter so it stays consistent with _execute_bngsim_actions.
+        # (BNGsim simulators read params fresh on each run(), so this is a
+        # consistency guarantee rather than a correctness fix.)
+        from bionetgen.core.tools.bngsim_bridge import _run_protocol
+
+        model = _make_mock_model()
+        mock_bngsim = MagicMock()
+        mock_sim = MagicMock()
+        mock_result = _make_mock_result()
+        mock_sim.run.return_value = mock_result
+        mock_bngsim.Simulator.return_value = mock_sim
+
+        lines = [
+            'simulate_ode({t_end=>50,n_steps=>10})',
+            'setParameter("k1", 5.0)',
+            'simulate_ode({t_end=>100,n_steps=>10})',
+        ]
+
+        with patch(f"{BRIDGE}.bngsim", mock_bngsim):
+            _run_protocol(model, lines)
+            # Initial ODE sim + rebuild after setParameter = at least 2.
+            assert mock_bngsim.Simulator.call_count >= 2
+
+    def test_set_concentration_invalidates_simulator_cache(self):
+        # Pin the protocol path's defensive simulator-rebuild behavior on
+        # setConcentration so it stays consistent with _execute_bngsim_actions.
+        from bionetgen.core.tools.bngsim_bridge import _run_protocol
+
+        model = _make_mock_model()
+        mock_bngsim = MagicMock()
+        mock_sim = MagicMock()
+        mock_result = _make_mock_result()
+        mock_sim.run.return_value = mock_result
+        mock_bngsim.Simulator.return_value = mock_sim
+
+        lines = [
+            'simulate_ode({t_end=>50,n_steps=>10})',
+            'setConcentration("S1", 200.0)',
+            'simulate_ode({t_end=>100,n_steps=>10})',
+        ]
+
+        with patch(f"{BRIDGE}.bngsim", mock_bngsim):
+            _run_protocol(model, lines)
+            assert mock_bngsim.Simulator.call_count >= 2
+
+    def test_reset_parameters_preserves_psa_poplevel(self):
+        # Regression: resetParameters used to rebuild the simulator eagerly
+        # with method=current_method and codegen_kw. For PSA this crashed
+        # unconditionally (BNGsim raises ValueError because poplevel is
+        # required); for SSA/PSA with codegen it crashed because BNGsim
+        # rejects codegen=True for non-ODE methods. The fix defers rebuild
+        # to the next simulate line, which branches correctly.
+        from bionetgen.core.tools.bngsim_bridge import _run_protocol
+
+        model = _make_mock_model()
+        mock_bngsim = MagicMock()
+        mock_sim = MagicMock()
+        mock_result = _make_mock_result()
+        mock_sim.run.return_value = mock_result
+        mock_bngsim.Simulator.return_value = mock_sim
+
+        lines = [
+            'saveParameters()',
+            'simulate({method=>"psa",poplevel=>50,t_end=>50,n_steps=>10})',
+            'setParameter("k1", 5.0)',
+            'resetParameters()',
+            'simulate({method=>"psa",poplevel=>50,t_end=>100,n_steps=>10})',
+        ]
+
+        with patch(f"{BRIDGE}.bngsim", mock_bngsim):
+            _run_protocol(model, lines)
+            psa_calls = [
+                c for c in mock_bngsim.Simulator.call_args_list
+                if c.kwargs.get("method") == "psa"
+            ]
+            # Two psa simulate lines → at least two psa rebuilds, both with poplevel.
+            assert len(psa_calls) >= 2
+            for c in psa_calls:
+                assert c.kwargs.get("poplevel") == 50.0
 
 
 # ─── _run_parameter_scan_bngsim ──────────────────────────────────────

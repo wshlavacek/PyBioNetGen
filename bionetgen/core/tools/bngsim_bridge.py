@@ -679,6 +679,27 @@ def _strip_quotes(s):
     return s
 
 
+def _is_pla_action(action):
+    """Return True if this action requests PLA simulation.
+
+    BNGsim does not implement PLA, so PLA simulations and PLA-method
+    parameter scans are deferred to BNG2.pl: the action is preserved in
+    the BNGL handed to BNG2.pl and skipped during BNGsim execution.
+    """
+    if action.type == "simulate_pla":
+        return True
+    args = action.args or {}
+    method_raw = args.get("method")
+    if not isinstance(method_raw, str):
+        return False
+    method = _strip_quotes(method_raw.strip())
+    if action.type == "simulate" and method == "pla":
+        return True
+    if action.type in ("parameter_scan", "bifurcate") and method == "pla":
+        return True
+    return False
+
+
 def _safe_math_namespace(extra=None):
     """Build a safe namespace for evaluating numeric expressions.
 
@@ -1255,6 +1276,10 @@ def _run_protocol(
                 bngsim_model.set_concentration(species_name, _eval_numeric(conc_str))
             except Exception as exc:
                 logger.warning("protocol: setConcentration(%s, %s) failed: %s", species_name, conc_str, exc)
+            # Force a Simulator rebuild on the next simulate line, mirroring
+            # the defensive pattern in _execute_bngsim_actions.
+            current_method = None
+            current_poplevel = None
             continue
 
         # ── setParameter ──
@@ -1266,11 +1291,19 @@ def _run_protocol(
                 bngsim_model.set_param(param_name, _eval_numeric(param_str))
             except Exception as exc:
                 logger.warning("protocol: setParameter(%s, %s) failed: %s", param_name, param_str, exc)
+            # Force a Simulator rebuild on the next simulate line, mirroring
+            # the defensive pattern in _execute_bngsim_actions.
+            current_method = None
+            current_poplevel = None
             continue
 
         # ── resetConcentrations ──
         if _resetconc_re.search(line):
             bngsim_model.reset()
+            # Force a Simulator rebuild on the next simulate line, mirroring
+            # the defensive pattern in _execute_bngsim_actions.
+            current_method = None
+            current_poplevel = None
             continue
 
         # ── saveConcentrations ──
@@ -1295,8 +1328,15 @@ def _run_protocol(
                     bngsim_model.set_param(pname, pval)
                 except Exception as exc:
                     logger.warning("protocol: resetParameters set_param(%s, %s) failed: %s", pname, pval, exc)
-            # Invalidate simulator — params changed
-            sim = bngsim.Simulator(bngsim_model, method=current_method, **codegen_kw)
+            # Defer Simulator rebuild to the next simulate line. The previous
+            # eager rebuild called ``bngsim.Simulator(model, method=current_method,
+            # **codegen_kw)``, which crashed unconditionally when current_method
+            # was "psa" (BNGsim raises ValueError because poplevel is required)
+            # or when codegen was active for ssa/psa (BNGsim rejects codegen=True
+            # for non-ODE). Lazy rebuild routes through the simulate-line logic
+            # which branches correctly on method/poplevel/codegen.
+            current_method = None
+            current_poplevel = None
             continue
 
         logger.debug("protocol: skipping unrecognized command: %s", line)
@@ -1815,24 +1855,18 @@ def _execute_bngsim_actions(
         if atype in _BNG2PL_ACTIONS:
             continue
 
+        # PLA is not implemented in BNGsim — BNG2.pl ran it during preprocessing.
+        if _is_pla_action(action):
+            continue
+
         # ── simulate_* ──────────────────────────────────────────
         if atype.startswith("simulate"):
             sp = _parse_simulate_params(action)
             if sp is None:
-                if atype == "simulate_pla":
-                    raise BNGSimError(
-                        "simulate_pla is not supported by BNGsim. "
-                        "Use simulate_ode, simulate_ssa, or simulate_psa."
-                    )
                 logger.warning("Unrecognized simulate action: %s", atype)
                 continue
 
             method = sp["method"]
-            if method == "pla":
-                raise BNGSimError(
-                    "method='pla' is not supported by BNGsim. "
-                    "Use 'ode', 'ssa', or 'psa' instead."
-                )
 
             t_start, t_end = sp["t_start"], sp["t_end"]
             n_steps = sp["n_steps"]
@@ -2378,7 +2412,11 @@ def run_bngl_with_bngsim(
         "saveConcentrations", "resetConcentrations",
         "saveParameters", "resetParameters",
     })
-    preserved_actions = [a for a in original_actions if a.type not in _BNGSIM_HANDLED]
+    # PLA actions stay in the BNGL: BNGsim has no PLA, so BNG2.pl runs them.
+    preserved_actions = [
+        a for a in original_actions
+        if a.type not in _BNGSIM_HANDLED or _is_pla_action(a)
+    ]
     model.actions.clear_actions()
     if needs_network:
         model.add_action("generate_network", {"overwrite": 1})
