@@ -1084,12 +1084,14 @@ class TestCSimulator:
         fake_model.species = {}
         fake_compiler = mock.MagicMock()
         mock_conf_get = mock.MagicMock(side_effect=lambda key: None)
+        fake_conf = mock.MagicMock()
+        fake_conf.get = mock_conf_get
 
         def fake_compile(self):
             self.lib_file = "/tmp/fake/libcsim.so"
 
         with mock.patch.object(
-            csim_module.conf, "get", mock_conf_get
+            csim_module, "get_conf", return_value=fake_conf
         ), mock.patch.object(csim_module, "logger") as mock_logger, mock.patch.object(
             csim_module.bionetgen, "bngmodel", return_value=fake_model
         ), mock.patch.object(
@@ -1126,9 +1128,11 @@ class TestCSimulator:
                 "cvode_lib": "/tmp/lib",
             }[key]
         )
+        fake_conf = mock.MagicMock()
+        fake_conf.get = mock_conf_get
 
         with mock.patch.object(
-            csim_module.conf, "get", mock_conf_get
+            csim_module, "get_conf", return_value=fake_conf
         ), mock.patch.object(csim_module, "logger") as mock_logger:
             with pytest.raises(
                 BNGFormatError,
