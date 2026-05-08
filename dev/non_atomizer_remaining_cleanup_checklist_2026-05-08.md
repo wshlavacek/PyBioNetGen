@@ -10,7 +10,9 @@ Purpose: capture the still-relevant cleanup work after the recent runtime, round
 
 Non-Atomizer cleanup is mostly done, but not fully done.
 
-The highest-priority remaining task is in `bionetgen/core/tools/bngsim_bridge.py`. That task includes the `t_end=>24*60*6` defect and the broader arithmetic-expression handling gap in the bngsim-backed BNGL action/protocol path.
+The `bionetgen/core/tools/bngsim_bridge.py` arithmetic-expression / exception-cleanup slice is complete.
+
+The highest-priority remaining task is now tightening action parsing and validation in `bionetgen/modelapi`.
 
 ## Recently Completed Work
 
@@ -19,19 +21,20 @@ The highest-priority remaining task is in `bionetgen/core/tools/bngsim_bridge.py
 - [x] Fixed the BNGL round-trip lossless regressions we found in the model/modelapi path.
 - [x] Made dev checks provision `BNG2.pl`, prefer local `bngsim` when available, and install `bngsim` otherwise.
 - [x] Forced the opt-in full model sweep onto the subprocess/`BNG2.pl` path instead of the bngsim path.
+- [x] Finished the `bngsim_bridge.py` arithmetic-expression / exception-cleanup slice, including the two known bngsim-backed BNGL repros and targeted regression coverage.
 
 ## Remaining Checklist
 
 ### 1. Finish `bngsim_bridge.py` correctness and exception cleanup
 
-- [ ] Fix arithmetic-expression handling for numeric action/protocol arguments in the bngsim-backed path.
-- [ ] Cover both known repros:
+- [x] Fix arithmetic-expression handling for numeric action/protocol arguments in the bngsim-backed path.
+- [x] Cover both known repros:
   - `simulate({method=>"psa",t_end=>24*60*6,...})`
   - `setConcentration("TNF()",((1/52)*50000/0.04))`
-- [ ] Make the fix general rather than special-casing those two models.
-- [ ] Add regression tests that exercise action execution and protocol execution through the bridge.
-- [ ] Narrow or justify the remaining broad exception handling in `bngsim_bridge.py`, especially around numeric evaluation and protocol/action execution.
-- [ ] Document the intended error contract for unsupported or invalid numeric expressions.
+- [x] Make the fix general rather than special-casing those two models.
+- [x] Add regression tests that exercise action execution and protocol execution through the bridge.
+- [x] Narrow or justify the remaining broad exception handling in `bngsim_bridge.py`, especially around numeric evaluation and protocol/action execution.
+- [x] Document the intended error contract for unsupported or invalid numeric expressions.
 
 ### 2. Tighten action parsing and validation in `modelapi`
 
@@ -70,19 +73,19 @@ The highest-priority remaining task is in `bionetgen/core/tools/bngsim_bridge.py
 
 ## Immediate Next Session
 
-Work the bridge bug first.
+Work the `modelapi` action parsing / validation pass next.
 
-Concrete goal: make the bngsim-backed BNGL action/protocol path handle arithmetic expressions losslessly enough for numeric arguments, starting with the `t_end=>24*60*6` failure and the protocol `setConcentration(...)` expression case.
+Concrete goal: tighten non-Atomizer action parsing / validation in `modelapi` so parse-time and direct-construction behavior stay aligned, starting with action-argument schema handling and malformed positional-vs-keyword cases.
 
 Likely touch points:
 
-- `bionetgen/core/tools/bngsim_bridge.py`
-- targeted bridge/model tests under `tests/`
+- `bionetgen/modelapi/**`
+- targeted model/modelapi tests under `tests/`
 
 Definition of done for that session:
 
-- reproduction is captured by tests
-- the fix handles general arithmetic expressions, not just the known literals
+- parse-time and direct-construction behavior agree for the owned action shapes
+- malformed action argument shapes fail consistently
 - targeted tests pass through `scripts/run_dev_checks.py`
 - the change is committed atomically
 
