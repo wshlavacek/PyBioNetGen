@@ -21,3 +21,11 @@ tolerances:
   blbr_cooperativity_posner2004/blbr_cooperativity_posner2004_rings.bngl:
     abs: 100.0
     rel: 10.0
+  # NFsim time-course (no scan, no -bscb plumbing). Bridge runs across
+  # five seeds cluster within ~25 of each other at t=3000 and bracket
+  # the reference value, confirming the diff is single-trajectory
+  # Poisson noise rather than algorithmic drift. Mass conservation
+  # (FreeLsites = 3*NL - Bonds) holds in both runs.
+  tlbr_yang2008/tlbr_yang2008.bngl:
+    abs: 100.0
+    rel: 1.0
