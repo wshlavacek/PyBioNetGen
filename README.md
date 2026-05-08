@@ -114,6 +114,10 @@ $ make test
 `make test` and CI both run the same uv-based source-tree checks: `pytest`
 first, then `mypy`.
 
+Tests that rely on optional extras (`bionetgen[atomizer]`, `bngsim`) or a
+working BioNetGen runtime (`BNG2.pl` via a vendored bundle, `BNGPATH`, or
+`PATH`) are skipped automatically when those pieces are unavailable.
+
 Editable installs no longer trigger BioNetGen bundle downloads. Local
 development stays source-tree based by default, and vendoring the platform
 bundles is now an explicit maintenance step for release work.

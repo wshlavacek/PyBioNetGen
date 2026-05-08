@@ -140,6 +140,7 @@ class TestCliMethodDefaults:
                 app.run()
 
         assert mock_run.call_args.kwargs["method"] is None
+        assert mock_run.call_args.kwargs["timeout"] is None
 
     def test_cli_run_passes_explicit_method_override(self):
         from bionetgen.main import BioNetGenTest
@@ -155,6 +156,21 @@ class TestCliMethodDefaults:
                 app.run()
 
         assert mock_run.call_args.kwargs["method"] == "ode"
+
+    def test_cli_run_passes_timeout_override(self):
+        from bionetgen.main import BioNetGenTest
+
+        with patch(f"{BRIDGE}.detect_input_format", return_value="bngl"), \
+             patch(f"{BRIDGE}.BNGSIM_AVAILABLE", True), \
+             patch(f"{BRIDGE}.run_bngl_with_bngsim", return_value=MagicMock()) as mock_run, \
+             patch("bionetgen.main.test_perl"):
+
+            with BioNetGenTest(
+                argv=["run", "-i", "model.bngl", "-o", "/tmp/out", "--timeout", "17"]
+            ) as app:
+                app.run()
+
+        assert mock_run.call_args.kwargs["timeout"] == 17
 
 
 class TestDirectInputMethodDefaults:

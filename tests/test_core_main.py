@@ -14,12 +14,20 @@ class TestRunCLI:
         app.pargs.output = "/tmp/out"
         app.pargs.log_file = None
         app.pargs.traceback_depth = 0
+        app.pargs.timeout = 17
         app.config.get.return_value = "/fake/bng"
         with mock.patch("bionetgen.core.main.BNGCLI") as MockCLI:
             mock_cli = mock.MagicMock()
             MockCLI.return_value = mock_cli
             runCLI(app)
-            MockCLI.assert_called_once()
+            MockCLI.assert_called_once_with(
+                "test.bngl",
+                "/tmp/out",
+                "/fake/bng",
+                log_file=None,
+                timeout=17,
+                app=app,
+            )
             mock_cli.run.assert_called_once()
 
 

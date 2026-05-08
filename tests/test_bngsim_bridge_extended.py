@@ -3192,14 +3192,14 @@ class TestCodegenTfunGuard:
             called["yes"] = True
             return "/tmp/fake.so"
 
-        # Patch the lazy import inside _try_prepare_codegen via the bngsim
-        # module attribute it pulls from.
-        import bngsim
-        monkeypatch.setattr(bngsim, "prepare_codegen", fake_prepare, raising=False)
-
-        out = bb._try_prepare_codegen(str(net))
-        assert called["yes"]
-        assert out == "/tmp/fake.so"
+        # _try_prepare_codegen imports bngsim lazily, so patch sys.modules
+        # instead of requiring the real optional dependency.
+        mock_bngsim = MagicMock()
+        mock_bngsim.prepare_codegen.side_effect = fake_prepare
+        with patch.dict("sys.modules", {"bngsim": mock_bngsim}):
+            out = bb._try_prepare_codegen(str(net))
+            assert called["yes"]
+            assert out == "/tmp/fake.so"
 
     def test_no_codegen_env_short_circuits(self, tmp_path, monkeypatch):
         from bionetgen.core.tools.bngsim_bridge import _try_prepare_codegen

@@ -5,7 +5,7 @@ from bionetgen.main import BioNetGenTest
 tfold = os.path.dirname(__file__)
 
 
-def test_atomize_flat():
+def test_atomize_flat(require_atomizer):
     if not os.path.exists(os.path.join(tfold, "test")):
         os.mkdir(os.path.join(tfold, "test"))
     argv = [
@@ -23,7 +23,7 @@ def test_atomize_flat():
         assert file_list.sort() == to_match.sort()
 
 
-def test_atomize_atomized():
+def test_atomize_atomized(require_atomizer):
     if not os.path.exists(os.path.join(tfold, "test")):
         os.mkdir(os.path.join(tfold, "test"))
     argv = [

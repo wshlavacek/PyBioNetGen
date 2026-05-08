@@ -16,7 +16,7 @@ def test_bionetgen_help():
             assert app.exit_code == 0
 
 
-def test_bionetgen_input(tmp_path):
+def test_bionetgen_input(tmp_path, require_bng2):
     out_dir = tmp_path / "test"
     argv = [
         "run",
@@ -32,7 +32,7 @@ def test_bionetgen_input(tmp_path):
         assert {"test.xml", "test.cdat", "test.gdat", "test.net"} <= produced
 
 
-def test_bionetgen_plot(tmp_path):
+def test_bionetgen_plot(tmp_path, require_bng2):
     # generate a fresh .gdat first so the test does not depend on prior runs
     out_dir = tmp_path / "test"
     run_argv = [

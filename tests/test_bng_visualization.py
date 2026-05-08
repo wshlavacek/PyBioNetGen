@@ -6,7 +6,7 @@ from bionetgen.main import BioNetGenTest
 tfold = os.path.dirname(__file__)
 
 
-def test_bionetgen_visualize(tmp_path):
+def test_bionetgen_visualize(tmp_path, require_bng2):
     vis_types = [
         "contactmap",
         "ruleviz_pattern",

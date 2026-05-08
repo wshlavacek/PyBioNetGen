@@ -62,8 +62,11 @@ def _is_skipped_model(path):
 # Sweeping every model through BNG2.pl + libroadrunner is an integration
 # test that depends on a working perl + BNG vendor + system perf, and it
 # can run for many minutes per model on some builds. Gate it behind an
-# opt-in env var so the default `pytest` is fast and reliable.
+# opt-in env var so the default `pytest` is fast and reliable. Even when
+# opted in, keep a per-model timeout so unsupported/degenerate cases fail
+# fast instead of hanging indefinitely.
 _RUN_MODEL_SWEEPS = os.environ.get("BNG_RUN_MODEL_SWEEPS") == "1"
+_MODEL_SWEEP_TIMEOUT = int(os.environ.get("BNG_MODEL_SWEEP_TIMEOUT", "300"))
 _skip_model_sweeps = pytest.mark.skipif(
     not _RUN_MODEL_SWEEPS,
     reason="set BNG_RUN_MODEL_SWEEPS=1 to run the full model integration sweep",
@@ -71,7 +74,7 @@ _skip_model_sweeps = pytest.mark.skipif(
 
 
 @_skip_model_sweeps
-def test_model_running_CLI(tmp_path):
+def test_model_running_CLI(tmp_path, require_bng2):
     # tests running a list of models using the CLI
     mpattern = os.path.join(tfold, "models") + os.sep + "*.bngl"
     models = glob.glob(mpattern)
@@ -90,6 +93,8 @@ def test_model_running_CLI(tmp_path):
                 model,
                 "-o",
                 str(tmp_path / model_name),
+                "--timeout",
+                str(_MODEL_SWEEP_TIMEOUT),
             ]
             with BioNetGenTest(argv=argv) as app:
                 app.run()
@@ -113,7 +118,7 @@ def test_model_running_CLI(tmp_path):
 
 
 @_skip_model_sweeps
-def test_model_running_lib():
+def test_model_running_lib(require_bng2):
     # test running a list of models using the library
     mpattern = os.path.join(tfold, "models") + os.sep + "*.bngl"
     models = glob.glob(mpattern)
@@ -125,7 +130,7 @@ def test_model_running_lib():
         if _is_skipped_model(model):
             continue
         try:
-            bng.run(model)
+            bng.run(model, timeout=_MODEL_SWEEP_TIMEOUT)
             success += 1
             model = os.path.split(model)
             model = model[1]
@@ -143,7 +148,7 @@ def test_model_running_lib():
     assert fails == 0
 
 
-def test_setup_simulator():
+def test_setup_simulator(require_bng2):
     pytest.importorskip("roadrunner")
     fpath = os.path.abspath(os.path.join(tfold, "test.bngl"))
     m = bng.bngmodel(fpath)

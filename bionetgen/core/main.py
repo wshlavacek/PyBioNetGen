@@ -27,12 +27,20 @@ def runCLI(app):
     inp_file = args.input
     output = args.output
     log_file = args.log_file
+    timeout = getattr(args, "timeout", None)
     # if you set args.bngpath it should take precedence
     app.log.debug("Pulling BNG path from config", f"{__file__} : runCLI()")
     config_bngpath = config.get("bionetgen", "bngpath")
     # and instantiates the CLI object
     app.log.debug("Instantiating BNGCLI object", f"{__file__} : runCLI()")
-    cli = BNGCLI(inp_file, output, config_bngpath, log_file=log_file, app=app)
+    cli = BNGCLI(
+        inp_file,
+        output,
+        config_bngpath,
+        log_file=log_file,
+        timeout=timeout,
+        app=app,
+    )
     cli.stdout = config.get("bionetgen", "stdout")
     cli.stderr = config.get("bionetgen", "stderr")
     app.log.debug("Running", f"{__file__} : runCLI()")

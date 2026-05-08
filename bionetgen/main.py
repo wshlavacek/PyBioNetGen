@@ -162,6 +162,17 @@ class BNGBase(cement.Controller):
                     "dest": "method",
                 },
             ),
+            (
+                ["--timeout"],
+                {
+                    "help": "Optional timeout in seconds for the BNG2.pl preprocessing "
+                    "or subprocess execution step. Applies to BNGL inputs, including "
+                    "the hybrid BNGsim path.",
+                    "default": None,
+                    "type": int,
+                    "dest": "timeout",
+                },
+            ),
         ],
     )
     def run(self):
@@ -217,7 +228,7 @@ class BNGBase(cement.Controller):
                 method=args.method,
                 suppress=False,
                 log_file=args.log_file,
-                timeout=None,
+                timeout=args.timeout,
                 app=self.app,
             )
         elif use_bngsim and fmt not in (FORMAT_BNGL,):
