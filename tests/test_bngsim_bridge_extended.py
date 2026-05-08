@@ -1297,6 +1297,24 @@ class TestRunProtocol:
             result = _run_protocol(model, lines)
             assert result is mock_result
 
+    def test_simulate_action_accepts_arithmetic_expressions(self):
+        from bionetgen.core.tools.bngsim_bridge import _run_protocol
+
+        model = _make_mock_model()
+        mock_bngsim = MagicMock()
+        mock_sim = MagicMock()
+        mock_result = _make_mock_result()
+        mock_sim.run.return_value = mock_result
+        mock_bngsim.Simulator.return_value = mock_sim
+
+        lines = ['simulate({method=>"psa",t_end=>24*60*6,n_steps=>5*2,poplevel=>10*10})']
+
+        with patch(f"{BRIDGE}.bngsim", mock_bngsim):
+            result = _run_protocol(model, lines)
+            assert result is mock_result
+            mock_bngsim.Simulator.assert_any_call(model, method="psa", poplevel=100.0)
+            mock_sim.run.assert_called_once_with(t_span=(0.0, 8640.0), n_points=11)
+
     def test_set_parameter_in_protocol(self):
         from bionetgen.core.tools.bngsim_bridge import _run_protocol
 
@@ -1325,6 +1343,35 @@ class TestRunProtocol:
         with patch(f"{BRIDGE}.bngsim", mock_bngsim):
             _run_protocol(model, lines)
             model.set_concentration.assert_called_with("S1", 200.0)
+
+    def test_set_concentration_arithmetic_expression_in_protocol(self):
+        from bionetgen.core.tools.bngsim_bridge import _run_protocol
+
+        model = _make_mock_model()
+        mock_bngsim = MagicMock()
+        mock_sim = MagicMock()
+        mock_bngsim.Simulator.return_value = mock_sim
+
+        lines = ['setConcentration("TNF()",((1/52)*50000/0.04))']
+
+        with patch(f"{BRIDGE}.bngsim", mock_bngsim):
+            _run_protocol(model, lines)
+            model.set_concentration.assert_called_with(
+                "TNF()", pytest.approx((1 / 52) * 50000 / 0.04),
+            )
+
+    def test_invalid_numeric_expression_in_protocol_raises(self):
+        from bionetgen.core.tools.bngsim_bridge import _run_protocol
+
+        model = _make_mock_model()
+        mock_bngsim = MagicMock()
+        mock_bngsim.Simulator.return_value = MagicMock()
+
+        lines = ['setConcentration("S1", unknown_symbol)']
+
+        with patch(f"{BRIDGE}.bngsim", mock_bngsim):
+            with pytest.raises(ValueError, match="Cannot evaluate numeric expression"):
+                _run_protocol(model, lines)
 
     def test_save_reset_concentrations_in_protocol(self):
         from bionetgen.core.tools.bngsim_bridge import _run_protocol
@@ -2152,6 +2199,46 @@ class TestRunBnglWithBngsim:
         with patch(f"{BRIDGE}.BNGSIM_AVAILABLE", False):
             with pytest.raises(BNGSimError, match="not available"):
                 run_bngl_with_bngsim("/model.bngl", "/output", "/bngpath")
+
+    def test_real_model_action_expression_reaches_executor(self):
+        from bionetgen.core.tools.bngsim_bridge import (
+            _parse_simulate_params,
+            run_bngl_with_bngsim,
+        )
+        from bionetgen.modelapi.model import bngmodel
+
+        model_path = os.path.join(
+            os.path.dirname(__file__),
+            "models",
+            "test_partial_dynamical_scaling.bngl",
+        )
+        model_name = bngmodel(model_path).model_name
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            net_path = os.path.join(tmpdir, f"{model_name}.net")
+            with open(net_path, "w") as f:
+                f.write("# empty net\n")
+
+            mock_cli = MagicMock()
+            mock_cli.result = MagicMock(process_return=0)
+
+            mock_bngsim = MagicMock()
+            mock_bngsim.Model.from_net.return_value = _make_mock_model()
+            mock_execute = MagicMock(return_value=MagicMock(process_return=0))
+
+            with patch(f"{BRIDGE}.BNGSIM_AVAILABLE", True), \
+                 patch(f"{BRIDGE}.bngsim", mock_bngsim), \
+                 patch("bionetgen.core.tools.cli.BNGCLI", return_value=mock_cli), \
+                 patch(f"{BRIDGE}._execute_bngsim_actions", mock_execute):
+                result = run_bngl_with_bngsim(model_path, tmpdir, "/bngpath")
+
+            assert result.process_return == 0
+            mock_execute.assert_called_once()
+            actions = mock_execute.call_args.args[0]
+            simulate_action = next(a for a in actions if a.type == "simulate")
+            sp = _parse_simulate_params(simulate_action)
+            assert sp["method"] == "psa"
+            assert sp["t_end"] == pytest.approx(24 * 60 * 6)
 
     def test_basic_flow(self):
         from bionetgen.core.tools.bngsim_bridge import run_bngl_with_bngsim

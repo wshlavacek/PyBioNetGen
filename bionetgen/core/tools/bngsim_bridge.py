@@ -954,6 +954,8 @@ def _eval_numeric(expr_str, extra_ns=None):
     Handles plain floats and arithmetic/math expressions like
     ``((1/52)*50000/0.04)`` or ``exp(k) * 100``. If *extra_ns* is provided,
     those names are available during evaluation (e.g., model parameters).
+    Unsupported syntax, unknown names, and arithmetic/domain errors are
+    normalized to ``ValueError`` so callers get a stable contract.
     """
     try:
         return float(expr_str)
@@ -961,8 +963,8 @@ def _eval_numeric(expr_str, extra_ns=None):
         pass
     ns = _safe_math_namespace(extra_ns)
     try:
-        return float(_safe_eval_expr(expr_str, ns))
-    except Exception:
+        return float(_safe_eval_expr(str(expr_str), ns))
+    except (ArithmeticError, TypeError, ValueError):
         raise ValueError(f"Cannot evaluate numeric expression: {expr_str!r}") from None
 
 
@@ -1514,7 +1516,99 @@ def _extract_positional_args(action):
     return name, value
 
 
-def _resolve_sample_times(args):
+def _split_top_level_commas(text):
+    """Split a comma-delimited string while preserving nested expressions."""
+    parts = []
+    start = 0
+    quote = None
+    escaped = False
+    paren_depth = 0
+    bracket_depth = 0
+    brace_depth = 0
+
+    for idx, char in enumerate(text):
+        if quote is not None:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == quote:
+                quote = None
+            continue
+
+        if char in ('"', "'"):
+            quote = char
+            continue
+        if char == "(":
+            paren_depth += 1
+            continue
+        if char == ")":
+            paren_depth = max(0, paren_depth - 1)
+            continue
+        if char == "[":
+            bracket_depth += 1
+            continue
+        if char == "]":
+            bracket_depth = max(0, bracket_depth - 1)
+            continue
+        if char == "{":
+            brace_depth += 1
+            continue
+        if char == "}":
+            brace_depth = max(0, brace_depth - 1)
+            continue
+        if char == "," and not (paren_depth or bracket_depth or brace_depth):
+            part = text[start:idx].strip()
+            if part:
+                parts.append(part)
+            start = idx + 1
+
+    tail = text[start:].strip()
+    if tail:
+        parts.append(tail)
+    return parts
+
+
+def _extract_call_body(line, call_name):
+    """Return the raw ``(...)`` body for a protocol call, or None."""
+    match = re.match(rf"{re.escape(call_name)}\s*\(", line)
+    if match is None:
+        return None
+    open_paren = line.find("(", match.start())
+    quote = None
+    escaped = False
+    depth = 0
+
+    for idx in range(open_paren, len(line)):
+        char = line[idx]
+        if quote is not None:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == quote:
+                quote = None
+            continue
+
+        if char in ('"', "'"):
+            quote = char
+            continue
+        if char == "(":
+            depth += 1
+            continue
+        if char == ")":
+            depth -= 1
+            if depth == 0:
+                trailer = line[idx + 1:].strip()
+                if trailer and trailer != ";":
+                    return None
+                return line[open_paren + 1:idx].strip()
+            continue
+
+    return None
+
+
+def _resolve_sample_times(args, extra_ns=None):
     """Extract and validate sample_times from parsed action args.
 
     Parameters
@@ -1534,18 +1628,26 @@ def _resolve_sample_times(args):
     if raw is None:
         return None
 
-    # Parse from string "[1,5,10,20]" to list of floats
     if isinstance(raw, str):
         raw = raw.strip().strip("[]")
         if not raw:
             return None
         try:
-            sample_times = sorted(float(v.strip()) for v in raw.split(","))
-        except (ValueError, TypeError):
+            sample_times = sorted(
+                _eval_numeric(v.strip(), extra_ns=extra_ns)
+                for v in _split_top_level_commas(raw)
+            )
+        except ValueError:
             logger.warning("sample_times: could not parse %r — ignoring", raw)
             return None
     elif isinstance(raw, (list, tuple)):
-        sample_times = sorted(float(t) for t in raw)
+        try:
+            sample_times = sorted(
+                _eval_numeric(t, extra_ns=extra_ns) for t in raw
+            )
+        except ValueError:
+            logger.warning("sample_times: could not parse %r — ignoring", raw)
+            return None
     else:
         return None
 
@@ -1568,19 +1670,20 @@ def _resolve_sample_times(args):
 
     # If t_end is also specified, append it (BioNetGen compat)
     if "t_end" in args:
-        t_end = float(args["t_end"])
+        t_end = _eval_numeric(args["t_end"], extra_ns=extra_ns)
         if t_end > sample_times[-1]:
             sample_times.append(t_end)
 
     return sample_times
 
 
-def _parse_simulate_params(action):
+def _parse_simulate_params(action, extra_ns=None):
     """Extract simulation parameters from a simulate_* Action.
 
     Returns dict with all simulation-relevant keys, or None if the
     action type is not a recognized simulate variant.  Applies
     BNG2.pl-compatible method normalization (ssa + poplevel → psa).
+    Invalid numeric arguments raise ``ValueError`` through ``_eval_numeric``.
     """
     atype = action.type
     args = action.args
@@ -1589,43 +1692,53 @@ def _parse_simulate_params(action):
     if method is None:
         return None
     if atype == "simulate" and "method" in args:
-        method = _strip_quotes(args["method"].strip())
+        method = _strip_quotes(str(args["method"]).strip())
 
-    poplevel = float(args["poplevel"]) if "poplevel" in args else None
+    poplevel = (
+        _eval_numeric(args["poplevel"], extra_ns=extra_ns)
+        if "poplevel" in args else None
+    )
     method, poplevel = _normalize_method(method, poplevel)
 
     return {
         "method": method,
-        "t_start": float(args.get("t_start", 0)),
-        "t_end": float(args.get("t_end", 100)),
-        "n_steps": int(float(args.get("n_steps", 100))),
-        "suffix": _strip_quotes(args["suffix"].strip()) if "suffix" in args else None,
+        "t_start": _eval_numeric(args.get("t_start", 0), extra_ns=extra_ns),
+        "t_end": _eval_numeric(args.get("t_end", 100), extra_ns=extra_ns),
+        "n_steps": int(_eval_numeric(args.get("n_steps", 100), extra_ns=extra_ns)),
+        "suffix": _strip_quotes(str(args["suffix"]).strip()) if "suffix" in args else None,
         "poplevel": poplevel,
-        "continue_flag": bool(int(float(args.get("continue", 0)))),
-        "atol": float(args["atol"]) if "atol" in args else None,
-        "rtol": float(args["rtol"]) if "rtol" in args else None,
-        "seed": int(float(args["seed"])) if "seed" in args else None,
-        "print_functions": bool(int(float(args.get("print_functions", 0)))),
-        "stop_if": _strip_quotes(args["stop_if"].strip()) if "stop_if" in args else None,
-        "sample_times": _resolve_sample_times(args),
-        "gml": int(float(args["gml"])) if "gml" in args else None,
+        "continue_flag": bool(
+            int(_eval_numeric(args.get("continue", 0), extra_ns=extra_ns))
+        ),
+        "atol": _eval_numeric(args["atol"], extra_ns=extra_ns) if "atol" in args else None,
+        "rtol": _eval_numeric(args["rtol"], extra_ns=extra_ns) if "rtol" in args else None,
+        "seed": int(_eval_numeric(args["seed"], extra_ns=extra_ns)) if "seed" in args else None,
+        "print_functions": bool(
+            int(_eval_numeric(args.get("print_functions", 0), extra_ns=extra_ns))
+        ),
+        "stop_if": _strip_quotes(str(args["stop_if"]).strip()) if "stop_if" in args else None,
+        "sample_times": _resolve_sample_times(args, extra_ns=extra_ns),
+        "gml": int(_eval_numeric(args["gml"], extra_ns=extra_ns)) if "gml" in args else None,
         "nf_params": _parse_nfsim_param_string(args),
     }
 
 
-def _resolve_scan_points(args):
+def _resolve_scan_points(args, extra_ns=None):
     """Build scan point array from parameter_scan action args."""
     import numpy as np
 
     par_scan_vals = args.get("par_scan_vals")
     if par_scan_vals is not None:
         raw = par_scan_vals.strip().strip("[]")
-        return np.array([float(v.strip()) for v in raw.split(",")])
+        return np.array([
+            _eval_numeric(v.strip(), extra_ns=extra_ns)
+            for v in _split_top_level_commas(raw)
+        ])
 
-    par_min = float(args.get("par_min", 0))
-    par_max = float(args.get("par_max", 1))
-    n_scan_pts = int(float(args.get("n_scan_pts", 10)))
-    log_scale = int(float(args.get("log_scale", 0)))
+    par_min = _eval_numeric(args.get("par_min", 0), extra_ns=extra_ns)
+    par_max = _eval_numeric(args.get("par_max", 1), extra_ns=extra_ns)
+    n_scan_pts = int(_eval_numeric(args.get("n_scan_pts", 10), extra_ns=extra_ns))
+    log_scale = int(_eval_numeric(args.get("log_scale", 0), extra_ns=extra_ns))
 
     if log_scale:
         return np.logspace(np.log10(par_min), np.log10(par_max), n_scan_pts)
@@ -1653,16 +1766,16 @@ def _write_scan_file(scan_path, param_name, col_names, rows):
             f.write("  ".join(f"{v:22.12e}" for v in row) + "\n")
 
 
-def _actions_need_network(actions_items):
+def _actions_need_network(actions_items, extra_ns=None):
     """Return True if any action requires a .net file (network-based simulation)."""
     for a in actions_items:
         if a.type in _SIMULATE_METHOD_MAP:
-            sp = _parse_simulate_params(a)
+            sp = _parse_simulate_params(a, extra_ns=extra_ns)
             if sp is None or not _is_nf_method(sp["method"]):
                 return True
             continue
         if a.type in ("parameter_scan", "bifurcate"):
-            m = _strip_quotes(a.args.get("method", "ode").strip())
+            m = _strip_quotes(str(a.args.get("method", "ode")).strip())
             if m == "protocol" or not _is_nf_method(m):
                 return True
             continue
@@ -1672,17 +1785,17 @@ def _actions_need_network(actions_items):
     return False
 
 
-def _actions_need_xml(actions_items):
+def _actions_need_xml(actions_items, extra_ns=None):
     """Return True if any action requires BNG XML (NFsim)."""
     for a in actions_items:
         if a.type in _SIMULATE_METHOD_MAP:
-            sp = _parse_simulate_params(a)
+            sp = _parse_simulate_params(a, extra_ns=extra_ns)
             if sp and _is_nf_method(sp["method"]):
                 return True
         if a.type == "writeXML":
             return True
         if a.type in ("parameter_scan", "bifurcate"):
-            m = _strip_quotes(a.args.get("method", "ode").strip())
+            m = _strip_quotes(str(a.args.get("method", "ode")).strip())
             if _is_nf_method(m):
                 return True
     return False
@@ -1775,16 +1888,9 @@ def _run_protocol(
         except Exception as exc:
             logger.debug("protocol: initial get_param(%s) failed: %s", pname, exc)
 
-    # Simple regex parsers for protocol action lines
-    _sim_re = re.compile(
-        r"simulate(?:_(\w+))?\s*\(\s*\{(.*)\}\s*\)", re.DOTALL
-    )
-    _setparam_re = re.compile(
-        r'setParameter\s*\(\s*"([^"]+)"\s*,\s*([^)]+)\s*\)'
-    )
-    _setconc_re = re.compile(
-        r'setConcentration\s*\(\s*"([^"]+)"\s*,\s*([^)]+)\s*\)'
-    )
+    # Lightweight protocol parsers. Use balanced scanning instead of
+    # ``[^)]`` regexes so nested arithmetic like ``((1/52)*...)`` survives.
+    _sim_re = re.compile(r"(simulate(?:_(\w+))?)\s*\(")
     _resetconc_re = re.compile(r"resetConcentrations\s*\(")
     _saveconc_re = re.compile(r"saveConcentrations\s*\(")
     _saveparam_re = re.compile(r"saveParameters\s*\(")
@@ -1793,11 +1899,22 @@ def _run_protocol(
     def _parse_kvargs(argstr):
         """Parse ``key=>value, key=>value`` into a dict."""
         kv = {}
-        for m in re.finditer(r'(\w+)\s*=>\s*(?:"([^"]*)"|(\S+?))\s*(?:,|$)', argstr):
-            key = m.group(1)
-            val = m.group(2) if m.group(2) is not None else m.group(3)
-            kv[key] = val
+        for part in _split_top_level_commas(argstr):
+            if "=>" not in part:
+                continue
+            key, val = part.split("=>", 1)
+            kv[key.strip()] = _strip_quotes(val.strip())
         return kv
+
+    def _parse_protocol_setter(line_text, action_name):
+        """Parse ``setParameter("name", value_expr)`` style protocol lines."""
+        body = _extract_call_body(line_text, action_name)
+        if body is None:
+            return None
+        parts = _split_top_level_commas(body)
+        if len(parts) != 2:
+            return None
+        return _strip_quotes(parts[0].strip()), parts[1].strip()
 
     for raw_line in protocol_lines:
         line = raw_line.strip()
@@ -1805,32 +1922,40 @@ def _run_protocol(
             continue
 
         # ── simulate ──
-        sm = _sim_re.search(line)
+        sm = _sim_re.match(line)
         if sm:
-            method_suffix = sm.group(1)  # e.g. "ode" from simulate_ode
-            kvargs = _parse_kvargs(sm.group(2))
+            action_name = sm.group(1)
+            method_suffix = sm.group(2)  # e.g. "ode" from simulate_ode
+            call_body = _extract_call_body(line, action_name)
+            if call_body is None or not (call_body.startswith("{") and call_body.endswith("}")):
+                logger.debug("protocol: skipping malformed simulate command: %s", line)
+                continue
+            kvargs = _parse_kvargs(call_body[1:-1])
+            param_ns = _model_param_namespace(bngsim_model)
 
             if method_suffix:
                 method = method_suffix
             else:
                 method = kvargs.get("method", "ode")
 
-            is_continue = int(kvargs.get("continue", 0))
+            is_continue = int(_eval_numeric(kvargs.get("continue", 0), extra_ns=param_ns))
             if is_continue and "t_start" not in kvargs:
                 t_start = current_time
             else:
-                t_start = float(kvargs.get("t_start", 0))
-            t_end = float(kvargs.get("t_end", 100))
-            n_steps = int(kvargs.get("n_steps", 100))
+                t_start = _eval_numeric(kvargs.get("t_start", 0), extra_ns=param_ns)
+            t_end = _eval_numeric(kvargs.get("t_end", 100), extra_ns=param_ns)
+            n_steps = int(_eval_numeric(kvargs.get("n_steps", 100), extra_ns=param_ns))
 
             # Resolve sample_times
-            st_raw = kvargs.get("sample_times")
             sample_times = None
-            if st_raw is not None:
-                sample_times = _resolve_sample_times({"sample_times": st_raw})
+            if "sample_times" in kvargs:
+                sample_times = _resolve_sample_times(kvargs, extra_ns=param_ns)
 
             # Parse poplevel and normalize method (ssa + poplevel → psa)
-            poplevel = float(kvargs["poplevel"]) if "poplevel" in kvargs else None
+            poplevel = (
+                _eval_numeric(kvargs["poplevel"], extra_ns=param_ns)
+                if "poplevel" in kvargs else None
+            )
             method, poplevel = _normalize_method(method, poplevel)
 
             # Rebuild simulator if method changed
@@ -1865,14 +1990,17 @@ def _run_protocol(
             continue
 
         # ── setConcentration ──
-        sc = _setconc_re.search(line)
-        if sc:
-            species_name = sc.group(1)
-            conc_str = sc.group(2).strip()
+        sc = _parse_protocol_setter(line, "setConcentration")
+        if sc is not None:
+            species_name, conc_str = sc
+            conc_val = _eval_numeric(
+                conc_str, extra_ns=_model_param_namespace(bngsim_model),
+            )
+            # Keep the bngsim setter boundary tolerant here: different
+            # builds have surfaced different exception types for rejected
+            # live mutations. Expression-evaluation errors already raised
+            # above, so only backend setter failures are best-effort.
             try:
-                conc_val = _eval_numeric(
-                    conc_str, extra_ns=_model_param_namespace(bngsim_model),
-                )
                 bngsim_model.set_concentration(species_name, conc_val)
             except Exception as exc:
                 logger.warning("protocol: setConcentration(%s, %s) failed: %s", species_name, conc_str, exc)
@@ -1883,14 +2011,16 @@ def _run_protocol(
             continue
 
         # ── setParameter ──
-        sp = _setparam_re.search(line)
-        if sp:
-            param_name = sp.group(1)
-            param_str = sp.group(2).strip()
+        sp = _parse_protocol_setter(line, "setParameter")
+        if sp is not None:
+            param_name, param_str = sp
+            param_val = _eval_numeric(
+                param_str, extra_ns=_model_param_namespace(bngsim_model),
+            )
+            # See the setConcentration comment above: numeric-expression
+            # failures are strict, while the bngsim API boundary remains
+            # tolerant to backend-specific exception classes.
             try:
-                param_val = _eval_numeric(
-                    param_str, extra_ns=_model_param_namespace(bngsim_model),
-                )
                 bngsim_model.set_param(param_name, param_val)
             except Exception as exc:
                 logger.warning("protocol: setParameter(%s, %s) failed: %s", param_name, param_str, exc)
@@ -1975,20 +2105,25 @@ def _run_nfsim_scan(
     import numpy as np
 
     args = action.args
-    param_name = _strip_quotes(args.get("parameter", "").strip())
-    t_start = float(args.get("t_start", 0))
-    t_end = float(args.get("t_end", 100))
-    n_steps = int(float(args.get("n_steps", 100)))
-    suffix = _strip_quotes(args.get("suffix", "").strip()) or "scan"
-    print_funcs = bool(int(float(args.get("print_functions", 0))))
-    gml = int(float(args["gml"])) if "gml" in args else None
-    base_seed = int(float(args.get("seed", 42)))
+    action_ns = dict(bngmodel_params or {})
+    if param_overrides:
+        action_ns.update(param_overrides)
+    param_name = _strip_quotes(str(args.get("parameter", "")).strip())
+    t_start = _eval_numeric(args.get("t_start", 0), extra_ns=action_ns)
+    t_end = _eval_numeric(args.get("t_end", 100), extra_ns=action_ns)
+    n_steps = int(_eval_numeric(args.get("n_steps", 100), extra_ns=action_ns))
+    suffix = _strip_quotes(str(args.get("suffix", "")).strip()) or "scan"
+    print_funcs = bool(
+        int(_eval_numeric(args.get("print_functions", 0), extra_ns=action_ns))
+    )
+    gml = int(_eval_numeric(args["gml"], extra_ns=action_ns)) if "gml" in args else None
+    base_seed = int(_eval_numeric(args.get("seed", 42), extra_ns=action_ns))
 
     seed_initializers = _parse_bngmodel_seed_species_initializers(bngmodel)
     xml_param_table = _parse_xml_parameter_table(xml_path)
     baseline_xml_params = _resolve_xml_params(xml_param_table, overrides=None)
 
-    points = _resolve_scan_points(args)
+    points = _resolve_scan_points(args, extra_ns=action_ns)
     rows = []
     obs_names = None
     func_names = None
@@ -2230,19 +2365,25 @@ def _run_parameter_scan_bngsim(
     """
 
     args = action.args
-    param_name = _strip_quotes(args.get("parameter", "").strip())
-    t_start = float(args.get("t_start", 0))
-    t_end = float(args.get("t_end", 100))
-    n_steps = int(float(args.get("n_steps", 100)))
-    suffix = _strip_quotes(args.get("suffix", "").strip()) or "scan"
-    reset_conc = not is_bifurcate and bool(int(float(args.get("reset_conc", 1))))
-    use_ss = bool(int(float(args.get("steady_state", 0))))
+    action_ns = _model_param_namespace(bngsim_model, fallback=bngmodel_params)
+    param_name = _strip_quotes(str(args.get("parameter", "")).strip())
+    t_start = _eval_numeric(args.get("t_start", 0), extra_ns=action_ns)
+    t_end = _eval_numeric(args.get("t_end", 100), extra_ns=action_ns)
+    n_steps = int(_eval_numeric(args.get("n_steps", 100), extra_ns=action_ns))
+    suffix = _strip_quotes(str(args.get("suffix", "")).strip()) or "scan"
+    reset_conc = not is_bifurcate and bool(
+        int(_eval_numeric(args.get("reset_conc", 1), extra_ns=action_ns))
+    )
+    use_ss = bool(int(_eval_numeric(args.get("steady_state", 0), extra_ns=action_ns)))
 
-    method = _strip_quotes(args.get("method", "ode").strip())
+    method = _strip_quotes(str(args.get("method", "ode")).strip())
     is_protocol = method == "protocol"
 
     # Normalize method (ssa + poplevel → psa, psa default poplevel, etc.)
-    poplevel = float(args["poplevel"]) if "poplevel" in args else None
+    poplevel = (
+        _eval_numeric(args["poplevel"], extra_ns=action_ns)
+        if "poplevel" in args else None
+    )
     method, poplevel = _normalize_method(method, poplevel)
 
     # NFsim parameter scan: entirely different path
@@ -2291,15 +2432,17 @@ def _run_parameter_scan_bngsim(
         )
         use_ss = False
 
-    print_funcs = bool(int(float(args.get("print_functions", 0))))
+    print_funcs = bool(
+        int(_eval_numeric(args.get("print_functions", 0), extra_ns=action_ns))
+    )
 
     # Resolve sample_times
-    sample_times = _resolve_sample_times(args)
+    sample_times = _resolve_sample_times(args, extra_ns=action_ns)
     if sample_times is not None:
         t_start = sample_times[0]
         t_end = sample_times[-1]
 
-    points = _resolve_scan_points(args)
+    points = _resolve_scan_points(args, extra_ns=action_ns)
     rows = []
     obs_names = None
     func_names = None  # BNGL functions, only if print_functions=>1
@@ -2523,7 +2666,7 @@ def _run_bifurcate_bngsim(
     import copy
 
     args = action.args
-    base_suffix = _strip_quotes(args.get("suffix", "").strip()) or "bif"
+    base_suffix = _strip_quotes(str(args.get("suffix", "")).strip()) or "bif"
 
     par_scan_vals = args.get("par_scan_vals")
 
@@ -2539,7 +2682,7 @@ def _run_bifurcate_bngsim(
     bwd_action.args["suffix"] = base_suffix + "_backward"
     if par_scan_vals is not None:
         raw = par_scan_vals.strip().strip("[]")
-        vals = [v.strip() for v in raw.split(",")]
+        vals = [v.strip() for v in _split_top_level_commas(raw)]
         bwd_action.args["par_scan_vals"] = "[" + ",".join(reversed(vals)) + "]"
     else:
         bwd_action.args["par_min"] = args["par_max"]
@@ -2706,7 +2849,12 @@ def _execute_bngsim_actions(
 
         # ── simulate_* ──────────────────────────────────────────
         if atype.startswith("simulate"):
-            sp = _parse_simulate_params(action)
+            sp = _parse_simulate_params(
+                action,
+                extra_ns=_model_param_namespace(
+                    bngsim_model, fallback=live_nf_params,
+                ),
+            )
             if sp is None:
                 logger.warning("Unrecognized simulate action: %s", atype)
                 continue
@@ -2857,6 +3005,9 @@ def _execute_bngsim_actions(
                 extra_ns=_model_param_namespace(bngsim_model, fallback=live_nf_params),
             )
             if bngsim_model is not None:
+                # Numeric-expression errors already raised above. Keep the
+                # bngsim API boundary tolerant because the binding can
+                # surface heterogeneous exception classes here.
                 try:
                     bngsim_model.set_param(name, numeric_value)
                     logger.debug("setParameter(%s, %s)", name, value)
@@ -2879,6 +3030,8 @@ def _execute_bngsim_actions(
                 extra_ns=_model_param_namespace(bngsim_model, fallback=live_nf_params),
             )
             if bngsim_model is not None:
+                # See setParameter above: only backend setter failures are
+                # tolerated here; expression parsing/evaluation is strict.
                 try:
                     bngsim_model.set_concentration(name, numeric_value)
                     logger.debug("setConcentration(%s, %s)", name, value)
@@ -2896,6 +3049,8 @@ def _execute_bngsim_actions(
                 extra_ns=_model_param_namespace(bngsim_model, fallback=live_nf_params),
             )
             if bngsim_model is not None:
+                # See setParameter above: only backend setter/getter
+                # failures are tolerated here.
                 try:
                     current = bngsim_model.get_concentration(name)
                     new_val = current + numeric_delta
@@ -3274,10 +3429,15 @@ def run_bngl_with_bngsim(
     model = mdl.bngmodel(bngl_path)
     model_name = model.model_name
     original_actions = list(model.actions.items)
+    bngmodel_params = _resolve_bngmodel_params(model)
 
     # Step 2: Determine what BNG2.pl needs to produce
-    needs_network = _actions_need_network(original_actions)
-    needs_xml = _actions_need_xml(original_actions)
+    needs_network = _actions_need_network(
+        original_actions, extra_ns=bngmodel_params,
+    )
+    needs_xml = _actions_need_xml(
+        original_actions, extra_ns=bngmodel_params,
+    )
 
     # If CLI overrides method to NF, we need XML
     if method is not None and _is_nf_method(method):
@@ -3404,12 +3564,6 @@ def run_bngl_with_bngsim(
 
     xml_arg = xml_path if os.path.isfile(xml_path) else None
     net_arg = net_path if os.path.isfile(net_path) else None
-
-    # Resolve the BNGL parameter block once. For pure-NF runs this is the
-    # only source of parameter values; for network-based runs the BNGsim
-    # Model is the source of truth and the dict is used only as a fallback
-    # if a name is missing (defensive — should not happen in practice).
-    bngmodel_params = _resolve_bngmodel_params(model)
 
     if bngsim_model is not None:
         return _execute_bngsim_actions(
