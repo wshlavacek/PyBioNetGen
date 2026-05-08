@@ -1134,15 +1134,12 @@ class TestExecuteBngsimActions:
              patch(f"{BRIDGE}.BNGSIM_AVAILABLE", True), \
              patch(f"{BRIDGE}._try_prepare_codegen", return_value=""), \
              patch(f"{BRIDGE}._parse_net_species_initializers", return_value=[]), \
-             patch(f"{BRIDGE}._run_parameter_scan_bngsim") as mock_scan, \
+             patch(f"{BRIDGE}._run_bifurcate_bngsim") as mock_bif, \
              tempfile.TemporaryDirectory() as tmpdir:
             _execute_bngsim_actions(
                 [action], model, tmpdir, "test_model",
             )
-            mock_scan.assert_called_once()
-            # Check is_bifurcate=True
-            call_kwargs = mock_scan.call_args
-            assert call_kwargs[1].get("is_bifurcate") is True or call_kwargs.kwargs.get("is_bifurcate") is True
+            mock_bif.assert_called_once()
 
     def test_simulate_with_suffix(self):
         action = _make_action("simulate_ode", {

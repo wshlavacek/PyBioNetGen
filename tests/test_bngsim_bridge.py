@@ -309,6 +309,119 @@ class TestBngsimIntegration:
         assert BNGSIM_VERSION is not None
         assert len(BNGSIM_VERSION) > 0
 
+    def test_bifurcate_writes_per_observable_hysteresis_files(self):
+        """Regression: bifurcate must run forward AND backward parameter
+        scans and emit one ``_bifurcation_<obs>.scan`` per observable
+        (3 cols: param, obs_fwd, obs_bwd) — matching BNG2.pl semantics.
+
+        The bridge previously routed bifurcate through parameter_scan
+        with ``is_bifurcate=True``, which only forced ``reset_conc=False``
+        and produced a single forward .scan file under the user's
+        suffix. The backward sweep — the entire point of bifurcate, the
+        thing that surfaces hysteresis — was never run.
+
+        Bistable Gardner toggle switch: in the bistable parameter range,
+        the forward and backward branches sit on different fixed points
+        (u-dominant vs v-dominant). Outside that range the two branches
+        agree. We assert: (1) per-observable bifurcation files exist
+        with 3 columns, (2) at par_min the two branches agree, (3) at
+        an intermediate parameter value within the bistable region the
+        two branches differ visibly.
+        """
+        import bionetgen
+
+        bngl = textwrap.dedent("""\
+            begin model
+            begin parameters
+              alpha_1 156.25
+              alpha_2 15.6
+              beta    2.5
+              gamma   1.0
+              k_deg   1.0
+            end parameters
+            begin molecule types
+              R1()
+              R2()
+            end molecule types
+            begin seed species
+              R1() 0
+              R2() 0
+            end seed species
+            begin observables
+              Molecules Obs_Tot_R1 R1()
+              Molecules Obs_Tot_R2 R2()
+            end observables
+            begin functions
+              syn_R1() = alpha_1 / (1 + Obs_Tot_R2^beta)
+              syn_R2() = alpha_2 / (1 + Obs_Tot_R1^gamma)
+            end functions
+            begin reaction rules
+              0 -> R1() syn_R1()
+              0 -> R2() syn_R2()
+              R1() -> 0 k_deg
+              R2() -> 0 k_deg
+            end reaction rules
+            end model
+            begin actions
+              generate_network({overwrite=>1})
+              bifurcate({method=>"ode",parameter=>"alpha_2",\
+                par_min=>1,par_max=>500,n_scan_pts=>20,\
+                t_start=>0,t_end=>20,n_steps=>50,suffix=>"bif"})
+            end actions
+        """)
+
+        with tempfile.TemporaryDirectory() as out:
+            bngl_path = os.path.join(out, "toggle.bngl")
+            with open(bngl_path, "w") as f:
+                f.write(bngl)
+            bionetgen.run(bngl_path, out=out, simulator="bngsim")
+
+            r1_path = os.path.join(out, "toggle_bif_bifurcation_Obs_Tot_R1.scan")
+            r2_path = os.path.join(out, "toggle_bif_bifurcation_Obs_Tot_R2.scan")
+            assert os.path.isfile(r1_path), "R1 bifurcation file missing"
+            assert os.path.isfile(r2_path), "R2 bifurcation file missing"
+            # Intermediate forward/backward scans should be cleaned up.
+            assert not os.path.isfile(os.path.join(out, "toggle_bif_forward.scan"))
+            assert not os.path.isfile(os.path.join(out, "toggle_bif_backward.scan"))
+
+            def _load(path):
+                rows = []
+                header = None
+                with open(path) as f:
+                    for line in f:
+                        s = line.strip()
+                        if not s:
+                            continue
+                        if s.startswith("#"):
+                            if header is None:
+                                header = s.lstrip("#").split()
+                            continue
+                        rows.append([float(v) for v in s.split()])
+                return header, rows
+
+            r1_header, r1_rows = _load(r1_path)
+            r2_header, r2_rows = _load(r2_path)
+
+        assert r1_header == ["alpha_2", "Obs_Tot_R1_fwd", "Obs_Tot_R1_bwd"]
+        assert r2_header == ["alpha_2", "Obs_Tot_R2_fwd", "Obs_Tot_R2_bwd"]
+        assert len(r1_rows) == 20
+        assert len(r2_rows) == 20
+
+        # First row is at par_min=1 — monostable u-dominant; fwd and bwd
+        # should match closely. A bridge that only ran the forward sweep
+        # would have left the bwd column at zero (or matched fwd by luck).
+        p, fwd, bwd = r1_rows[0]
+        assert p == 1.0
+        assert abs(fwd - bwd) < 1.0, f"par_min branches disagree: fwd={fwd}, bwd={bwd}"
+
+        # Second row is at alpha_2≈27, well inside the bistable region:
+        # the forward branch sits at u-dominant (R1≈154), the backward
+        # branch sits at v-dominant (R1≈0.04). A 100× separation is the
+        # hysteresis signature.
+        p, fwd, bwd = r1_rows[1]
+        assert fwd > 100.0, f"forward branch should be u-dominant, got R1={fwd}"
+        assert bwd < 1.0, f"backward branch should be v-dominant, got R1={bwd}"
+
     def test_parameter_scan_preserves_post_time_course_state(self):
         """Regression: parameter_scan must start each scan point from the
         live network state, not from the .net file's seed concentrations.

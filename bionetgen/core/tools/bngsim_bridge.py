@@ -2148,6 +2148,133 @@ def _run_parameter_scan_bngsim(
     return None
 
 
+def _read_scan_file(path):
+    """Parse a .scan file written by ``_write_scan_file``.
+
+    Returns ``(header_cols, rows)`` where ``header_cols`` is the list of
+    column names (param name + observables/functions) and ``rows`` is a
+    list of float lists, one per scan point.
+    """
+    header_cols = []
+    rows = []
+    with open(path) as f:
+        for line in f:
+            stripped = line.strip()
+            if not stripped:
+                continue
+            if stripped.startswith("#"):
+                if not header_cols:
+                    header_cols = stripped.lstrip("#").split()
+                continue
+            rows.append([float(v) for v in stripped.split()])
+    return header_cols, rows
+
+
+def _run_bifurcate_bngsim(
+    bngsim_model, action, output_dir, model_name,
+    codegen_so="", net_path=None, species_initializers=None,
+    protocol_lines=None, xml_path=None,
+    nf_param_overrides=None, nf_conc_overrides=None, nf_conc_deltas=None,
+    bngmodel=None, bngmodel_params=None,
+):
+    """Execute a bifurcate action: forward + backward scans, then split.
+
+    Mirrors BNG2.pl's ``BNGAction::bifurcate``: runs the parameter scan
+    once forward (par_min → par_max) and once backward (par_max →
+    par_min), then for each observable/function writes one
+    ``<model>_<suffix>_bifurcation_<obs>.scan`` file with three columns
+    ``param``, ``<obs>_fwd``, ``<obs>_bwd``. Both passes share the
+    underlying BNGsim model with ``reset_conc=False`` so each scan point
+    continues from the previous point's final state — that's what
+    surfaces hysteresis in bistable systems.
+
+    The two intermediate forward/backward scan files are deleted after
+    splitting, matching BNG2.pl behavior.
+    """
+    import copy
+
+    args = action.args
+    base_suffix = _strip_quotes(args.get("suffix", "").strip()) or "bif"
+
+    par_scan_vals = args.get("par_scan_vals")
+
+    # Forward pass: original par_min/par_max, suffix becomes "<suffix>_forward"
+    fwd_action = copy.copy(action)
+    fwd_action.args = dict(args)
+    fwd_action.args["suffix"] = base_suffix + "_forward"
+
+    # Backward pass: par_min/par_max swapped (or par_scan_vals reversed),
+    # suffix becomes "<suffix>_backward"
+    bwd_action = copy.copy(action)
+    bwd_action.args = dict(args)
+    bwd_action.args["suffix"] = base_suffix + "_backward"
+    if par_scan_vals is not None:
+        raw = par_scan_vals.strip().strip("[]")
+        vals = [v.strip() for v in raw.split(",")]
+        bwd_action.args["par_scan_vals"] = "[" + ",".join(reversed(vals)) + "]"
+    else:
+        bwd_action.args["par_min"] = args["par_max"]
+        bwd_action.args["par_max"] = args["par_min"]
+
+    common_kwargs = dict(
+        codegen_so=codegen_so, net_path=net_path,
+        species_initializers=species_initializers,
+        protocol_lines=protocol_lines, xml_path=xml_path,
+        nf_param_overrides=nf_param_overrides,
+        nf_conc_overrides=nf_conc_overrides,
+        nf_conc_deltas=nf_conc_deltas,
+        bngmodel=bngmodel, bngmodel_params=bngmodel_params,
+    )
+
+    _run_parameter_scan_bngsim(
+        bngsim_model, fwd_action, output_dir, model_name,
+        is_bifurcate=True, **common_kwargs,
+    )
+    _run_parameter_scan_bngsim(
+        bngsim_model, bwd_action, output_dir, model_name,
+        is_bifurcate=True, **common_kwargs,
+    )
+
+    fwd_path = os.path.join(output_dir, f"{model_name}_{base_suffix}_forward.scan")
+    bwd_path = os.path.join(output_dir, f"{model_name}_{base_suffix}_backward.scan")
+    fwd_header, fwd_rows = _read_scan_file(fwd_path)
+    bwd_header, bwd_rows = _read_scan_file(bwd_path)
+
+    if len(fwd_rows) != len(bwd_rows):
+        raise BNGSimError(
+            f"bifurcate: forward ({len(fwd_rows)}) and backward "
+            f"({len(bwd_rows)}) scans produced different row counts"
+        )
+    if fwd_header != bwd_header:
+        raise BNGSimError(
+            "bifurcate: forward and backward scans produced different columns"
+        )
+
+    n = len(fwd_rows)
+    param_col = fwd_header[0] if fwd_header else "scan_param"
+
+    # Per-observable bifurcation files: param, obs_fwd, obs_bwd. Backward
+    # rows are aligned by reversing the index so each output row reports
+    # the forward and backward observable values at the same param value.
+    for j, obs in enumerate(fwd_header[1:], start=1):
+        rows = [
+            [fwd_rows[i][0], fwd_rows[i][j], bwd_rows[n - 1 - i][j]]
+            for i in range(n)
+        ]
+        out_path = os.path.join(
+            output_dir, f"{model_name}_{base_suffix}_bifurcation_{obs}.scan"
+        )
+        _write_scan_file(out_path, param_col, [f"{obs}_fwd", f"{obs}_bwd"], rows)
+
+    # Drop intermediate scans — only the per-observable bifurcation files
+    # are part of bifurcate's contract.
+    for path in (fwd_path, bwd_path):
+        try:
+            os.remove(path)
+        except OSError as exc:
+            logger.debug("bifurcate: could not remove %s: %s", path, exc)
+
+
 def _execute_bngsim_actions(
     actions_items, bngsim_model, output_dir, model_name,
     xml_path=None, net_path=None, protocol_lines=None,
@@ -2379,9 +2506,9 @@ def _execute_bngsim_actions(
 
         # ── bifurcate ───────────────────────────────────────────
         if atype == "bifurcate":
-            _run_parameter_scan_bngsim(
+            _run_bifurcate_bngsim(
                 bngsim_model, action, output_dir, model_name,
-                is_bifurcate=True, codegen_so=codegen_so, net_path=net_path,
+                codegen_so=codegen_so, net_path=net_path,
                 species_initializers=species_initializers,
                 protocol_lines=protocol_lines, xml_path=xml_path,
                 nf_param_overrides=nf_param_overrides or None,
