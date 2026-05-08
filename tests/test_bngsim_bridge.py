@@ -515,6 +515,87 @@ class TestBngsimIntegration:
                 f"alpha_2={alpha_2}: R2={r2:.3e} indicates u-dominant"
             )
 
+    def test_nf_parameter_scan_re_evaluates_seed_species(self):
+        """Regression: NF parameter_scan must re-evaluate parameter-derived
+        seed-species expressions per scan point.
+
+        BNG XML hard-codes seed counts at network-generation time, so a
+        fresh ``NfsimSession`` initialized after ``set_param`` for the
+        scan parameter still carries the XML-time count. Without an
+        explicit per-point ``set_species_count`` that re-evaluates the
+        seed expression against the new parameter value, observables
+        for parameter-derived seed species stay pinned across the scan
+        — e.g., ``blbr_cooperativity_posner2004``'s ``Obs_L_tot`` reads
+        ~1806 at every point of an ``AT_nM`` ∈ [0.03, 100] scan instead
+        of scaling with ``AT_nM`` (which sets ``LT = AT_nM*1e-9*NA*V``).
+
+        Derived parameters must flow through transitively: the seed
+        expression ``S0_count`` here references the scanned parameter
+        only through an intermediate parameter ``derived = k * N0``,
+        so the re-evaluation must re-resolve the parameter block, not
+        just substitute the scan parameter into one expression.
+        """
+        if not BNGSIM_HAS_NFSIM:
+            pytest.skip("BNGsim NFsim support not available")
+
+        import bionetgen
+
+        bngl = textwrap.dedent("""\
+            begin model
+            begin parameters
+              k        1
+              N0       100
+              derived  k*N0
+              S0_count derived
+            end parameters
+            begin molecule types
+              X()
+            end molecule types
+            begin seed species
+              X() S0_count
+            end seed species
+            begin observables
+              Molecules X_tot X()
+            end observables
+            end model
+            begin actions
+              parameter_scan({method=>"nf",parameter=>"k",\
+                par_min=>1,par_max=>10,n_scan_pts=>3,\
+                t_start=>0,t_end=>0.001,n_steps=>1,suffix=>"scan"})
+            end actions
+        """)
+
+        with tempfile.TemporaryDirectory() as out:
+            bngl_path = os.path.join(out, "nfscan.bngl")
+            with open(bngl_path, "w") as f:
+                f.write(bngl)
+            bionetgen.run(bngl_path, out=out, simulator="bngsim")
+
+            scan_path = os.path.join(out, "nfscan_scan.scan")
+            assert os.path.isfile(scan_path), "scan output not produced"
+
+            data = []
+            with open(scan_path) as f:
+                for line in f:
+                    if line.startswith("#") or not line.strip():
+                        continue
+                    parts = line.split()
+                    data.append([float(x) for x in parts])
+
+        assert len(data) == 3, f"expected 3 scan points, got {data}"
+        # Tolerance is loose so NFsim integer-count rounding doesn't
+        # gate the test, but tight enough to fail if X_tot is pinned:
+        # without the fix, x_high/x_low ≈ 1 (both clamped to the
+        # XML-time count). With it, the ratio matches k_high/k_low (10).
+        k_low, x_low = data[0][0], data[0][1]
+        k_high, x_high = data[-1][0], data[-1][1]
+        assert x_low > 0, f"X_tot pinned to zero at low end: {data}"
+        assert x_high / x_low > 5.0, (
+            f"X_tot ratio across scan = {x_high / x_low:.2f}, expected "
+            f"≈ {k_high / k_low:.2f}; counts pinned to XML-time value. "
+            f"data={data}"
+        )
+
 
 # ─── sample_times resolution ─────────────────────────────────────
 

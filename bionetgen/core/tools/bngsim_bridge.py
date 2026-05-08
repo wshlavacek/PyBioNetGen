@@ -908,7 +908,7 @@ def _model_param_namespace(bngsim_model, fallback=None):
     return ns
 
 
-def _resolve_bngmodel_params(bngmodel):
+def _resolve_bngmodel_params(bngmodel, overrides=None):
     """Resolve a parsed bngmodel's parameter block to {name: float}.
 
     BNGL parameter values are stored as expression strings (e.g. ``"30"``,
@@ -917,12 +917,28 @@ def _resolve_bngmodel_params(bngmodel):
     or no further progress is made. Unresolvable parameters are skipped
     with a debug log — they may be referenced indirectly or be intentional
     deferred-evaluation expressions.
+
+    When *overrides* is provided, those name→value pairs are applied
+    first and used as the starting namespace; expressions referring to
+    overridden names then re-resolve transitively (e.g., a scan parameter
+    flows through to derived seed-species expressions like ``LT = AT_nM*…``).
+    Overridden names are not re-evaluated from their BNGL expressions.
     """
     if bngmodel is None or not getattr(bngmodel, "parameters", None):
-        return {}
+        return dict(overrides or {})
     items = getattr(bngmodel.parameters, "items", None) or {}
     resolved = {}
-    pending = {name: getattr(p, "value", None) for name, p in items.items()}
+    if overrides:
+        for name, val in overrides.items():
+            try:
+                resolved[name] = float(val)
+            except (TypeError, ValueError):
+                continue
+    pending = {
+        name: getattr(p, "value", None)
+        for name, p in items.items()
+        if name not in resolved
+    }
 
     while pending:
         progressed = False
@@ -1144,6 +1160,100 @@ def _sync_species_concentrations(bngsim_model, initializers):
             bngsim_model.set_concentration(species_name, value)
         except Exception as exc:
             logger.warning("conc-sync: set_concentration(%s, %s) failed: %s", species_name, value, exc)
+
+
+def _parse_bngmodel_seed_species_initializers(bngmodel):
+    """Parse (pattern, init_expression) pairs from a parsed bngmodel.
+
+    NF parameter_scan does not generate a .net file (no network
+    expansion), so seed species expressions must come from the parsed
+    BNGL. Only species whose initial count is a parameter expression
+    (not a numeric literal) are returned — constant initializers don't
+    need re-evaluation.
+
+    Returns a list of (species_pattern, expression_string) tuples.
+    """
+    if bngmodel is None or getattr(bngmodel, "species", None) is None:
+        return []
+    items = getattr(bngmodel.species, "items", None) or {}
+    initializers = []
+    for sp in items.values():
+        pattern = getattr(sp, "pattern", None)
+        count = getattr(sp, "count", None)
+        if pattern is None or count is None:
+            continue
+        count_str = str(count)
+        try:
+            float(count_str)
+        except ValueError:
+            initializers.append((str(pattern), count_str))
+    return initializers
+
+
+def _apply_nfsim_seed_species_initializers(
+    nfsim, initializers, bngmodel, param_overrides, scan_param=None,
+):
+    """Re-evaluate parameter-derived seed species and apply to NFsim.
+
+    The BNG XML hard-codes seed species counts at network-generation
+    time, so a fresh ``NfsimSession`` initialized after a scan parameter
+    change still carries the XML-time counts (e.g., ``LT = AT_nM*1e-9*NA*V``
+    evaluated at the original ``AT_nM`` literal). Calling
+    ``set_param("AT_nM", new_value)`` updates the rate-law expression
+    engine but does not re-evaluate seed species. This helper closes
+    that gap by re-resolving the bngmodel parameter block with
+    *param_overrides* and *scan_param* applied — so derived parameters
+    like ``LT`` flow through transitively — then evaluating each
+    parameter-dependent seed species expression against that namespace
+    and pushing the new count via
+    ``NfsimSession.set_species_count(pattern, count)``.
+
+    *scan_param*, when provided, is ``(name, value)`` for the current
+    scan point.
+    """
+    if not initializers:
+        return
+
+    overrides = {}
+    if param_overrides:
+        for pname, pval in param_overrides.items():
+            try:
+                overrides[pname] = float(pval)
+            except (TypeError, ValueError):
+                continue
+    if scan_param:
+        sname, sval = scan_param
+        if sname:
+            try:
+                overrides[sname] = float(sval)
+            except (TypeError, ValueError):
+                pass
+
+    point_params = _resolve_bngmodel_params(bngmodel, overrides=overrides)
+    ns = _safe_math_namespace(point_params)
+
+    for pattern, expr_text in initializers:
+        try:
+            new_count = int(round(float(_safe_eval_expr(expr_text, ns))))
+        except (ValueError, TypeError) as exc:
+            logger.warning(
+                "NFsim scan: could not evaluate %r for %s: %s",
+                expr_text, pattern, exc,
+            )
+            continue
+        if new_count < 0:
+            logger.warning(
+                "NFsim scan: %s evaluated to negative count %d; skipping",
+                pattern, new_count,
+            )
+            continue
+        try:
+            nfsim.set_species_count(pattern, new_count)
+        except Exception as exc:
+            logger.warning(
+                "NFsim scan: set_species_count(%s, %d) failed: %s",
+                pattern, new_count, exc,
+            )
 
 
 # ─── Codegen helpers ───────────────────────────────────────────────
@@ -1663,6 +1773,13 @@ def _run_nfsim_scan(
     When the action requests ``print_functions=>1``, BNGL functions are
     evaluated post-hoc from the parsed *bngmodel* (BNGsim's NFsim binding
     does not surface function values directly).
+
+    Parameter-derived seed species (e.g., ``L(r1,r2) LT`` where
+    ``LT = AT_nM*1e-9*NA*V``) have their counts re-evaluated per scan
+    point and pushed via ``set_species_count``: the BNG XML hard-codes
+    seed counts at network-generation time, so without this they would
+    stay pinned to the XML-time value for every scan point regardless
+    of the scan parameter.
     """
     import numpy as np
 
@@ -1675,6 +1792,8 @@ def _run_nfsim_scan(
     print_funcs = bool(int(float(args.get("print_functions", 0))))
     gml = int(float(args["gml"])) if "gml" in args else None
     base_seed = int(float(args.get("seed", 42)))
+
+    seed_initializers = _parse_bngmodel_seed_species_initializers(bngmodel)
 
     points = _resolve_scan_points(args)
     rows = []
@@ -1698,6 +1817,11 @@ def _run_nfsim_scan(
                         "NFsim scan: could not set %s=%s: %s", param_name, value, exc
                     )
             nfsim.initialize((base_seed + i) % (2**31))
+            _apply_nfsim_seed_species_initializers(
+                nfsim, seed_initializers,
+                bngmodel, param_overrides,
+                scan_param=(param_name, value) if param_name else None,
+            )
             _apply_nfsim_concentration_changes(
                 nfsim,
                 conc_overrides=conc_overrides,
