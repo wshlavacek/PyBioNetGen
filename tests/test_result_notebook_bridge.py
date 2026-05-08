@@ -348,10 +348,10 @@ class TestParseNetSpeciesInitializers:
             "  2 B(a) k_init*100\n"
             "end species\n"
         )
+        # Numeric-literal ICs are filtered out; only parameter expressions
+        # need re-evaluation when scan parameters change.
         result = _parse_net_species_initializers(str(net))
-        assert len(result) == 2
-        assert result[0] == ("A(b)", "5000")
-        assert result[1] == ("B(a)", "k_init*100")
+        assert result == [("B(a)", "k_init*100")]
 
     def test_missing_file_returns_empty(self, tmp_path):
         result = _parse_net_species_initializers(str(tmp_path / "nonexistent.net"))

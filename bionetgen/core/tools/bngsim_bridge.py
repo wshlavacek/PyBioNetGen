@@ -1074,7 +1074,13 @@ def _parse_net_species_initializers(net_path):
         1 @b::X(p~0,y) 5000
         2 @b::X(p~1,y) k_init*100
 
-    The third field may be a numeric literal or a parameter expression.
+    Only species whose initial concentration is a parameter expression
+    (i.e., not a numeric literal) are returned. Constant initializers
+    don't need re-evaluation when scan parameters change, and including
+    them would force the slow sequential scan path and clobber any
+    snapshot saved by ``saveConcentrations()`` or by parameter_scan
+    itself (see ``_sync_species_concentrations``).
+
     Returns a list of (species_name, expression_string) tuples.
     """
     import re
@@ -1095,7 +1101,11 @@ def _parse_net_species_initializers(net_path):
                 if in_species:
                     m = pattern.match(stripped)
                     if m:
-                        initializers.append((m.group(1), m.group(2)))
+                        expr = m.group(2)
+                        try:
+                            float(expr)
+                        except ValueError:
+                            initializers.append((m.group(1), expr))
     except OSError as exc:
         logger.debug("could not read .net for species initializers (%s): %s", net_path, exc)
     return initializers
@@ -1105,7 +1115,11 @@ def _sync_species_concentrations(bngsim_model, initializers):
     """Re-evaluate species initial concentrations from .net expressions.
 
     Called after parameter changes so that derived species concentrations
-    (e.g., ``S0 = I0 * kfactor``) track parameter updates.
+    (e.g., ``S0 = I0 * kfactor``) track parameter updates. Sets the new
+    values on the model directly; callers must apply this *after* any
+    ``reset()`` so the overlay is not undone, and must not rely on
+    ``save_concentrations()`` to make the values stick — that would
+    overwrite any snapshot of post-time-course state held for the scan.
     """
     if not initializers:
         return
@@ -1130,8 +1144,6 @@ def _sync_species_concentrations(bngsim_model, initializers):
             bngsim_model.set_concentration(species_name, value)
         except Exception as exc:
             logger.warning("conc-sync: set_concentration(%s, %s) failed: %s", species_name, value, exc)
-
-    bngsim_model.save_concentrations()
 
 
 # ─── Codegen helpers ───────────────────────────────────────────────
@@ -1731,13 +1743,21 @@ def _run_nfsim_scan(
 
 
 def _prepare_scan_point(base_model, param_name, value, species_initializers):
-    """Clone the base model, apply the scan parameter, and refresh initials."""
+    """Clone the base model, apply the scan parameter, and refresh initials.
+
+    The clone inherits the snapshot the caller holds for the scan's
+    starting state (typically the post-time-course concentrations). We
+    ``reset()`` first to restore that snapshot, then overlay the scan
+    parameter and any expression-based initial concentrations on top —
+    constant initializers were already filtered out by
+    ``_parse_net_species_initializers``.
+    """
     point_model = base_model.clone()
+    point_model.reset()
     if param_name:
         point_model.set_param(param_name, _eval_numeric(str(value)))
     if species_initializers:
         _sync_species_concentrations(point_model, species_initializers)
-    point_model.reset()
     return point_model
 
 
@@ -2023,6 +2043,11 @@ def _run_parameter_scan_bngsim(
     for value in points:
         if reset_conc:
             point_model = bngsim_model.clone()
+            # Restore the snapshot saved at scan entry (line above) so the
+            # scan starts from the post-time-course state, then overlay the
+            # scan parameter and any expression-based initial concentrations
+            # on top. Resetting after IC sync would clobber the overlay.
+            point_model.reset()
         else:
             point_model = bngsim_model
 
@@ -2032,9 +2057,6 @@ def _run_parameter_scan_bngsim(
         # Re-evaluate species ICs that depend on parameters
         if species_initializers:
             _sync_species_concentrations(point_model, species_initializers)
-
-        if reset_conc:
-            point_model.reset()
 
         if is_protocol:
             # Protocol route: run entire protocol per scan point
@@ -2083,14 +2105,13 @@ def _run_parameter_scan_bngsim(
                 # Re-prepare the model from the saved base state
                 if reset_conc:
                     point_model = bngsim_model.clone()
+                    point_model.reset()
                 else:
                     point_model = bngsim_model
                 if param_name:
                     point_model.set_param(param_name, _eval_numeric(str(value)))
                 if species_initializers:
                     _sync_species_concentrations(point_model, species_initializers)
-                if reset_conc:
-                    point_model.reset()
                 fallback_sim = _make_sim(point_model)
                 if sample_times is not None:
                     result = fallback_sim.run(

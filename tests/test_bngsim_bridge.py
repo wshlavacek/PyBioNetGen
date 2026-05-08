@@ -6,6 +6,7 @@ Integration tests are skipped if BNGsim is not available.
 
 import os
 import tempfile
+import textwrap
 
 import pytest
 
@@ -307,6 +308,99 @@ class TestBngsimIntegration:
         """BNGsim version should be a non-empty string."""
         assert BNGSIM_VERSION is not None
         assert len(BNGSIM_VERSION) > 0
+
+    def test_parameter_scan_preserves_post_time_course_state(self):
+        """Regression: parameter_scan must start each scan point from the
+        live network state, not from the .net file's seed concentrations.
+
+        Bistable Gardner toggle switch: from seed (R1=0, R2=0), small
+        alpha_2 always converges to the u-dominant fixed point (R1≈156,
+        R2≈0). After a setup time-course pushes the system into the
+        v-dominant basin (R1≈0.35, R2≈11.5) and the scan starts from
+        there, scan points in the bistable range must remain v-dominant.
+
+        Before the fix, the bridge re-evaluated species initializers on
+        every scan point and called save_concentrations(), clobbering the
+        post-time-course snapshot — every scan point reset to (0, 0) and
+        landed in u-dominant, masquerading as a "match" because the file
+        existed and shapes lined up.
+        """
+        import bionetgen
+
+        bngl = textwrap.dedent("""\
+            begin model
+            begin parameters
+              alpha_1 156.25
+              alpha_2 15.6
+              beta    2.5
+              gamma   1.0
+              k_deg   1.0
+            end parameters
+            begin molecule types
+              R1()
+              R2()
+            end molecule types
+            begin seed species
+              R1() 0
+              R2() 0
+            end seed species
+            begin observables
+              Molecules Obs_Tot_R1 R1()
+              Molecules Obs_Tot_R2 R2()
+            end observables
+            begin functions
+              syn_R1() = alpha_1 / (1 + Obs_Tot_R2^beta)
+              syn_R2() = alpha_2 / (1 + Obs_Tot_R1^gamma)
+            end functions
+            begin reaction rules
+              0 -> R1() syn_R1()
+              0 -> R2() syn_R2()
+              R1() -> 0 k_deg
+              R2() -> 0 k_deg
+            end reaction rules
+            end model
+            begin actions
+              generate_network({overwrite=>1})
+              simulate({method=>"ode",suffix=>"setup",t_start=>0,t_end=>8,n_steps=>100})
+              setParameter("alpha_2",600.0)
+              simulate({method=>"ode",suffix=>"setup",t_start=>8,t_end=>12,n_steps=>50,continue=>1})
+              setParameter("alpha_2",15.6)
+              simulate({method=>"ode",suffix=>"setup",t_start=>12,t_end=>20,n_steps=>100,continue=>1})
+              parameter_scan({method=>"ode",parameter=>"alpha_2",\
+                par_min=>20,par_max=>50,n_scan_pts=>5,\
+                t_start=>0,t_end=>20,n_steps=>50,suffix=>"scan"})
+            end actions
+        """)
+
+        with tempfile.TemporaryDirectory() as out:
+            bngl_path = os.path.join(out, "toggle.bngl")
+            with open(bngl_path, "w") as f:
+                f.write(bngl)
+            bionetgen.run(bngl_path, out=out, simulator="bngsim")
+
+            scan_path = os.path.join(out, "toggle_scan.scan")
+            assert os.path.isfile(scan_path), "scan output not produced"
+
+            data = []
+            with open(scan_path) as f:
+                for line in f:
+                    if line.startswith("#") or not line.strip():
+                        continue
+                    parts = line.split()
+                    data.append([float(x) for x in parts])
+
+        assert len(data) == 5
+        # Every scan point spans alpha_2 ∈ [20, 50] — fully inside the
+        # bistable region for these parameters. v-dominant means
+        # R1 << 1 and R2 ~ alpha_2; u-dominant means R1 ≈ 156, R2 ~ 0.
+        for alpha_2, r1, r2 in data:
+            assert r1 < 1.0, (
+                f"alpha_2={alpha_2}: R1={r1:.3e} indicates u-dominant; "
+                "scan reset to seed species instead of preserving post-TC state"
+            )
+            assert r2 > 1.0, (
+                f"alpha_2={alpha_2}: R2={r2:.3e} indicates u-dominant"
+            )
 
 
 # ─── sample_times resolution ─────────────────────────────────────

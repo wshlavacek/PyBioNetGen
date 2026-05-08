@@ -702,7 +702,9 @@ class TestSyncSpeciesConcentrations:
         initializers = [("S1", "k1 * 2")]
         _sync_species_concentrations(model, initializers)
         model.set_concentration.assert_called_once_with("S1", 20.0)
-        model.save_concentrations.assert_called_once()
+        # Must NOT save_concentrations: callers (e.g. parameter_scan) hold a
+        # snapshot of post-time-course state that this overlay must not clobber.
+        model.save_concentrations.assert_not_called()
 
     def test_empty_initializers(self):
         from bionetgen.core.tools.bngsim_bridge import _sync_species_concentrations
@@ -719,7 +721,7 @@ class TestSyncSpeciesConcentrations:
         # Should not raise — bad expressions are silently skipped
         _sync_species_concentrations(model, initializers)
         model.set_concentration.assert_not_called()
-        model.save_concentrations.assert_called_once()
+        model.save_concentrations.assert_not_called()
 
 
 # ─── _try_prepare_codegen ─────────────────────────────────────────────
@@ -2556,10 +2558,12 @@ class TestParseNetSpeciesInitializers:
             path = f.name
 
         try:
+            # Constant initializers (numeric literals) are filtered out — they
+            # don't need re-evaluation when scan parameters change, and including
+            # them would force the slow sequential path and clobber any saved
+            # concentration snapshot. Only parameter expressions remain.
             result = _parse_net_species_initializers(path)
-            assert len(result) == 2
-            assert result[0] == ("@b::X(p~0,y)", "5000")
-            assert result[1] == ("@b::X(p~1,y)", "k_init*100")
+            assert result == [("@b::X(p~1,y)", "k_init*100")]
         finally:
             os.unlink(path)
 
