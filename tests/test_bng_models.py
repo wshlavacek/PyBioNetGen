@@ -59,12 +59,11 @@ def _is_skipped_model(path):
     return any(marker in name for marker in SKIPPED_MODEL_MARKERS)
 
 
-# Sweeping every model through BNG2.pl + libroadrunner is an integration
-# test that depends on a working perl + BNG vendor + system perf, and it
-# can run for many minutes per model on some builds. Gate it behind an
-# opt-in env var so the default `pytest` is fast and reliable. Even when
-# opted in, keep a per-model timeout so unsupported/degenerate cases fail
-# fast instead of hanging indefinitely.
+# Sweeping every model through the subprocess path is an integration test
+# for the traditional BNG2.pl/run_network stack. Keep it opt-in so the
+# default `pytest` stays fast and reliable. Even when opted in, keep a
+# per-model timeout so unsupported/degenerate cases fail fast instead of
+# hanging indefinitely.
 _RUN_MODEL_SWEEPS = os.environ.get("BNG_RUN_MODEL_SWEEPS") == "1"
 _MODEL_SWEEP_TIMEOUT = int(os.environ.get("BNG_MODEL_SWEEP_TIMEOUT", "300"))
 _skip_model_sweeps = pytest.mark.skipif(
@@ -75,7 +74,7 @@ _skip_model_sweeps = pytest.mark.skipif(
 
 @_skip_model_sweeps
 def test_model_running_CLI(tmp_path, require_bng2):
-    # tests running a list of models using the CLI
+    # tests running a list of models using the CLI subprocess path
     mpattern = os.path.join(tfold, "models") + os.sep + "*.bngl"
     models = glob.glob(mpattern)
     succ = []
@@ -93,6 +92,7 @@ def test_model_running_CLI(tmp_path, require_bng2):
                 model,
                 "-o",
                 str(tmp_path / model_name),
+                "--no-bngsim",
                 "--timeout",
                 str(_MODEL_SWEEP_TIMEOUT),
             ]
@@ -119,7 +119,7 @@ def test_model_running_CLI(tmp_path, require_bng2):
 
 @_skip_model_sweeps
 def test_model_running_lib(require_bng2):
-    # test running a list of models using the library
+    # test running a list of models using the library subprocess path
     mpattern = os.path.join(tfold, "models") + os.sep + "*.bngl"
     models = glob.glob(mpattern)
     succ = []
@@ -130,7 +130,11 @@ def test_model_running_lib(require_bng2):
         if _is_skipped_model(model):
             continue
         try:
-            bng.run(model, timeout=_MODEL_SWEEP_TIMEOUT)
+            bng.run(
+                model,
+                timeout=_MODEL_SWEEP_TIMEOUT,
+                simulator="subprocess",
+            )
             success += 1
             model = os.path.split(model)
             model = model[1]
