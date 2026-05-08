@@ -758,10 +758,10 @@ class RuleBlockXML(XMLObj):
             del_op = list_ops["Delete"]
             if not isinstance(del_op, list):
                 del_op = [del_op]  # Make sure del_op is list
-            dmvals = [op["@DeleteMolecules"] for op in del_op]
+            dmvals = [op.get("@DeleteMolecules", "0") for op in del_op]
             # All Delete operations in rule must have DeleteMolecules attribute or
             # it does not apply to the whole rule
-            if all(dmvals) == 1:
+            if all(str(val) == "1" for val in dmvals):
                 rule_mod.type = "DeleteMolecules"
                 # JRF: I don't believe the id of the specific op rule_mod is currently used
                 # rule_mod.id = op["@id"]
@@ -787,21 +787,21 @@ class RuleBlockXML(XMLObj):
                 for mo in move_op:
                     if mo["@moveConnected"] == "1":
                         rule_mod.type = "MoveConnected"
-                        rule_mod.id.append(move_op["@id"])
-                        rule_mod.source.append(move_op["@source"])
-                        rule_mod.destination.append(move_op["@destination"])
-                        rule_mod.flip.append(move_op["@flipOrientation"])
+                        rule_mod.id.append(mo["@id"])
+                        rule_mod.source.append(mo["@source"])
+                        rule_mod.destination.append(mo["@destination"])
+                        rule_mod.flip.append(mo["@flipOrientation"])
                         rule_mod.call.append(mo["@moveConnected"])
         elif "RateLaw" in xml:
             # check if modifier is called
             ratelaw = xml["RateLaw"]
             rate_type = ratelaw["@type"]
-            if rate_type == "Function" and ratelaw["@totalrate"] == 1:
+            if rate_type == "Function" and str(ratelaw.get("@totalrate", "0")) == "1":
                 rule_mod.type = "TotalRate"
                 rule_mod.id = ratelaw["@id"]
                 rule_mod.rate_type = ratelaw["@type"]
                 rule_mod.name = ratelaw["@name"]
-                rule_mod.call = ratelaw["@totalrate"]
+                rule_mod.call = ratelaw.get("@totalrate", "0")
 
         # TODO: add support for include/exclude reactants/products
         if (
