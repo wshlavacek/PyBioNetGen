@@ -1,3 +1,4 @@
+import re
 from typing import NoReturn
 
 from bionetgen.core.exc import BNGParseError
@@ -566,25 +567,28 @@ class FunctionBlockXML(XMLObj):
         BNGL is invalid — BNG2.pl can't re-parse it. Reconstruct the call
         from the attributes when present.
         """
-        raw = f.get("Expression", "")
+        raw = str(f.get("Expression", ""))
         if f.get("@type") != "TFUN":
             return raw
 
-        ctr = f.get("@ctrName", "")
+        ctr = str(f.get("@ctrName", ""))
         if "@xData" in f:
-            xs = f.get("@xData", "")
-            ys = f.get("@yData", "")
-            method = f.get("@method", "linear")
+            xs = str(f.get("@xData", ""))
+            ys = str(f.get("@yData", ""))
+            method = str(f.get("@method", "linear"))
             body = f"tfun([{xs}],[{ys}],{ctr}"
             if method and method != "linear":
                 body += f',method=>"{method}"'
             body += ")"
-            return body
+        elif "@file" in f:
+            body = f'TFUN({ctr},"{str(f.get("@file", ""))}")'
+        else:
+            body = raw
 
-        if "@file" in f:
-            return f'TFUN({ctr},"{f.get("@file", "")}")'
-
-        return raw
+        for placeholder in ("__TFUN__VAL__", "__TFUN_VAL__"):
+            if placeholder in raw:
+                return raw.replace(placeholder, body).strip()
+        return body.strip()
 
     def get_arguments(self, xml) -> list:
         if isinstance(xml, list):
@@ -628,9 +632,10 @@ class RuleBlockXML(XMLObj):
                     _raise_parse_error(
                         f"Reaction rule {name!r} is missing a RateLaw entry",
                         loc=f"{__file__} : RuleBlockXML.parse_xml()",
-                    )
+                )
                 rate_constants = [self.resolve_ratelaw(rule["RateLaw"])]
                 rule_modifier = self.get_rule_mod(rule)
+                operations = []
                 if rule["ListOfOperations"] is not None:
                     if len(rule["ListOfOperations"]) > 0:
                         operations = self.get_operations(rule["ListOfOperations"])
@@ -654,7 +659,10 @@ class RuleBlockXML(XMLObj):
                 )
             rate_constants = [self.resolve_ratelaw(xml["RateLaw"])]
             rule_modifier = self.get_rule_mod(xml)
-            operations = self.get_operations(xml["ListOfOperations"])
+            if xml["ListOfOperations"] is None:
+                operations = []
+            else:
+                operations = self.get_operations(xml["ListOfOperations"])
 
             block.add_rule(
                 name,
@@ -750,9 +758,10 @@ class RuleBlockXML(XMLObj):
     def get_rule_mod(self, xml):
         # TODO: create working rule mods class
         rule_mod = RuleMod()
-        list_ops = xml["ListOfOperations"]
+        list_ops = xml.get("ListOfOperations")
+        had_explicit_ops = list_ops is not None
         if list_ops is None:
-            return None
+            list_ops = {}
         # determine which rule mod is being used, if any
         if "Delete" in list_ops:
             del_op = list_ops["Delete"]
@@ -763,6 +772,7 @@ class RuleBlockXML(XMLObj):
             # it does not apply to the whole rule
             if all(str(val) == "1" for val in dmvals):
                 rule_mod.type = "DeleteMolecules"
+                rule_mod.add_modifier("DeleteMolecules")
                 # JRF: I don't believe the id of the specific op rule_mod is currently used
                 # rule_mod.id = op["@id"]
         elif "ChangeCompartment" in list_ops:
@@ -773,6 +783,7 @@ class RuleBlockXML(XMLObj):
                 # check if modifier was called or automatic
                 if mod_call == "1":
                     rule_mod.type = "MoveConnected"
+                    rule_mod.add_modifier("MoveConnected")
                     rule_mod.id = move_op["@id"]
                     rule_mod.source = move_op["@source"]
                     rule_mod.destination = move_op["@destination"]
@@ -787,6 +798,7 @@ class RuleBlockXML(XMLObj):
                 for mo in move_op:
                     if mo["@moveConnected"] == "1":
                         rule_mod.type = "MoveConnected"
+                        rule_mod.add_modifier("MoveConnected")
                         rule_mod.id.append(mo["@id"])
                         rule_mod.source.append(mo["@source"])
                         rule_mod.destination.append(mo["@destination"])
@@ -798,23 +810,73 @@ class RuleBlockXML(XMLObj):
             rate_type = ratelaw["@type"]
             if rate_type == "Function" and str(ratelaw.get("@totalrate", "0")) == "1":
                 rule_mod.type = "TotalRate"
+                rule_mod.add_modifier("TotalRate")
                 rule_mod.id = ratelaw["@id"]
                 rule_mod.rate_type = ratelaw["@type"]
                 rule_mod.name = ratelaw["@name"]
                 rule_mod.call = ratelaw.get("@totalrate", "0")
 
-        # TODO: add support for include/exclude reactants/products
+        for key, value in xml.items():
+            if key not in (
+                "ListOfIncludeReactants",
+                "ListOfIncludeProducts",
+                "ListOfExcludeReactants",
+                "ListOfExcludeProducts",
+            ):
+                continue
+            selectors = value if isinstance(value, list) else [value]
+            for selector in selectors:
+                call = self._build_selector_modifier(key, selector)
+                if call is not None:
+                    rule_mod.add_modifier(call)
+
         if (
-            "ListOfIncludeReactants" in xml
-            or "ListOfIncludeProducts" in xml
-            or "ListOfExcludeReactants" in xml
-            or "ListOfExcludeProducts" in xml
+            rule_mod.type is None
+            and len(rule_mod.modifiers) == 0
+            and not had_explicit_ops
         ):
-            logger.warning(
-                "Include/Exclude Reactants/Products are not currently supported as rule modifiers",
-                loc=f"{__file__} : RuleBlockXML.get_rule_mod()",
-            )
+            return None
         return rule_mod
+
+    def _build_selector_modifier(self, key, selector_xml):
+        call_names = {
+            "ListOfIncludeReactants": "include_reactants",
+            "ListOfExcludeReactants": "exclude_reactants",
+            "ListOfIncludeProducts": "include_products",
+            "ListOfExcludeProducts": "exclude_products",
+        }
+        call_name = call_names.get(key)
+        if call_name is None:
+            return None
+        selector_id = str(selector_xml.get("@id", ""))
+        match = re.search(r"_(?:RP|PP)(\d+)$", selector_id)
+        if match is None:
+            return None
+        pattern_xml = selector_xml.get("Pattern")
+        if pattern_xml is None:
+            return None
+        patterns = pattern_xml if isinstance(pattern_xml, list) else [pattern_xml]
+        pattern_parts = [self._format_selector_pattern(pattern) for pattern in patterns]
+        pattern_str = " + ".join(pattern_parts)
+        return f"{call_name}({match.group(1)},{pattern_str})"
+
+    def _format_selector_pattern(self, pattern_xml):
+        pattern = PatternXML(pattern_xml).parsed_obj
+        if len(pattern.molecules) == 1:
+            molecule = pattern.molecules[0]
+            if (
+                molecule.name != "0"
+                and len(molecule.components) == 0
+                and molecule.compartment is None
+                and molecule.label is None
+                and pattern.compartment is None
+                and not pattern.fixed
+                and not pattern.MatchOnce
+                and pattern.relation is None
+                and pattern.quantity is None
+            ):
+                return molecule.name
+        return str(pattern)
 
 
 class EnergyPatternBlockXML(XMLObj):

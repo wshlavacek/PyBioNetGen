@@ -54,6 +54,7 @@ class BNGFile:
         self.BNGPATH = BNGPATH
         self.bngexec = bngexec
         self.parsed_actions: list = []
+        self.parsed_protocol_actions: list = []
 
     def _raise_file_error(self, message, path=None, loc=None) -> NoReturn:
         error_path = self.path if path is None else path
@@ -171,12 +172,26 @@ class BNGFile:
             # action parser sees the same logical command boundaries as BNG.
             mstr = re.sub(r"\\\n", "", mstr)
             mlines = mstr.split("\n")
-            stripped_lines = list(filter(self._not_action, mlines))
-            # remove spaces, actions don't allow them
-            self.parsed_actions = [
-                x.replace(" ", "")
-                for x in mlines if not self._not_action(x)
-            ]
+            self.parsed_actions = []
+            self.parsed_protocol_actions = []
+            stripped_lines = []
+            in_protocol = False
+            for line in mlines:
+                if re.match(r"\s*(begin)\s+(protocol)\b", line):
+                    in_protocol = True
+                    stripped_lines.append(line)
+                    continue
+                if re.match(r"\s*(end)\s+(protocol)\b", line):
+                    in_protocol = False
+                    stripped_lines.append(line)
+                    continue
+                if self._not_action(line):
+                    stripped_lines.append(line)
+                    continue
+                if in_protocol:
+                    self.parsed_protocol_actions.append(line)
+                else:
+                    self.parsed_actions.append(line)
             # let's remove begin/end actions, rarely used but should be removed
             remove_from = -1
             remove_to = -1

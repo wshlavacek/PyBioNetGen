@@ -1,4 +1,3 @@
-import re
 from tempfile import TemporaryFile
 
 import xmltodict
@@ -6,7 +5,7 @@ import xmltodict
 from bionetgen.core.exc import BNGFileError, BNGModelError, BNGParseError
 from bionetgen.core.utils.utils import ActionList
 
-from .blocks import ActionBlock
+from .blocks import ActionBlock, ProtocolBlock
 from .bngfile import BNGFile
 from .xmlparsers import (
     CompartmentBlockXML,
@@ -20,6 +19,66 @@ from .xmlparsers import (
     SpeciesBlockXML,
     XMLObj,
 )
+
+
+def _normalize_action_text(action: str) -> str:
+    return _collapse_unquoted_whitespace(_strip_comment_outside_quotes(action)).strip()
+
+
+def _strip_comment_outside_quotes(text: str) -> str:
+    out = []
+    in_single = False
+    in_double = False
+    escaped = False
+    for ch in text:
+        if escaped:
+            out.append(ch)
+            escaped = False
+            continue
+        if ch == "\\" and (in_single or in_double):
+            out.append(ch)
+            escaped = True
+            continue
+        if ch == '"' and not in_single:
+            in_double = not in_double
+            out.append(ch)
+            continue
+        if ch == "'" and not in_double:
+            in_single = not in_single
+            out.append(ch)
+            continue
+        if ch == "#" and not in_single and not in_double:
+            break
+        out.append(ch)
+    return "".join(out)
+
+
+def _collapse_unquoted_whitespace(text: str) -> str:
+    out = []
+    in_single = False
+    in_double = False
+    escaped = False
+    for ch in text:
+        if escaped:
+            out.append(ch)
+            escaped = False
+            continue
+        if ch == "\\" and (in_single or in_double):
+            out.append(ch)
+            escaped = True
+            continue
+        if ch == '"' and not in_single:
+            in_double = not in_double
+            out.append(ch)
+            continue
+        if ch == "'" and not in_double:
+            in_single = not in_single
+            out.append(ch)
+            continue
+        if ch.isspace() and not in_single and not in_double:
+            continue
+        out.append(ch)
+    return "".join(out)
 
 
 class BNGParser:
@@ -110,144 +169,126 @@ class BNGParser:
         Uses ActionList object to parse actions and turn them into
         action objects and fill up the ActionsBlock with them.
         """
-        if len(self.bngfile.parsed_actions) > 0:
-            ablock = ActionBlock()
-            # we have actions in file, let's get them
-            # import ipdb;ipdb.set_trace()
-            _left = []
-            for action in self.bngfile.parsed_actions:
-                # some cleanup, first we remove comments
-                action = re.sub(r"\#.*", "", action)
-                # now we remove whitespaces
-                action = re.sub(r"\s", "", action)
-                # if we don't have anything left, move on
-                if len(action) == 0:
-                    continue
-                # use pyparsing for parsing the action into a list
-                try:
-                    action_list = self.alist.action_parser.parseString(action)
-                except Exception as e:
-                    raise BNGParseError(
-                        self.bngfile.path, f"Failed to parse action {action}"
-                    ) from e
-                # we could have ";" in the action, so we need to remove it
-                if action_list[-1] == ";":
-                    _ = action_list.pop(-1)
-                # we we move onto actually making the action object
-                # first value is always the action type, remove
-                atype = action_list.pop(0)
-                # all actions have "()", remove
-                action_list = action_list[1:-1]
-                # be done if we don't have anything left
-                if len(action_list) == 0:
-                    # we don't have any arguments
-                    ablock.add_action(atype, {})
-                    continue
-                # we have arguments now onto argument parsing
-                # we check the action type and process accordingly
-                if atype in self.alist.no_setter_syntax:
-                    # these are actions like setParameter("test", 10), setModelName("name")
-                    if len(action_list) == 1:
-                        # this is of the form action("argument")
-                        ablock.add_action(atype, {action_list[0]: None})
-                        continue
-                    if len(action_list) == 3:
-                        if action_list[1] == ",":
-                            # this is of the form action(argument, value)
-                            ablock.add_action(
-                                atype, {action_list[0]: None, action_list[2]: None}
-                            )
-                            continue
-                elif atype in self.alist.square_braces:
-                    # these are actions like saveParameters(["a","b"])
-                    if action_list[0] == "[":
-                        # remove square braces
-                        action_list = action_list[1:-1]
-                    arg_dict = {}
-                    for arg in action_list:
-                        arg_dict[arg] = None
-                    ablock.add_action(atype, arg_dict)
-                    continue
-                elif atype in self.alist.normal_types:
-                    # finally a normal action, we have {} and => syntax
-                    if action_list[0] == "{":
-                        # remove curly braces
-                        action_list = action_list[1:-1]
-                    arg_dict = {}
-                    if len(action_list) == 0:
-                        ablock.add_action(atype, arg_dict)
-                        continue
-                    while len(action_list) > 0:
-                        arg_name = action_list.pop(0)
-                        connector = action_list.pop(0)
-                        if connector != "=>":
-                            raise BNGParseError(
-                                self.bngfile.path, f"Action {action} is malformed"
-                            )
-                        if arg_name in self.alist.irregular_args:
-                            arg_type = self.alist.irregular_args[arg_name]
-                            if arg_type == "dict":
-                                # process dict
-                                start_curly = action_list.pop(0)
-                                # make sure we are actually reading a dict
-                                if start_curly != "{":
-                                    raise BNGParseError(
-                                        self.bngfile.path,
-                                        f"Action {action} is malformed",
-                                    )
-                                value_str = "{"
-                                end_curly = None
-                                while end_curly is None:
-                                    # we are looping over A, =>, B and want to
-                                    # generate { A=>B, C=>D, etc }
-                                    dict_key = action_list.pop(0)
-                                    if dict_key == "}":
-                                        # we are done
-                                        end_curly = dict_key
-                                    else:
-                                        if len(value_str) > 1:
-                                            value_str += ","
-                                        dict_conn = action_list.pop(0)
-                                        dict_val = action_list.pop(0)
-                                        if dict_conn != "=>":
-                                            raise BNGParseError(
-                                                self.bngfile.path,
-                                                f"Action {action} is malformed",
-                                            )
-                                        value_str += dict_key + dict_conn + dict_val
-                                value_str += "}"
-                                arg_value = value_str
-                            elif arg_type == "list":
-                                # process list
-                                start_curly = action_list.pop(0)
-                                # make sure we are actually reading a dict
-                                if start_curly != "[":
-                                    raise BNGParseError(
-                                        self.bngfile.path,
-                                        f"Action {action} is malformed",
-                                    )
-                                value_str = "["
-                                end_curly = None
-                                while end_curly is None:
-                                    argument_element = action_list.pop(0)
-                                    if argument_element == "]":
-                                        end_curly = argument_element
-                                    else:
-                                        if len(value_str) > 1:
-                                            value_str += ","
-                                        value_str += argument_element
-                                value_str += "]"
-                                arg_value = value_str
-                        else:
-                            arg_value = action_list.pop(0)
-                        arg_dict[arg_name] = arg_value
-                    ablock.add_action(atype, arg_dict)
-                    continue
-                else:
-                    raise BNGParseError(
-                        self.bngfile.path, f"Action type {atype} is not recognized."
-                    )
+        ablock = self._parse_action_block(self.bngfile.parsed_actions, ActionBlock)
+        if ablock is not None:
             model_obj.add_block(ablock)
+
+        protocol_actions = getattr(self.bngfile, "parsed_protocol_actions", [])
+        pblock = self._parse_action_block(protocol_actions, ProtocolBlock)
+        if pblock is not None:
+            model_obj.add_block(pblock)
+
+    def _parse_action_block(self, action_lines, block_cls):
+        if len(action_lines) == 0:
+            return None
+        ablock = block_cls()
+        for action in action_lines:
+            self._parse_action_line(action, ablock)
+        if len(ablock) == 0:
+            return None
+        return ablock
+
+    def _parse_action_line(self, action, ablock):
+        action = _normalize_action_text(action)
+        if len(action) == 0:
+            return
+        try:
+            action_list = self.alist.action_parser.parseString(action)
+        except Exception as e:
+            raise BNGParseError(
+                self.bngfile.path, f"Failed to parse action {action}"
+            ) from e
+        if action_list[-1] == ";":
+            _ = action_list.pop(-1)
+        atype = action_list.pop(0)
+        action_list = action_list[1:-1]
+        if len(action_list) == 0:
+            ablock.add_action(atype, {})
+            return
+        if atype in self.alist.no_setter_syntax:
+            if len(action_list) == 1:
+                ablock.add_action(atype, {action_list[0]: None})
+                return
+            if len(action_list) == 3 and action_list[1] == ",":
+                ablock.add_action(atype, {action_list[0]: None, action_list[2]: None})
+                return
+        elif atype in self.alist.square_braces:
+            if action_list[0] == "[":
+                action_list = action_list[1:-1]
+            arg_dict = {}
+            for arg in action_list:
+                arg_dict[arg] = None
+            ablock.add_action(atype, arg_dict)
+            return
+        elif atype in self.alist.normal_types:
+            if action_list[0] == "{":
+                action_list = action_list[1:-1]
+            arg_dict = {}
+            if len(action_list) == 0:
+                ablock.add_action(atype, arg_dict)
+                return
+            while len(action_list) > 0:
+                arg_name = action_list.pop(0)
+                connector = action_list.pop(0)
+                if connector != "=>":
+                    raise BNGParseError(
+                        self.bngfile.path, f"Action {action} is malformed"
+                    )
+                if arg_name in self.alist.irregular_args:
+                    arg_type = self.alist.irregular_args[arg_name]
+                    if arg_type == "dict":
+                        start_curly = action_list.pop(0)
+                        if start_curly != "{":
+                            raise BNGParseError(
+                                self.bngfile.path,
+                                f"Action {action} is malformed",
+                            )
+                        value_str = "{"
+                        end_curly = None
+                        while end_curly is None:
+                            dict_key = action_list.pop(0)
+                            if dict_key == "}":
+                                end_curly = dict_key
+                            else:
+                                if len(value_str) > 1:
+                                    value_str += ","
+                                dict_conn = action_list.pop(0)
+                                dict_val = action_list.pop(0)
+                                if dict_conn != "=>":
+                                    raise BNGParseError(
+                                        self.bngfile.path,
+                                        f"Action {action} is malformed",
+                                    )
+                                value_str += dict_key + dict_conn + dict_val
+                        value_str += "}"
+                        arg_value = value_str
+                    elif arg_type == "list":
+                        start_curly = action_list.pop(0)
+                        if start_curly != "[":
+                            raise BNGParseError(
+                                self.bngfile.path,
+                                f"Action {action} is malformed",
+                            )
+                        value_str = "["
+                        end_curly = None
+                        while end_curly is None:
+                            argument_element = action_list.pop(0)
+                            if argument_element == "]":
+                                end_curly = argument_element
+                            else:
+                                if len(value_str) > 1:
+                                    value_str += ","
+                                value_str += argument_element
+                        value_str += "]"
+                        arg_value = value_str
+                else:
+                    arg_value = action_list.pop(0)
+                arg_dict[arg_name] = arg_value
+            ablock.add_action(atype, arg_dict)
+            return
+        raise BNGParseError(
+            self.bngfile.path, f"Action type {atype} is not recognized."
+        )
 
     def parse_xml(self, xml_str, model_obj) -> None:
         """

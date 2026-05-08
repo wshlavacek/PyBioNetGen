@@ -650,6 +650,17 @@ class TestFunctionBlockXML:
         fb = FunctionBlockXML(xml)
         assert fb.parsed_obj.items["f"].expr == 'TFUN(x,"data.tfun")'
 
+    def test_file_tfun_wrapper_expression_preserved(self):
+        xml = OrderedDict([
+            ("@id", "f"),
+            ("@type", "TFUN"),
+            ("@file", "data.tfun"),
+            ("@ctrName", "x"),
+            ("Expression", "(__TFUN__VAL__/k_t)"),
+        ])
+        fb = FunctionBlockXML(xml)
+        assert fb.parsed_obj.items["f"].expr == '(TFUN(x,"data.tfun")/k_t)'
+
     def test_non_tfun_function_unaffected(self):
         """Plain functions still go through Expression verbatim."""
         xml = OrderedDict([("@id", "f"), ("Expression", "k1*A + k2")])
@@ -878,17 +889,32 @@ class TestRuleBlockXML:
         ops = rb.get_operations(OrderedDict())
         assert ops == []
 
-    def test_get_rule_mod_include_exclude_logs_warning(self):
+    def test_get_rule_mod_include_exclude_selectors(self):
         xml = _make_rule_xml("r1", "A", "B", "0.1")
         rb = RuleBlockXML(xml)
         rule_xml = OrderedDict([
             ("@name", "r1"),
             ("ListOfOperations", OrderedDict()),
-            ("ListOfIncludeReactants", OrderedDict()),
+            ("ListOfExcludeReactants", [
+                OrderedDict([
+                    ("@id", "RR12_RP1"),
+                    ("Pattern", _simple_pattern_xml(_simple_molecule_xml("R"))),
+                ]),
+                OrderedDict([
+                    ("@id", "RR12_RP2"),
+                    ("Pattern", _simple_pattern_xml(_simple_molecule_xml("S"))),
+                ]),
+            ]),
+            ("ListOfIncludeProducts", OrderedDict([
+                ("@id", "RR12_PP1"),
+                ("Pattern", _simple_pattern_xml(_simple_molecule_xml("P"))),
+            ])),
         ])
-        with patch("bionetgen.modelapi.xmlparsers.logger.warning") as mock_warning:
-            rb.get_rule_mod(rule_xml)
-        mock_warning.assert_called_once()
+        result = rb.get_rule_mod(rule_xml)
+        assert result is not None
+        assert str(result) == (
+            "exclude_reactants(1,R) exclude_reactants(2,S) include_products(1,P)"
+        )
 
     def test_resolve_ratelaw_hill(self):
         xml = _make_rule_xml("r1", "A", "B", "0.5")

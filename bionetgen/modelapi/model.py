@@ -14,6 +14,7 @@ from .blocks import (
     ObservableBlock,
     ParameterBlock,
     PopulationMapBlock,
+    ProtocolBlock,
     RuleBlock,
     SpeciesBlock,
 )
@@ -85,6 +86,7 @@ class bngmodel:
             "energy_patterns",
             "population_maps",
             "rules",
+            "protocol",
             "actions",
         ]
         self.model_name = ""
@@ -196,6 +198,7 @@ class bngmodel:
             "population_maps": self.add_population_maps_block,
             "rules": self.add_rules_block,
             "reaction_rules": self.add_rules_block,
+            "protocol": self.add_protocol_block,
             "actions": self.add_actions_block,
         }
         if normalized_name not in block_adders:
@@ -321,6 +324,15 @@ class bngmodel:
             self._set_typed_block(block, ActionBlock, "actions", "actions")
         else:
             self.actions = ActionBlock()
+
+    def add_protocol_block(self, block=None):
+        """
+        Adds a protocol block to the model object.
+        """
+        if block is not None:
+            self._set_typed_block(block, ProtocolBlock, "protocol", "protocol")
+        else:
+            self.protocol = ProtocolBlock()
 
     def reset_compilation_tags(self):
         """

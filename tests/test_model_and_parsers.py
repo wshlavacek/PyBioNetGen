@@ -26,6 +26,7 @@ from bionetgen.modelapi.blocks import (
     ObservableBlock,
     ParameterBlock,
     PopulationMapBlock,
+    ProtocolBlock,
     RuleBlock,
     SpeciesBlock,
 )
@@ -108,6 +109,7 @@ def _make_model_bypass_init():
         "energy_patterns",
         "population_maps",
         "rules",
+        "protocol",
         "actions",
     ]
     obj.model_name = "test_model"
@@ -122,6 +124,7 @@ def _make_model_bypass_init():
     obj.energy_patterns = EnergyPatternBlock()
     obj.population_maps = PopulationMapBlock()
     obj.rules = RuleBlock()
+    obj.protocol = ProtocolBlock()
     obj.actions = ActionBlock()
     return obj
 
@@ -770,6 +773,53 @@ class TestBNGParser:
         assert "actions" in model_obj.active_blocks
 
     @patch("bionetgen.modelapi.bngparser.BNGFile")
+    def test_parse_actions_preserves_whitespace_inside_quotes(self, MockBNGFile):
+        from bionetgen.modelapi.bngparser import BNGParser
+
+        mock_bf = MagicMock()
+        mock_bf.path = "/some/model.bngl"
+        mock_bf.parsed_actions = [
+            'simulate({method=>"nf",param=>"-v -gml 1000000"})',
+        ]
+        mock_bf.parsed_protocol_actions = []
+        MockBNGFile.return_value = mock_bf
+
+        parser = BNGParser("/some/model.bngl")
+        model_obj = _make_model_bypass_init()
+        parser.parse_actions(model_obj)
+
+        action = list(model_obj.actions.items)[0]
+        assert action.args["param"] == '"-v -gml 1000000"'
+        assert str(action) == 'simulate({method=>"nf",param=>"-v -gml 1000000"})'
+
+    @patch("bionetgen.modelapi.bngparser.BNGFile")
+    def test_parse_actions_keeps_protocol_block_separate(self, MockBNGFile):
+        from bionetgen.modelapi.bngparser import BNGParser
+
+        mock_bf = MagicMock()
+        mock_bf.path = "/some/model.bngl"
+        mock_bf.parsed_actions = ['parameter_scan({method=>"protocol"})']
+        mock_bf.parsed_protocol_actions = [
+            'setParameter("k1", 5.0)',
+            'simulate({method=>"ode",t_end=>10})',
+        ]
+        MockBNGFile.return_value = mock_bf
+
+        parser = BNGParser("/some/model.bngl")
+        model_obj = _make_model_bypass_init()
+        parser.parse_actions(model_obj)
+
+        assert "actions" in model_obj.active_blocks
+        assert "protocol" in model_obj.active_blocks
+        assert len(model_obj.actions.items) == 1
+        assert len(model_obj.protocol.items) == 2
+        rendered = str(model_obj)
+        assert "begin protocol" in rendered
+        assert 'setParameter("k1",5.0)' in rendered
+        assert 'simulate({method=>"ode",t_end=>10})' in rendered
+        assert 'parameter_scan({method=>"protocol"})' in rendered
+
+    @patch("bionetgen.modelapi.bngparser.BNGFile")
     def test_parse_xml_with_lt_relation(self, MockBNGFile):
         """Test that relation='<' in parameter expressions is properly escaped."""
         from bionetgen.modelapi.bngparser import BNGParser
@@ -1198,6 +1248,7 @@ class TestBngmodel:
             ("add_rules_block", "RuleBlock"),
             ("add_energy_patterns_block", "EnergyPatternBlock"),
             ("add_population_maps_block", "PopulationMapBlock"),
+            ("add_protocol_block", "ProtocolBlock"),
             ("add_actions_block", "ActionBlock"),
         ],
     )

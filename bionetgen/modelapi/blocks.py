@@ -646,6 +646,30 @@ class ActionBlock(ModelBlock):
         return "\n".join(block_lines)
 
 
+class ProtocolBlock(ActionBlock):
+    """
+    Protocol block object, subclass of ActionBlock.
+
+    Protocol lines live inside ``begin model``/``end model`` and must retain
+    their own begin/end block wrapper rather than being rendered as top-level
+    actions.
+    """
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.name = "protocol"
+
+    def add_item(self, item_tpl) -> None:
+        _, value = item_tpl
+        self.items.append(value)
+
+    def gen_string(self) -> str:
+        block_lines = ["\nbegin protocol"]
+        block_lines.extend(item.print_line() for item in self.items)
+        block_lines.append("end protocol\n")
+        return "\n".join(block_lines)
+
+
 class EnergyPatternBlock(ModelBlock):
     """
     Energy pattern block object, subclass of ModelBlock.
