@@ -8,9 +8,11 @@ and routing simulation requests to BNGsim when available.
 
 import ast
 import concurrent.futures
+import inspect
 import logging
 import operator
 import os
+import re
 
 from bionetgen.core.exc import BNGFormatError, BNGSimError
 
@@ -487,6 +489,7 @@ def run_nfsim(
     print_functions=False,
     bngmodel=None,
     bngmodel_params=None,
+    nf_params=None,
 ):
     """Run a network-free simulation using BNGsim's NfsimSession.
 
@@ -549,7 +552,8 @@ def run_nfsim(
         model_name = os.path.splitext(os.path.basename(xml_path))[0]
 
     try:
-        with bngsim.NfsimSession(xml_path, molecule_limit=gml) as nfsim:
+        nf_kwargs = _nfsim_session_kwargs(nf_params)
+        with bngsim.NfsimSession(xml_path, molecule_limit=gml, **nf_kwargs) as nfsim:
             # Apply parameter overrides from setParameter actions
             if param_overrides:
                 for pname, pval in param_overrides.items():
@@ -753,6 +757,50 @@ def _strip_quotes(s):
     return s
 
 
+_NFSIM_PARAM_FLAG_RE = re.compile(r"-bscb|-cb|-utl\s*(\d+)")
+
+
+def _parse_nfsim_param_string(args):
+    """Map a BNGL ``simulate({...,param=>"-bscb -utl N"})`` flag string to
+    NfsimSession kwargs.
+
+    Only flags the BNGL explicitly requests are returned — when ``param=>``
+    is absent we leave the BNGsim defaults alone, since some models rely
+    on the binding's default complex-bookkeeping behavior to simulate at
+    all (forcing it off here triggers ``IndexError: vector`` on rules
+    that pattern-match bond state).
+
+    The action parser strips internal whitespace from quoted args, so
+    ``"-bscb -utl 5"`` arrives here as ``"-bscb-utl5"``. Match flag tokens
+    via regex so both spaced and collapsed forms work.
+    """
+    raw = args.get("param") if isinstance(args, dict) else None
+    raw = _strip_quotes(raw.strip()) if raw else ""
+    flags = {}
+    if not raw:
+        return flags
+    for m in _NFSIM_PARAM_FLAG_RE.finditer(raw):
+        if m.group(1):
+            flags["traversal_limit"] = int(m.group(1))
+        else:
+            flags["block_same_complex_binding"] = True
+    return flags
+
+
+def _nfsim_session_kwargs(nf_params):
+    """Translate parsed param=> flags into NfsimSession kwargs, dropping any
+    keys the installed BNGsim build doesn't accept so older wheels keep
+    working.
+    """
+    if not nf_params:
+        return {}
+    try:
+        accepted = set(inspect.signature(bngsim.NfsimSession.__init__).parameters)
+    except (TypeError, ValueError):
+        accepted = set(nf_params)
+    return {k: v for k, v in nf_params.items() if k in accepted}
+
+
 def _is_pla_action(action):
     """Return True if this action requests PLA simulation.
 
@@ -802,6 +850,12 @@ def _safe_math_namespace(extra=None):
         "floor": math.floor,
         "min": min,
         "max": max,
+        # BNGL's eager ternary — used by BNG2.pl in derived parameter
+        # expressions like ``use_excess = if(LT/RT>=100, 1, 0)``. Stored
+        # under a sanitized name because ``if`` is a Python keyword and
+        # can't be parsed as a Name token; ``_safe_eval_expr`` rewrites
+        # ``if(`` → ``_BNG_IF_(`` before parsing.
+        "_BNG_IF_": lambda cond, t, f: t if cond else f,
         "pi": math.pi,
         "_pi": math.pi,
         "_e": math.e,
@@ -823,6 +877,19 @@ _UNARY_OPS = {
     ast.UAdd: operator.pos,
     ast.USub: operator.neg,
 }
+_CMP_OPS = {
+    ast.Lt: operator.lt,
+    ast.LtE: operator.le,
+    ast.Gt: operator.gt,
+    ast.GtE: operator.ge,
+    ast.Eq: operator.eq,
+    ast.NotEq: operator.ne,
+}
+# BNGL's ``if(cond, t, f)`` uses the keyword ``if`` as a function name,
+# which Python's parser rejects. Rewrite to a sanitized identifier that
+# resolves through the safe namespace. The trailing ``\b(?=\()`` keeps
+# words like ``ifx`` or ``stiff`` untouched.
+_BNG_IF_RE = re.compile(r"\bif\s*(?=\()")
 
 
 def _safe_eval_expr(expr_str, ns):
@@ -837,7 +904,7 @@ def _safe_eval_expr(expr_str, ns):
     msg = f"Cannot evaluate numeric expression: {expr_str!r}"
 
     try:
-        tree = ast.parse(expr_str, mode="eval")
+        tree = ast.parse(_BNG_IF_RE.sub("_BNG_IF_", expr_str), mode="eval")
     except SyntaxError:
         raise ValueError(msg) from None
 
@@ -856,6 +923,19 @@ def _safe_eval_expr(expr_str, ns):
             return _UNARY_OPS[type(node.op)](walk(node.operand))
         if isinstance(node, ast.BinOp) and type(node.op) in _BIN_OPS:
             return _BIN_OPS[type(node.op)](walk(node.left), walk(node.right))
+        if isinstance(node, ast.Compare):
+            # BNG2.pl emits chains like ``a >= b`` inside if(...). Support
+            # standard comparisons; reject membership/identity ops.
+            left = walk(node.left)
+            for op_node, comp in zip(node.ops, node.comparators):
+                op = _CMP_OPS.get(type(op_node))
+                if op is None:
+                    raise ValueError(msg)
+                right = walk(comp)
+                if not op(left, right):
+                    return False
+                left = right
+            return True
         if isinstance(node, ast.Call):
             if node.keywords or not isinstance(node.func, ast.Name):
                 raise ValueError(msg)
@@ -1190,6 +1270,115 @@ def _parse_bngmodel_seed_species_initializers(bngmodel):
     return initializers
 
 
+def _parse_xml_parameter_table(xml_path):
+    """Read every ``<Parameter id="..." expr="..."/>`` entry from a BNG XML.
+
+    BNG2.pl emits both the user's BNGL parameters AND auto-generated
+    ``_rateLaw*`` rate-law constants whose ``value=`` attribute is
+    pre-computed at XML-export time. Returns ``[(name, expr), ...]`` in
+    document order (so dependency order is roughly correct for the
+    fixed-point resolver).
+    """
+    import xml.etree.ElementTree as ET
+
+    try:
+        tree = ET.parse(xml_path)
+    except (ET.ParseError, OSError) as exc:
+        logger.debug("XML parse failed for %s: %s", xml_path, exc)
+        return []
+    root = tree.getroot()
+    rows = []
+    # Strip any namespace from tag for simple matching
+    for elem in root.iter():
+        tag = elem.tag.rsplit("}", 1)[-1]
+        if tag != "Parameter":
+            continue
+        name = elem.get("id")
+        expr = elem.get("expr") or elem.get("value")
+        if name and expr is not None:
+            rows.append((name, expr))
+    return rows
+
+
+def _resolve_xml_params(xml_param_table, overrides):
+    """Iteratively evaluate XML parameter expressions against an override
+    namespace until fixpoint. Returns ``{name: float}``."""
+    resolved = {}
+    if overrides:
+        for n, v in overrides.items():
+            try:
+                resolved[n] = float(v)
+            except (TypeError, ValueError):
+                continue
+    pending = [(n, e) for n, e in xml_param_table if n not in resolved]
+    while pending:
+        progressed = False
+        next_pending = []
+        for name, expr in pending:
+            try:
+                resolved[name] = _eval_numeric(str(expr), extra_ns=resolved)
+                progressed = True
+            except ValueError:
+                next_pending.append((name, expr))
+        pending = next_pending
+        if not progressed:
+            break
+    return resolved
+
+
+def _apply_nfsim_derived_params(
+    nfsim, baseline_xml_params, xml_param_table, bngmodel, param_overrides,
+    scan_param=None,
+):
+    """Push parameters whose values transitively change with a scan/override.
+
+    NFsim loads rate-law parameter values from the BNG XML's pre-computed
+    ``value=`` attribute, ignoring ``expr=`` for derived rate constants.
+    So ``set_param("LT_conc_M", v)`` updates ``LT_conc_M`` but leaves
+    ``kf1_pseudo = Ka_1*koff*LT_conc_M`` AND the auto-generated
+    ``_rateLaw* = kf1_pseudo*use_excess`` pinned to their XML-time values.
+
+    Solution: re-evaluate every ``<Parameter expr=...>`` in the XML
+    (including ``_rateLaw*``) against the new override namespace and push
+    every changed value via ``set_param``.
+
+    *baseline_xml_params* is ``_resolve_xml_params(xml_param_table, {})``
+    evaluated once by the caller and reused across scan points.
+    """
+    overrides = {}
+    if param_overrides:
+        for pname, pval in param_overrides.items():
+            try:
+                overrides[pname] = float(pval)
+            except (TypeError, ValueError):
+                continue
+    if scan_param:
+        sname, sval = scan_param
+        if sname:
+            try:
+                overrides[sname] = float(sval)
+            except (TypeError, ValueError):
+                pass
+    if not overrides:
+        return
+
+    point_params = _resolve_xml_params(xml_param_table, overrides)
+    for name, new_val in point_params.items():
+        base_val = baseline_xml_params.get(name)
+        if base_val is None or base_val == new_val:
+            continue
+        denom = max(abs(base_val), abs(new_val), 1.0)
+        if abs(base_val - new_val) / denom < 1e-12:
+            continue
+        try:
+            nfsim.set_param(name, float(new_val))
+        except Exception as exc:
+            logger.debug(
+                "NFsim derived: set_param(%s, %s) skipped: %s",
+                name, new_val, exc,
+            )
+
+
 def _apply_nfsim_seed_species_initializers(
     nfsim, initializers, bngmodel, param_overrides, scan_param=None,
 ):
@@ -1420,6 +1609,7 @@ def _parse_simulate_params(action):
         "stop_if": _strip_quotes(args["stop_if"].strip()) if "stop_if" in args else None,
         "sample_times": _resolve_sample_times(args),
         "gml": int(float(args["gml"])) if "gml" in args else None,
+        "nf_params": _parse_nfsim_param_string(args),
     }
 
 
@@ -1764,6 +1954,7 @@ def _run_nfsim_scan(
     conc_deltas=None,
     bngmodel=None,
     bngmodel_params=None,
+    nf_params=None,
 ):
     """Execute a parameter_scan with NFsim: fresh NfsimSession per scan point.
 
@@ -1794,14 +1985,17 @@ def _run_nfsim_scan(
     base_seed = int(float(args.get("seed", 42)))
 
     seed_initializers = _parse_bngmodel_seed_species_initializers(bngmodel)
+    xml_param_table = _parse_xml_parameter_table(xml_path)
+    baseline_xml_params = _resolve_xml_params(xml_param_table, overrides=None)
 
     points = _resolve_scan_points(args)
     rows = []
     obs_names = None
     func_names = None
 
+    nf_kwargs = _nfsim_session_kwargs(nf_params)
     for i, value in enumerate(points):
-        with bngsim.NfsimSession(xml_path, molecule_limit=gml) as nfsim:
+        with bngsim.NfsimSession(xml_path, molecule_limit=gml, **nf_kwargs) as nfsim:
             # Apply parameter overrides from prior setParameter actions
             if param_overrides:
                 for pname, pval in param_overrides.items():
@@ -1816,6 +2010,16 @@ def _run_nfsim_scan(
                     logger.warning(
                         "NFsim scan: could not set %s=%s: %s", param_name, value, exc
                     )
+            # Push derived rate constants (including auto-generated
+            # _rateLaw*) whose values transitively change with the scan
+            # parameter — NFsim doesn't re-evaluate XML ``expr=`` strings
+            # on set_param, so e.g. kf_pseudo = Ka*koff*X stays pinned to
+            # its XML-time value otherwise.
+            _apply_nfsim_derived_params(
+                nfsim, baseline_xml_params, xml_param_table, bngmodel,
+                param_overrides,
+                scan_param=(param_name, value) if param_name else None,
+            )
             nfsim.initialize((base_seed + i) % (2**31))
             _apply_nfsim_seed_species_initializers(
                 nfsim, seed_initializers,
@@ -2059,6 +2263,7 @@ def _run_parameter_scan_bngsim(
             conc_deltas=nf_conc_deltas,
             bngmodel=bngmodel,
             bngmodel_params=bngmodel_params,
+            nf_params=_parse_nfsim_param_string(args),
         )
 
     if bngsim_model is None:
@@ -2547,6 +2752,7 @@ def _execute_bngsim_actions(
                     print_functions=print_funcs,
                     bngmodel=bngmodel,
                     bngmodel_params=bngmodel_params,
+                    nf_params=sp.get("nf_params"),
                 )
                 current_method = "nf"
                 current_poplevel = None
