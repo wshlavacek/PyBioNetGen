@@ -108,15 +108,18 @@ $ uv run --no-project --with-requirements requirements-dev.txt python -m bionetg
 
 ### run pytest, then mypy
 
+```
 $ make test
 ```
 
-`make test` and CI both run the same uv-based source-tree checks: `pytest`
-first, then `mypy`.
+`make test` and CI both call the same launcher script. It builds an ephemeral
+uv environment, prefers a local editable `bngsim` checkout when one is
+available, otherwise installs published `bngsim`, and provisions a BioNetGen
+runtime (`BNG2.pl`) into a temp cache when it is not already available through
+`PYBNG_DEV_BNGPATH`, `BNGPATH`, or a vendored bundle.
 
-Tests that rely on optional extras (`bionetgen[atomizer]`, `bngsim`) or a
-working BioNetGen runtime (`BNG2.pl` via a vendored bundle, `BNGPATH`, or
-`PATH`) are skipped automatically when those pieces are unavailable.
+The default dev checks therefore run the BNG2.pl-, BNGsim-, and atomizer-backed
+tests. The full model sweep remains opt-in via `BNG_RUN_MODEL_SWEEPS=1`.
 
 Editable installs no longer trigger BioNetGen bundle downloads. Local
 development stays source-tree based by default, and vendoring the platform

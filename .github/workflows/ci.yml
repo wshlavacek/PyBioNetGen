@@ -42,7 +42,7 @@ jobs:
       shell: bash
     - name: Run pytest + mypy
       run: |
-        uv run --no-project --with-requirements requirements-dev.txt python scripts/run_dev_checks.py
+        python scripts/run_dev_checks.py
   
   deploy-container:
     runs-on: ubuntu-latest

@@ -15,7 +15,7 @@ docker: clean
 	docker build -t bionetgen:latest .
 
 test:
-	uv run --no-project --with-requirements requirements-dev.txt python scripts/run_dev_checks.py tests/
+	python scripts/run_dev_checks.py tests/
 
 typecheck:
 	uv run --no-project --with-requirements requirements-dev.txt python -m mypy bionetgen tests
