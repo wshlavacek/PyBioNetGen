@@ -37,8 +37,6 @@ class BNGResult:
         # defaults
         self.process_return = None
         self.output = None
-        # TODO Make it so that with path you can supply an
-        # extension or a list of extensions to load in
         self.gdats = {}
         self.cdats = {}
         self.scans = {}
@@ -54,8 +52,6 @@ class BNGResult:
             self.gnames[fnoext] = direct_path
             self.gdats[fnoext] = self.load(direct_path)
         elif path is not None:
-            # TODO change this pattern so that each method
-            # is stand alone and usable.
             self.path = path
             self.find_dat_files()
             self.load_results()

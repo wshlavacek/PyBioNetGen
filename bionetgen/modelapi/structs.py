@@ -330,9 +330,6 @@ class Action(ModelObj):
                 seen_args.append(arg_name)
 
     def gen_string(self) -> str:
-        # TODO: figure out every argument that has special
-        # requirements, e.g. method requires the value to
-        # be a string
         action_str = f"{self.type}("
         # we can skip curly if we don't have arguments
         # and we NEED to skip it for some actions

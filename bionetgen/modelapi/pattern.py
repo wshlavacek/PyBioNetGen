@@ -459,8 +459,6 @@ class Molecule:
     def __iter__(self):
         return self.components.__iter__()
 
-    # TODO: implement __setitem__
-
     def __str__(self):
         mol_str = self.name
         # we have a null species
@@ -520,7 +518,6 @@ class Molecule:
 
     @name.setter
     def name(self, value):
-        # TODO: Check for invalid characters
         self._name = value
 
     @property

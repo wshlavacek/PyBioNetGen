@@ -173,7 +173,6 @@ class BNGVisualize:
                 )
             else:
                 model.add_action("visualize", action_args={"type": f"'{self.vtype}'"})
-        # TODO: Work in temp folder
         cur_dir = os.getcwd()
         from bionetgen.core.main import BNGCLI
 

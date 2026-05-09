@@ -114,10 +114,6 @@ class NetworkBlock:
         return "\n".join(block_lines)
 
     def add_item(self, item_tpl) -> None:
-        # TODO: try adding evaluation of the parameter here
-        # for the future, in case we want people to be able
-        # to adjust the math
-        # TODO: Error handling, some names will definitely break this
         name, value = item_tpl
         # allow for empty addition, uses index
         if name is None:

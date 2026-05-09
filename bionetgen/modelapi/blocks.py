@@ -152,10 +152,6 @@ class ModelBlock:
         Adds an item to the block from the item tuple given.
         Exact mechanism is slightly different for each block.
         """
-        # TODO: try adding evaluation of the parameter here
-        # for the future, in case we want people to be able
-        # to adjust the math
-        # TODO: Error handling, some names will definitely break this
         name, value = item_tpl
         # allow for empty addition, uses index
         if name is None:

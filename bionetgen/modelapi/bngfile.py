@@ -212,7 +212,6 @@ class BNGFile:
                 if remove_from < 0:
                     msg = f'There is an "end actions" statement at line {remove_to} without a matching "begin actions" statement'
                     raise BNGFileError(model_path, message=msg)
-        # TODO: read stripped lines and store the actions
         # open new file and write just the model
         stripped_model = os.path.join(folder, model_file)
         if self.generate_network:
@@ -230,8 +229,6 @@ class BNGFile:
         write new BNG-XML or SBML of file by calling BNG2.pl again
         or can take BNGL string in as well.
         """
-        # TODO: Implement the route where this function uses the file itself
-        # for this generation
         if bngl_str is None:
             # should load in the right str here
             raise NotImplementedError
@@ -245,7 +242,6 @@ class BNGFile:
             with open("temp.bngl", "w", encoding="UTF-8") as f:
                 f.write(bngl_str)
             # run with --xml
-            # TODO: Make output supression an option somewhere
             if xml_type == "bngxml":
                 if self.bngexec is None:
                     msg = "BNG-XML generation requires BNG2.pl (BioNetGen) to be installed."

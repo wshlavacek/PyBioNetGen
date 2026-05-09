@@ -723,7 +723,6 @@ class RuleBlockXML(XMLObj):
             )
 
     def get_operations(self, xml):
-        # TODO: create working operations class
         ops = []
         # List all possible operations & arguments
         ops_types = [
@@ -756,7 +755,6 @@ class RuleBlockXML(XMLObj):
         return ops
 
     def get_rule_mod(self, xml):
-        # TODO: create working rule mods class
         rule_mod = RuleMod()
         list_ops = xml.get("ListOfOperations")
         had_explicit_ops = list_ops is not None
@@ -969,7 +967,6 @@ class PopulationMapBlockXML(XMLObj):
         )
 
 
-# TODO: Store operations!
 class Operation:
     """
     To be used for parsing & storing ListOfOperations information.

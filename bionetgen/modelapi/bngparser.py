@@ -352,7 +352,6 @@ class BNGParser:
                     xml_parser = RuleBlockXML(rrules)
                     model_obj.add_block(xml_parser.parsed_obj)
             elif listkey == "ListOfFunctions":
-                # TODO: Optional expression parsing?
                 func_list = xml_model[listkey]
                 if func_list is not None:
                     funcs = func_list["Function"]

@@ -331,7 +331,6 @@ class BNGGdiff:
         # keep track of naming
         rename_map = {}
         # first find differences in nodes
-        # FIXME: Check for single nodes before looping
         node_stack = [(["graphml"], [], g1["graphml"])]
         dnode_stack = [(["graphml"], [], dg["graphml"])]
         while len(node_stack) > 0:
@@ -567,9 +566,6 @@ class BNGGdiff:
         return int(properties["y:NodeLabel"]["@fontSize"])
 
     def _get_color_id(self, node):
-        # FIXME: This should be fixed at bng level by attaching
-        # an attribute to graphml node stating the type of node
-        # instead of using colors to check the type
         curr_color = self._get_node_color(node)
         if curr_color == "#D2D2D2":
             # grey indicates a species
