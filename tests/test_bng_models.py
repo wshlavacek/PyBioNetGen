@@ -19,25 +19,16 @@ def test_bionetgen_all_model_loading():
     # tests library model loading using many models
     mpattern = os.path.join(tfold, "models") + os.sep + "*.bngl"
     models = glob.glob(mpattern)
-    succ = []
-    fail = []
-    success = 0
-    fails = 0
+    failures = []
     for model in models:
         try:
             _m = bng.bngmodel(model)
-            success += 1
             _mstr = str(_m)
-            succ.append(model)
         except Exception as exc:
-            print(f"can't load model {model}: {exc}")
-            fails += 1
-            fail.append(model)
-    print(f"succ: {success}")
-    print(sorted(succ))
-    print(f"fail: {fails}")
-    print(sorted(fail))
-    assert fails == 0
+            # Broad catch is intentional: collect every load failure in
+            # one pass instead of stopping at the first bad model.
+            failures.append(f"{model}: {exc}")
+    assert not failures, "model load failures:\n" + "\n".join(failures)
 
 
 def test_action_loading():
@@ -77,10 +68,7 @@ def test_model_running_CLI(tmp_path, require_bng2):
     # tests running a list of models using the CLI subprocess path
     mpattern = os.path.join(tfold, "models") + os.sep + "*.bngl"
     models = glob.glob(mpattern)
-    succ = []
-    fail = []
-    success = 0
-    fails = 0
+    failures = []
     for model in models:
         if _is_skipped_model(model):
             continue
@@ -99,22 +87,12 @@ def test_model_running_CLI(tmp_path, require_bng2):
             with BioNetGenTest(argv=argv) as app:
                 app.run()
                 assert app.exit_code == 0
-            success += 1
-            model = os.path.split(model)
-            model = model[1]
-            succ.append(model)
-        except Exception as e:
-            print(e)
-            print(f"can't run model {model}")
-            fails += 1
-            model = os.path.split(model)
-            model = model[1]
-            fail.append(model)
-    print(f"succ: {success}")
-    print(sorted(succ))
-    print(f"fail: {fails}")
-    print(sorted(fail))
-    assert fails == 0
+        except Exception as exc:
+            # Broad catch is intentional: collect every run failure (incl.
+            # the inner exit_code AssertionError) in one pass instead of
+            # stopping at the first bad model.
+            failures.append(f"{os.path.basename(model)}: {exc}")
+    assert not failures, "model run failures:\n" + "\n".join(failures)
 
 
 @_skip_model_sweeps
@@ -122,10 +100,7 @@ def test_model_running_lib(require_bng2):
     # test running a list of models using the library subprocess path
     mpattern = os.path.join(tfold, "models") + os.sep + "*.bngl"
     models = glob.glob(mpattern)
-    succ = []
-    fail = []
-    success = 0
-    fails = 0
+    failures = []
     for model in models:
         if _is_skipped_model(model):
             continue
@@ -135,21 +110,11 @@ def test_model_running_lib(require_bng2):
                 timeout=_MODEL_SWEEP_TIMEOUT,
                 simulator="subprocess",
             )
-            success += 1
-            model = os.path.split(model)
-            model = model[1]
-            succ.append(model)
         except Exception as exc:
-            print(f"can't run model {model}: {exc}")
-            fails += 1
-            model = os.path.split(model)
-            model = model[1]
-            fail.append(model)
-    print(f"succ: {success}")
-    print(sorted(succ))
-    print(f"fail: {fails}")
-    print(sorted(fail))
-    assert fails == 0
+            # Broad catch is intentional: collect every run failure in
+            # one pass instead of stopping at the first bad model.
+            failures.append(f"{os.path.basename(model)}: {exc}")
+    assert not failures, "model run failures:\n" + "\n".join(failures)
 
 
 def test_setup_simulator(require_bng2):
