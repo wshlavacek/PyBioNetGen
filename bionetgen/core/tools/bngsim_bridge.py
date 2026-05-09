@@ -1009,6 +1009,35 @@ def _eval_numeric(expr_str, extra_ns=None):
         raise ValueError(f"Cannot evaluate numeric expression: {expr_str!r}") from None
 
 
+def _resolve_species_name(bngsim_model, name):
+    """Map a user-given species identifier to bngsim's exact species name.
+
+    BNG2.pl accepts ``setConcentration("BafA1", 1)`` for a parameterless
+    molecule even though the canonical species name in the .net file is
+    ``BafA1()``. bngsim's species table only knows the parens form, so the
+    bare lookup raises ``Species 'BafA1' not found`` and the bridge silently
+    swallowed it — which is the root cause of the inter-segment divergence
+    in B2 (ode/AVdyn.bngl etc.). Mirror BNG2.pl: if the literal name isn't
+    a species, append ``()`` and retry. Falls back to the original name
+    when neither matches so the bngsim setter raises its own clear error.
+    """
+    if bngsim_model is None:
+        return name
+    species_names = getattr(bngsim_model, "species_names", None)
+    if species_names is None:
+        return name
+    try:
+        if name in species_names:
+            return name
+        parens_form = f"{name}()"
+        if parens_form in species_names:
+            return parens_form
+    except TypeError:
+        # species_names not iterable — leave the lookup to the caller.
+        pass
+    return name
+
+
 def _model_param_namespace(bngsim_model, fallback=None):
     """Build a {param_name: float} dict from a BNGsim model.
 
@@ -3081,11 +3110,28 @@ def _execute_bngsim_actions(
             if bngsim_model is not None:
                 # See setParameter above: only backend setter failures are
                 # tolerated here; expression parsing/evaluation is strict.
+                # If the literal name isn't a species (BNG2.pl-canonical
+                # bare-molecule shorthand like ``BafA1`` vs bngsim's
+                # ``BafA1()``), retry with the parens form. See B2.
                 try:
                     bngsim_model.set_concentration(name, numeric_value)
                     logger.debug("setConcentration(%s, %s)", name, value)
                 except Exception as e:
-                    logger.warning("setConcentration(%s, %s) failed: %s", name, value, e)
+                    resolved = _resolve_species_name(bngsim_model, name)
+                    if resolved != name:
+                        try:
+                            bngsim_model.set_concentration(resolved, numeric_value)
+                            logger.debug(
+                                "setConcentration(%s→%s, %s)", name, resolved, value,
+                            )
+                        except Exception as e2:
+                            logger.warning(
+                                "setConcentration(%s, %s) failed: %s", name, value, e2,
+                            )
+                    else:
+                        logger.warning(
+                            "setConcentration(%s, %s) failed: %s", name, value, e,
+                        )
             nf_conc_overrides[name] = round(numeric_value)
             nf_conc_deltas.pop(name, None)
             continue
@@ -3099,12 +3145,14 @@ def _execute_bngsim_actions(
             )
             if bngsim_model is not None:
                 # See setParameter above: only backend setter/getter
-                # failures are tolerated here.
+                # failures are tolerated here. Mirror the setConcentration
+                # bare-name resolution (B2).
+                resolved = _resolve_species_name(bngsim_model, name)
                 try:
-                    current = bngsim_model.get_concentration(name)
+                    current = bngsim_model.get_concentration(resolved)
                     new_val = current + numeric_delta
-                    bngsim_model.set_concentration(name, new_val)
-                    logger.debug("addConcentration(%s, %s)", name, value)
+                    bngsim_model.set_concentration(resolved, new_val)
+                    logger.debug("addConcentration(%s, %s)", resolved, value)
                 except Exception as e:
                     logger.warning("addConcentration(%s, %s) failed: %s", name, value, e)
             # Track for NFsim propagation as a delta. NFsim's live count can

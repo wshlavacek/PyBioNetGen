@@ -962,6 +962,61 @@ class TestExecuteBngsimActions:
         result, model, mock_bngsim, mock_sim = self._run([action])
         model.set_concentration.assert_called_with("S1", 100.0)
 
+    def test_b2_set_concentration_resolves_bare_molecule_name(self):
+        """B2: ``setConcentration("BafA1",1)`` is the BNG2.pl-canonical form
+        for setting a parameterless molecule's species concentration. bngsim's
+        species names include parens (``BafA1()``), so a literal lookup of
+        ``BafA1`` raises ``Species 'BafA1' not found``. Mirror BNG2.pl by
+        falling back to ``<name>()``.
+
+        Repro from ode/AVdyn.bngl: setConcentration("BafA1",1) before the
+        prod+BafA1 segment was silently failing on bngsim, so BafA1 stayed
+        at 0 and the kdeg() function (``if(BafA1>epsilon, 0, ...)``) took
+        the wrong branch.
+        """
+        from bionetgen.core.tools.bngsim_bridge import _execute_bngsim_actions
+
+        action = _make_action("setConcentration", {'"BafA1"': None, '1': None})
+        model = _make_mock_model()
+        model.species_names = ["BafA1()", "OM(s)", "AP()"]
+        # First call (literal name) raises; second call (parens form) succeeds.
+        model.set_concentration = MagicMock(
+            side_effect=[Exception("Species 'BafA1' not found in model"), None]
+        )
+        mock_bngsim = MagicMock()
+        with patch(f"{BRIDGE}.bngsim", mock_bngsim), \
+             patch(f"{BRIDGE}.BNGSIM_AVAILABLE", True), \
+             patch(f"{BRIDGE}._try_prepare_codegen", return_value=""), \
+             patch(f"{BRIDGE}._parse_net_species_initializers", return_value=[]), \
+             tempfile.TemporaryDirectory() as tmpdir:
+            _execute_bngsim_actions(
+                [action], model, tmpdir, "test_model",
+            )
+        # Called twice: bare name (failed), then parens form (succeeded).
+        assert model.set_concentration.call_count == 2
+        model.set_concentration.assert_any_call("BafA1", 1.0)
+        model.set_concentration.assert_any_call("BafA1()", 1.0)
+
+    def test_b2_set_concentration_uses_literal_when_present(self):
+        """When the literal name IS a species, no fallback should fire."""
+        from bionetgen.core.tools.bngsim_bridge import _execute_bngsim_actions
+
+        action = _make_action("setConcentration", {'"S1"': None, '5': None})
+        model = _make_mock_model()
+        model.species_names = ["S1", "S2"]
+        model.set_concentration = MagicMock()
+        mock_bngsim = MagicMock()
+        with patch(f"{BRIDGE}.bngsim", mock_bngsim), \
+             patch(f"{BRIDGE}.BNGSIM_AVAILABLE", True), \
+             patch(f"{BRIDGE}._try_prepare_codegen", return_value=""), \
+             patch(f"{BRIDGE}._parse_net_species_initializers", return_value=[]), \
+             tempfile.TemporaryDirectory() as tmpdir:
+            _execute_bngsim_actions(
+                [action], model, tmpdir, "test_model",
+            )
+        # Single call, the literal name.
+        model.set_concentration.assert_called_once_with("S1", 5.0)
+
     def test_add_concentration(self):
         action = _make_action("addConcentration", {'"S1"': None, '50': None})
         model = _make_mock_model()
