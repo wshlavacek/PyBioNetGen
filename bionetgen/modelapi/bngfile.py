@@ -170,7 +170,10 @@ class BNGFile:
             mstr = mf.read()
             # Collapse line continuations before stripping action lines so the
             # action parser sees the same logical command boundaries as BNG.
-            mstr = re.sub(r"\\\n", "", mstr)
+            # BNG2.pl tolerates trailing whitespace between ``\`` and the
+            # newline (e.g. ``method=>"ode",\<space><newline>`` in
+            # ode/inhibitors_1.bngl); accept the same shape here.
+            mstr = re.sub(r"\\[ \t]*\n", "", mstr)
             mlines = mstr.split("\n")
             self.parsed_actions = []
             self.parsed_protocol_actions = []
@@ -222,7 +225,13 @@ class BNGFile:
         return stripped_model  # type: ignore[no-any-return]
 
     def _not_action(self, line) -> bool:
-        return all(action not in line for action in self._action_list)
+        # Anchor the match to the start of the (left-stripped) line so that
+        # user identifiers containing an action name as a substring — most
+        # commonly ``conversion()`` (the substring ``version(`` matches the
+        # ``version`` action) inside a ``begin functions`` block — aren't
+        # misclassified and pulled out as actions.
+        stripped = line.lstrip()
+        return all(not stripped.startswith(action) for action in self._action_list)
 
     def write_xml(self, open_file, xml_type="bngxml", bngl_str=None) -> bool:
         """

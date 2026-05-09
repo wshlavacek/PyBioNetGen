@@ -22,7 +22,95 @@ from .xmlparsers import (
 
 
 def _normalize_action_text(action: str) -> str:
-    return _collapse_unquoted_whitespace(_strip_comment_outside_quotes(action)).strip()
+    text = _strip_comment_outside_quotes(action)
+    text = _collapse_unquoted_whitespace(text)
+    text = _strip_unquoted_backslashes(text)
+    text = _collapse_unquoted_double_commas(text)
+    return text.strip()
+
+
+def _strip_unquoted_backslashes(text: str) -> str:
+    """Drop ``\\`` characters that appear outside string literals.
+
+    BNG2.pl uses ``\\`` solely as line-continuation in BNGL. After
+    line-continuation collapse runs upstream, any surviving outside-quotes
+    ``\\`` is residue from a typo (e.g. ``,\\log_scale=>1`` in
+    ode/dimer_phos2.bngl) and BNG2.pl tolerates it. The pyparsing-based
+    action_parser does not, so strip them here.
+    """
+    return _filter_outside_quotes(text, lambda ch: ch != "\\")
+
+
+def _collapse_unquoted_double_commas(text: str) -> str:
+    """Collapse runs of commas (outside string literals) to a single comma.
+
+    ``simulate({...,n_steps=>20,,print_functions=>1})`` — note the ``,,`` —
+    appears in real-world BNGL (ode/Reduced_IGF1R_hela_cell_specific_model.bngl)
+    and BNG2.pl tolerates it. The pyparsing action_parser does not.
+    """
+    out = []
+    in_single = False
+    in_double = False
+    escaped = False
+    prev_was_comma = False
+    for ch in text:
+        if escaped:
+            out.append(ch)
+            escaped = False
+            prev_was_comma = False
+            continue
+        if ch == "\\" and (in_single or in_double):
+            out.append(ch)
+            escaped = True
+            prev_was_comma = False
+            continue
+        if ch == '"' and not in_single:
+            in_double = not in_double
+            out.append(ch)
+            prev_was_comma = False
+            continue
+        if ch == "'" and not in_double:
+            in_single = not in_single
+            out.append(ch)
+            prev_was_comma = False
+            continue
+        if ch == "," and not in_single and not in_double:
+            if prev_was_comma:
+                continue
+            prev_was_comma = True
+            out.append(ch)
+            continue
+        prev_was_comma = False
+        out.append(ch)
+    return "".join(out)
+
+
+def _filter_outside_quotes(text: str, keep) -> str:
+    out = []
+    in_single = False
+    in_double = False
+    escaped = False
+    for ch in text:
+        if escaped:
+            out.append(ch)
+            escaped = False
+            continue
+        if ch == "\\" and (in_single or in_double):
+            out.append(ch)
+            escaped = True
+            continue
+        if ch == '"' and not in_single:
+            in_double = not in_double
+            out.append(ch)
+            continue
+        if ch == "'" and not in_double:
+            in_single = not in_single
+            out.append(ch)
+            continue
+        if not in_single and not in_double and not keep(ch):
+            continue
+        out.append(ch)
+    return "".join(out)
 
 
 def _strip_comment_outside_quotes(text: str) -> str:

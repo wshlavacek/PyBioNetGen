@@ -166,6 +166,22 @@ class TestBNGFile:
         assert bf._not_action("generate_network({overwrite=>1})") is False
 
     @patch("bionetgen.modelapi.bngfile.find_BNG_path", return_value=("/fake", "/fake/BNG2.pl"))
+    def test_b4_not_action_function_with_substring_action_name(self, mock_find):
+        """B4: ``conversion()=`` lives in a ``begin functions`` block but the
+        substring ``version(`` matched the ``version(`` action prefix and the
+        line was misclassified. Anchor matching to the line start so user
+        identifiers that happen to contain an action name (conversion, version,
+        ..ifurcate, etc.) aren't pulled out of their block."""
+        from bionetgen.modelapi.bngfile import BNGFile
+
+        bf = BNGFile("/some/model.bngl")
+        assert bf._not_action("conversion()=1-(BA_monomer+MMA_monomer)/(BA_0+MMA_0)") is True
+        # Indented variants — pattern must still treat as not-action.
+        assert bf._not_action("  conversion()=foo/bar") is True
+        # And true action lines (with leading whitespace) still match.
+        assert bf._not_action('  simulate({method=>"ode"})') is False
+
+    @patch("bionetgen.modelapi.bngfile.find_BNG_path", return_value=("/fake", "/fake/BNG2.pl"))
     def test_strip_actions_removes_actions(self, mock_find):
         from bionetgen.modelapi.bngfile import BNGFile
 
@@ -487,10 +503,77 @@ class TestBNGFile:
             assert "simulate(" not in content
             assert len(bf.parsed_actions) == 1
 
+    @patch("bionetgen.modelapi.bngfile.find_BNG_path", return_value=("/fake", "/fake/BNG2.pl"))
+    def test_b4_line_continuation_with_trailing_whitespace(self, mock_find):
+        """B4: real-world BNGL has trailing spaces after ``\\`` (e.g.
+        ``method=>"ode",\\ \\n``) — the continuation regex must tolerate them.
+        Repro from ode/inhibitors_1.bngl line 599."""
+        from bionetgen.modelapi.bngfile import BNGFile
+
+        bf = BNGFile("/some/model.bngl")
+        # Trailing space before newline after backslash.
+        bngl = 'begin model\nend model\nsimulate({method=>\\   \n"ode"})\n'
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            src = os.path.join(tmpdir, "model.bngl")
+            with open(src, "w") as f:
+                f.write(bngl)
+            out_dir = os.path.join(tmpdir, "out")
+            os.makedirs(out_dir)
+            bf.strip_actions(src, out_dir)
+            assert len(bf.parsed_actions) == 1
+            # The action text must not still contain the dangling backslash.
+            assert "\\" not in bf.parsed_actions[0]
+
 
 # ============================================================================
 # BNGParser tests
 # ============================================================================
+
+
+class TestBNGParserNormalize:
+    """B4 regression coverage for _normalize_action_text."""
+
+    def test_b4_empty_args_collapse(self):
+        """Trailing or stray ``,,`` in args is a real-world BNGL typo
+        (e.g. ``simulate({...,n_steps=>20,,print_functions=>1})`` from
+        ode/Reduced_IGF1R_hela_cell_specific_model.bngl). BNG2.pl tolerates
+        it; we should too — collapse runs of commas (outside quotes) to one."""
+        from bionetgen.modelapi.bngparser import _normalize_action_text
+
+        out = _normalize_action_text(
+            'simulate({method=>"ode",t_end=>3000,n_steps=>20,,print_functions=>1})'
+        )
+        assert ",," not in out
+        # The good comma-separated args survive.
+        assert ',n_steps=>20,print_functions=>1' in out
+
+    def test_b4_empty_args_inside_quotes_preserved(self):
+        """The ``,,`` collapse must not touch comma sequences inside string
+        literals — those can be intentional (e.g. tfun arrays)."""
+        from bionetgen.modelapi.bngparser import _normalize_action_text
+
+        out = _normalize_action_text('something({xs=>"0,,1,,2"})')
+        assert '"0,,1,,2"' in out
+
+    def test_b4_stray_backslash_outside_quotes_dropped(self):
+        """Stray ``\\`` in args (e.g. ``,\\log_scale=>1`` in
+        ode/dimer_phos2.bngl) is BNGL line-continuation residue from a
+        typo — drop it so the action_parser isn't tripped."""
+        from bionetgen.modelapi.bngparser import _normalize_action_text
+
+        out = _normalize_action_text(
+            'parameter_scan({n_scan_pts=>101,\\log_scale=>1,method=>"ode"})'
+        )
+        assert "\\" not in out
+
+    def test_b4_backslash_inside_quotes_preserved(self):
+        """``\\`` inside a string literal (e.g. a regex or escape) must not
+        be stripped. Only stray, outside-quotes backslashes are dropped."""
+        from bionetgen.modelapi.bngparser import _normalize_action_text
+
+        out = _normalize_action_text('action({arg=>"a\\b"})')
+        assert '"a\\b"' in out
 
 
 class TestBNGParser:
