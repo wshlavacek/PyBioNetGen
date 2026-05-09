@@ -437,6 +437,24 @@ class TestNetworkParameterBlock:
         pb.k1 = new_p
         assert pb.items["k1"] is new_p
 
+    def test_setattr_invalid_type_logs_warning(self):
+        from bionetgen.network import blocks as blocks_module
+
+        pb = NetworkParameterBlock()
+        pb.add_parameter(1, "k1", "0.5")
+        pb._changes.clear()
+
+        with patch.object(blocks_module, "logger") as mock_logger:
+            pb.k1 = object()
+
+        mock_logger.warning.assert_called_once()
+        warning_args, warning_kwargs = mock_logger.warning.call_args
+        assert "Unable to set parameter 'k1'" in warning_args[0]
+        assert "keeping existing value" in warning_args[0]
+        assert "NetworkParameterBlock.__setattr__()" in warning_kwargs["loc"]
+        assert pb["k1"]["value"] == "0.5"
+        assert len(pb._changes) == 0
+
 
 # ===== NetworkCompartmentBlock =====
 
@@ -675,6 +693,24 @@ class TestNetworkFunctionBlock:
         fb.add_function("rate", "k1*x", args=["x"])
         assert fb["rate"].args == ["x"]
 
+    def test_setattr_invalid_type_logs_warning(self):
+        from bionetgen.network import blocks as blocks_module
+
+        fb = NetworkFunctionBlock()
+        fb.add_function("rate", "k1*A")
+        fb._changes.clear()
+        existing_function = fb["rate"]
+
+        with patch.object(blocks_module, "logger") as mock_logger:
+            fb.rate = 42
+
+        mock_logger.warning.assert_called_once()
+        warning_args, warning_kwargs = mock_logger.warning.call_args
+        assert "can't set function" in warning_args[0]
+        assert "NetworkFunctionBlock.__setattr__()" in warning_kwargs["loc"]
+        assert fb["rate"] is existing_function
+        assert len(fb._changes) == 0
+
 
 # ===== NetworkReactionBlock =====
 
@@ -694,6 +730,29 @@ class TestNetworkReactionBlock:
         assert isinstance(rxn, NetworkReaction)
         assert rxn.gen_string() == "1,2 3 k1"
 
+    def test_setattr_invalid_type_logs_warning(self):
+        from bionetgen.network import blocks as blocks_module
+
+        rb = NetworkReactionBlock()
+        # NetworkReaction stores its rid as `name`. The __setattr__ path is
+        # only reachable for string attribute names, so insert a string-keyed
+        # reaction directly into items rather than via add_reaction.
+        existing_reaction = NetworkReaction(
+            1, reactants=["1"], products=["2"], rate_constant="k1"
+        )
+        rb.items["rxn1"] = existing_reaction
+        rb._changes.clear()
+
+        with patch.object(blocks_module, "logger") as mock_logger:
+            rb.rxn1 = 42
+
+        mock_logger.warning.assert_called_once()
+        warning_args, warning_kwargs = mock_logger.warning.call_args
+        assert "can't set rule" in warning_args[0]
+        assert "NetworkReactionBlock.__setattr__()" in warning_kwargs["loc"]
+        assert rb.items["rxn1"] is existing_reaction
+        assert len(rb._changes) == 0
+
 
 # ===== NetworkEnergyPatternBlock =====
 
@@ -710,6 +769,24 @@ class TestNetworkEnergyPatternBlock:
         assert isinstance(epb["ep1"], NetworkEnergyPattern)
         assert epb["ep1"].gen_string() == "A(b!1).B(a!1) epsilon"
 
+    def test_setattr_invalid_type_logs_warning(self):
+        from bionetgen.network import blocks as blocks_module
+
+        epb = NetworkEnergyPatternBlock()
+        epb.add_energy_pattern("ep1", "A(b!1).B(a!1)", "epsilon")
+        epb._changes.clear()
+        existing_ep = epb["ep1"]
+
+        with patch.object(blocks_module, "logger") as mock_logger:
+            epb.ep1 = 42
+
+        mock_logger.warning.assert_called_once()
+        warning_args, warning_kwargs = mock_logger.warning.call_args
+        assert "can't set energy pattern" in warning_args[0]
+        assert "NetworkEnergyPatternBlock.__setattr__()" in warning_kwargs["loc"]
+        assert epb["ep1"] is existing_ep
+        assert len(epb._changes) == 0
+
 
 # ===== NetworkPopulationMapBlock =====
 
@@ -725,3 +802,21 @@ class TestNetworkPopulationMapBlock:
         assert "pm1" in pmb
         assert isinstance(pmb["pm1"], NetworkPopulationMap)
         assert pmb["pm1"].gen_string() == "A(b~0) -> A_pop lump1"
+
+    def test_setattr_invalid_type_logs_warning(self):
+        from bionetgen.network import blocks as blocks_module
+
+        pmb = NetworkPopulationMapBlock()
+        pmb.add_population_map("pm1", "A(b~0)", "A_pop", "lump1")
+        pmb._changes.clear()
+        existing_pm = pmb["pm1"]
+
+        with patch.object(blocks_module, "logger") as mock_logger:
+            pmb.pm1 = 42
+
+        mock_logger.warning.assert_called_once()
+        warning_args, warning_kwargs = mock_logger.warning.call_args
+        assert "can't set population map" in warning_args[0]
+        assert "NetworkPopulationMapBlock.__setattr__()" in warning_kwargs["loc"]
+        assert pmb["pm1"] is existing_pm
+        assert len(pmb._changes) == 0

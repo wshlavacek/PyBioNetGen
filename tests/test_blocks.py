@@ -607,6 +607,25 @@ class TestRuleBlock:
         rb.r1 = "r2"
         assert rb.items["r1"]["name"] == "r2"
 
+    def test_setattr_invalid_type_logs_warning(self):
+        from bionetgen.modelapi import blocks as blocks_module
+
+        rb = RuleBlock()
+        fp = FakePattern("A()")
+        existing_rule = Rule("r1", reactants=[fp], products=[fp], rate_constants=("k1",))
+        rb.add_item(("r1", existing_rule))
+        rb._changes.clear()
+
+        with patch.object(blocks_module, "logger") as mock_logger:
+            rb.r1 = 42
+
+        mock_logger.warning.assert_called_once()
+        warning_args, warning_kwargs = mock_logger.warning.call_args
+        assert "can't set rule" in warning_args[0]
+        assert "RuleBlock.__setattr__()" in warning_kwargs["loc"]
+        assert rb.items["r1"] is existing_rule
+        assert len(rb._changes) == 0
+
     def test_consolidate_rules(self):
         rb = RuleBlock()
         fp_a = FakePattern("A()")
