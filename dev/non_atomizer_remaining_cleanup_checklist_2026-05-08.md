@@ -10,9 +10,9 @@ Purpose: capture the still-relevant cleanup work after the recent runtime, round
 
 Non-Atomizer cleanup is mostly done, but not fully done.
 
-Sections 1–5 are complete: bridge correctness/exception cleanup, action parsing/validation, model-fidelity pass, shared block-setter dedup, and TODO/FIXME sweep have all landed.
+Sections 1–6 are complete: bridge correctness/exception cleanup, action parsing/validation, model-fidelity pass, shared block-setter dedup, TODO/FIXME sweep, and the legacy-test-code hygiene pass have all landed.
 
-The highest-priority remaining task is now Section 6 — a low-noise hygiene pass on legacy test code (broad catches, noisy prints, environment-sensitive skip reasons).
+The only remaining item is Section 7 — re-run the owned validation/sweep paths after the recent bridge/modelapi work and prune any stale `dev/` notes so the queue stays honest.
 
 ## Recently Completed Work
 
@@ -71,8 +71,10 @@ Done: triage in `dev/todo_triage_2026-05-08.md`. Started at 27 markers in 11 fil
 
 ### 6. Do a low-noise hygiene pass on legacy test code
 
-- [ ] Clean up any remaining broad catches or noisy prints in the owned non-Atomizer tests that we still touch.
-- [ ] Keep environment-sensitive tests explicit about prerequisites and skip reasons.
+- [x] Clean up any remaining broad catches or noisy prints in the owned non-Atomizer tests that we still touch.
+- [x] Keep environment-sensitive tests explicit about prerequisites and skip reasons.
+
+Done in `6dc3c36`: in `tests/test_bng_models.py`, the three model-sweep tests now collect failures into one assertion message instead of `print()`-ing, and each remaining `except Exception` carries a one-line comment explaining why the broad catch is intentional (collect every failure in one pass). In `tests/test_bngsim_bridge.py`, the `BNGSIM_AVAILABLE` `skipif` reason and the `test.net` / `BNGSIM_HAS_NFSIM` `pytest.skip` strings now name the actual prerequisite (bngsim importable, the test.net fixture and how it's produced, NFsim-enabled bngsim build). No test logic changed; full owned suite still passes (1286 passed, 2 skipped) and `mypy` is clean.
 
 ### 7. Re-run owned validation and refresh the dev notes
 
@@ -82,21 +84,21 @@ Done: triage in `dev/todo_triage_2026-05-08.md`. Started at 27 markers in 11 fil
 
 ## Immediate Next Session
 
-Work Section 6 — low-noise hygiene pass on legacy test code.
+Work Section 7 — re-run owned validation and refresh the dev notes.
 
-Concrete goal: tighten the owned non-Atomizer test files so they fail loudly, skip explicitly, and don't paper over real failures with broad excepts or noisy prints.
+Concrete goal: confirm the owned non-Atomizer suite is still green end-to-end (default + opt-in `BNG_RUN_MODEL_SWEEPS=1` subprocess sweep), then retire/update any `dev/*.md` notes that are now out of date so the remaining queue is accurate.
 
 Likely touch points:
 
-- `tests/**` (owned non-Atomizer tests only — anything that imports `bionetgen.atomizer.*` is out of scope)
-- skip-reason strings + `pytest.importorskip` / `pytest.mark.skipif` decorators on environment-sensitive tests
+- default suite: `python -m pytest tests/` under the standard dev-checks invocation
+- opt-in sweep: `BNG_RUN_MODEL_SWEEPS=1 python -m pytest tests/test_bng_models.py::test_model_running_CLI tests/test_bng_models.py::test_model_running_lib`
+- `dev/*.md` — fold or delete notes that are subsumed by what already landed; keep this checklist as the single source of truth for what is still open
 
 Definition of done for that session:
 
-- no remaining broad `except Exception:` or bare `except:` in owned tests unless explicitly justified by a comment
-- no `print()` calls in owned tests for diagnostic purposes — convert to assertions, fixtures, or dropped entirely
-- environment-sensitive tests state their prerequisite explicitly in the skip reason (e.g. "requires BNG2.pl on PATH", "requires bngsim editable install")
-- the full owned validation path passes
+- the default owned suite passes cleanly under the documented dev-checks invocation
+- the opt-in subprocess model sweep passes (or any failures are characterized in this checklist, not silently dropped)
+- stale `dev/*.md` files are either updated to reflect current reality or retired with a one-line pointer at this checklist
 - the change is committed atomically
 
 ## Out Of Scope
