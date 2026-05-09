@@ -27,6 +27,29 @@ def _raise_parse_error(message: str, *, loc: str) -> NoReturn:
     raise BNGParseError(_PARSE_SOURCE, message=f": {message}")
 
 
+# BNG2.pl serializes the boolean operators ``&&`` and ``||`` in <Expression>
+# elements as the function-call-shaped strings ``(operand)and(operand)`` and
+# ``(operand)or(operand)`` (see Perl2/Expression.pm: '&&' => 'and'). When we
+# re-emit that body into a .bngl file BNG2.pl re-parses ``and(...)`` as a
+# function call and aborts ("Missing end parentheses ... at and(...)"), so
+# we have to undo the substitution here. The match is intentionally
+# anchored on the closing-paren of the left operand: BNG2.pl always wraps
+# both operands in parens when emitting these forms, so ``)and(`` /
+# ``)or(`` only appear as the boolean-operator encoding — never as the
+# tail of a user-defined identifier or a literal function call.
+_AND_OP_RE = re.compile(r"\)and\(")
+_OR_OP_RE = re.compile(r"\)or\(")
+
+
+def _decode_xml_boolean_ops(expr: str) -> str:
+    """Translate BNG2.pl's ``)and(`` / ``)or(`` XML encoding back to ``&&`` / ``||``."""
+    if not expr:
+        return expr
+    expr = _AND_OP_RE.sub(") && (", expr)
+    expr = _OR_OP_RE.sub(") || (", expr)
+    return expr
+
+
 def _resolve_ratelaw(xml, *, context: str, loc: str) -> str:
     rate_type = str(xml["@type"])
     if rate_type == "Ele":
@@ -569,7 +592,7 @@ class FunctionBlockXML(XMLObj):
         """
         raw = str(f.get("Expression", ""))
         if f.get("@type") != "TFUN":
-            return raw
+            return _decode_xml_boolean_ops(raw)
 
         ctr = str(f.get("@ctrName", ""))
         if "@xData" in f:
@@ -587,8 +610,8 @@ class FunctionBlockXML(XMLObj):
 
         for placeholder in ("__TFUN__VAL__", "__TFUN_VAL__"):
             if placeholder in raw:
-                return raw.replace(placeholder, body).strip()
-        return body.strip()
+                return _decode_xml_boolean_ops(raw.replace(placeholder, body).strip())
+        return _decode_xml_boolean_ops(body.strip())
 
     def get_arguments(self, xml) -> list:
         if isinstance(xml, list):

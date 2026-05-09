@@ -667,6 +667,63 @@ class TestFunctionBlockXML:
         fb = FunctionBlockXML(xml)
         assert fb.parsed_obj.items["f"].expr == "k1*A + k2"
 
+    def test_b1_and_operator_round_trip(self):
+        """B1: BNG2.pl XML serializes ``a && b`` as ``(a)and(b)``. Read it back
+        as ``&&`` so the regenerated BNGL parses correctly."""
+        # Mirrors the actual XML BNG2.pl emits for
+        #   if(plusBafA1==1 && t>=0,0,...)
+        xml = OrderedDict([
+            ("@id", "toggle"),
+            (
+                "Expression",
+                " if(((plusBafA1==1)and(Aobs>=threshold1)),0,"
+                "if(((plusBafA1==2)and(Aobs<=threshold2)),0,1)) ",
+            ),
+        ])
+        fb = FunctionBlockXML(xml)
+        expr = fb.parsed_obj.items["toggle"].expr
+        assert ")and(" not in expr, expr
+        assert "&&" in expr, expr
+        # Parens around operands must be preserved so re-parse keeps precedence.
+        assert "(plusBafA1==1) && (Aobs>=threshold1)" in expr
+
+    def test_b1_or_operator_round_trip(self):
+        """B1: BNG2.pl XML serializes ``a || b`` as ``(a)or(b)``."""
+        xml = OrderedDict([
+            ("@id", "f"),
+            ("Expression", " if(((plusBafA1==3)or(Aobs>=threshold3)),0,1) "),
+        ])
+        fb = FunctionBlockXML(xml)
+        expr = fb.parsed_obj.items["f"].expr
+        assert ")or(" not in expr, expr
+        assert "||" in expr, expr
+        assert "(plusBafA1==3) || (Aobs>=threshold3)" in expr
+
+    def test_b1_nested_boolean_ops(self):
+        """B1: nested ``)and(`` / ``)or(`` patterns all rewrite."""
+        xml = OrderedDict([
+            ("@id", "f"),
+            ("Expression", "(((a==1)and(b==1))and(c==1))or(d==1)"),
+        ])
+        fb = FunctionBlockXML(xml)
+        expr = fb.parsed_obj.items["f"].expr
+        assert ")and(" not in expr
+        assert ")or(" not in expr
+        assert expr.count("&&") == 2
+        assert expr.count("||") == 1
+
+    def test_b1_does_not_touch_user_function_calls(self):
+        """B1: ``foo(x)`` (no preceding close-paren) is NOT a boolean op
+        encoding and must be preserved verbatim. Specifically, identifiers
+        ending with ``and``/``or`` (e.g. user functions) must not collide."""
+        xml = OrderedDict([
+            ("@id", "f"),
+            # ``random(x)`` should remain a function call; no preceding ')'.
+            ("Expression", "random(x) + myop(y)"),
+        ])
+        fb = FunctionBlockXML(xml)
+        assert fb.parsed_obj.items["f"].expr == "random(x) + myop(y)"
+
 
 # ---- RuleBlockXML ----
 
