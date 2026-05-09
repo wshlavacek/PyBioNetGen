@@ -336,7 +336,7 @@ class TestCompartmentBlock:
         mock_logger.warning.assert_called_once()
         warning_args, warning_kwargs = mock_logger.warning.call_args
         assert "Unable to set compartment 'EC'" in warning_args[0]
-        assert "keeping existing size" in warning_args[0]
+        assert "keeping existing compartment" in warning_args[0]
         assert "CompartmentBlock.__setattr__()" in warning_kwargs["loc"]
         assert cb.items["EC"]["size"] == 1.0
         assert len(cb._changes) == 0
@@ -528,7 +528,7 @@ class TestMoleculeTypeBlock:
         with patch.object(blocks_module, "logger") as mock_logger:
             mtb.A = 42
         mock_logger.warning.assert_called_once()
-        assert "can't set molecule type" in mock_logger.warning.call_args[0][0]
+        assert "Unable to set molecule type" in mock_logger.warning.call_args[0][0]
 
 
 # ---- FunctionBlock tests ----
@@ -570,7 +570,7 @@ class TestFunctionBlock:
         with patch.object(blocks_module, "logger") as mock_logger:
             fb.f1 = 42
         mock_logger.warning.assert_called_once()
-        assert "can't set function" in mock_logger.warning.call_args[0][0]
+        assert "Unable to set function" in mock_logger.warning.call_args[0][0]
 
 
 # ---- RuleBlock tests ----
@@ -621,7 +621,8 @@ class TestRuleBlock:
 
         mock_logger.warning.assert_called_once()
         warning_args, warning_kwargs = mock_logger.warning.call_args
-        assert "can't set rule" in warning_args[0]
+        assert "Unable to set rule 'r1'" in warning_args[0]
+        assert "keeping existing rule" in warning_args[0]
         assert "RuleBlock.__setattr__()" in warning_kwargs["loc"]
         assert rb.items["r1"] is existing_rule
         assert len(rb._changes) == 0
@@ -814,7 +815,7 @@ class TestEnergyPatternBlock:
         with patch.object(blocks_module, "logger") as mock_logger:
             epb.ep0 = 42
         mock_logger.warning.assert_called_once()
-        assert "can't set energy pattern" in mock_logger.warning.call_args[0][0]
+        assert "Unable to set energy pattern" in mock_logger.warning.call_args[0][0]
 
 
 # ---- PopulationMapBlock tests ----
@@ -864,4 +865,4 @@ class TestPopulationMapBlock:
         with patch.object(blocks_module, "logger") as mock_logger:
             pmb.pm0 = 42
         mock_logger.warning.assert_called_once()
-        assert "can't set population map" in mock_logger.warning.call_args[0][0]
+        assert "Unable to set population map" in mock_logger.warning.call_args[0][0]

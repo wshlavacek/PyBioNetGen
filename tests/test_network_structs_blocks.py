@@ -450,7 +450,7 @@ class TestNetworkParameterBlock:
         mock_logger.warning.assert_called_once()
         warning_args, warning_kwargs = mock_logger.warning.call_args
         assert "Unable to set parameter 'k1'" in warning_args[0]
-        assert "keeping existing value" in warning_args[0]
+        assert "keeping existing parameter" in warning_args[0]
         assert "NetworkParameterBlock.__setattr__()" in warning_kwargs["loc"]
         assert pb["k1"]["value"] == "0.5"
         assert len(pb._changes) == 0
@@ -518,7 +518,7 @@ class TestNetworkCompartmentBlock:
         mock_logger.warning.assert_called_once()
         warning_args, warning_kwargs = mock_logger.warning.call_args
         assert "Unable to set compartment 'cytoplasm'" in warning_args[0]
-        assert "keeping existing size" in warning_args[0]
+        assert "keeping existing compartment" in warning_args[0]
         assert "NetworkCompartmentBlock.__setattr__()" in warning_kwargs["loc"]
         assert cb["cytoplasm"]["size"] == "1.0"
         assert len(cb._changes) == 0
@@ -706,7 +706,8 @@ class TestNetworkFunctionBlock:
 
         mock_logger.warning.assert_called_once()
         warning_args, warning_kwargs = mock_logger.warning.call_args
-        assert "can't set function" in warning_args[0]
+        assert "Unable to set function 'rate'" in warning_args[0]
+        assert "keeping existing function" in warning_args[0]
         assert "NetworkFunctionBlock.__setattr__()" in warning_kwargs["loc"]
         assert fb["rate"] is existing_function
         assert len(fb._changes) == 0
@@ -748,7 +749,8 @@ class TestNetworkReactionBlock:
 
         mock_logger.warning.assert_called_once()
         warning_args, warning_kwargs = mock_logger.warning.call_args
-        assert "can't set rule" in warning_args[0]
+        assert "Unable to set reaction" in warning_args[0]
+        assert "keeping existing reaction" in warning_args[0]
         assert "NetworkReactionBlock.__setattr__()" in warning_kwargs["loc"]
         assert rb.items["rxn1"] is existing_reaction
         assert len(rb._changes) == 0
@@ -782,7 +784,8 @@ class TestNetworkEnergyPatternBlock:
 
         mock_logger.warning.assert_called_once()
         warning_args, warning_kwargs = mock_logger.warning.call_args
-        assert "can't set energy pattern" in warning_args[0]
+        assert "Unable to set energy pattern 'ep1'" in warning_args[0]
+        assert "keeping existing energy pattern" in warning_args[0]
         assert "NetworkEnergyPatternBlock.__setattr__()" in warning_kwargs["loc"]
         assert epb["ep1"] is existing_ep
         assert len(epb._changes) == 0
@@ -816,7 +819,8 @@ class TestNetworkPopulationMapBlock:
 
         mock_logger.warning.assert_called_once()
         warning_args, warning_kwargs = mock_logger.warning.call_args
-        assert "can't set population map" in warning_args[0]
+        assert "Unable to set population map 'pm1'" in warning_args[0]
+        assert "keeping existing population map" in warning_args[0]
         assert "NetworkPopulationMapBlock.__setattr__()" in warning_kwargs["loc"]
         assert pmb["pm1"] is existing_pm
         assert len(pmb._changes) == 0
