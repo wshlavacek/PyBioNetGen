@@ -1006,3 +1006,25 @@ class TestParseSimulateParams:
         a = _FakeAction("simulate_ode", {"suffix": '"my_run"'})
         sp = _parse_simulate_params(a)
         assert sp["suffix"] == "my_run"
+
+    def test_b3_prefix_parsed(self):
+        """B3: prefix=>"X" replaces the model name as the per-segment file
+        prefix; without it the second segment clobbers the first's output."""
+        a = _FakeAction("simulate_ode", {"prefix": '"equil"'})
+        sp = _parse_simulate_params(a)
+        assert sp["prefix"] == "equil"
+
+    def test_b3_prefix_default_none(self):
+        a = _FakeAction("simulate_ode", {})
+        sp = _parse_simulate_params(a)
+        assert sp["prefix"] is None
+
+    def test_b3_prefix_takes_precedence_over_suffix(self):
+        """Per BNG2.pl: prefix replaces the model-name root; suffix is
+        appended to it. When both are present, prefix wins."""
+        a = _FakeAction("simulate_ode", {
+            "prefix": '"alt"', "suffix": '"trail"',
+        })
+        sp = _parse_simulate_params(a)
+        assert sp["prefix"] == "alt"
+        assert sp["suffix"] == "trail"

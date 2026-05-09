@@ -1706,6 +1706,7 @@ def _parse_simulate_params(action, extra_ns=None):
         "t_end": _eval_numeric(args.get("t_end", 100), extra_ns=extra_ns),
         "n_steps": int(_eval_numeric(args.get("n_steps", 100), extra_ns=extra_ns)),
         "suffix": _strip_quotes(str(args["suffix"]).strip()) if "suffix" in args else None,
+        "prefix": _strip_quotes(str(args["prefix"]).strip()) if "prefix" in args else None,
         "poplevel": poplevel,
         "continue_flag": bool(
             int(_eval_numeric(args.get("continue", 0), extra_ns=extra_ns))
@@ -2864,6 +2865,7 @@ def _execute_bngsim_actions(
             t_start, t_end = sp["t_start"], sp["t_end"]
             n_steps = sp["n_steps"]
             suffix = sp["suffix"]
+            prefix = sp["prefix"]
             poplevel = sp["poplevel"]
             continue_flag = sp["continue_flag"]
             atol = sp["atol"]
@@ -2873,7 +2875,13 @@ def _execute_bngsim_actions(
             stop_if = sp["stop_if"]
             sample_times = sp["sample_times"]
             gml = sp["gml"]
-            out_name = f"{model_name}_{suffix}" if suffix else model_name
+            # BNG2.pl precedence: prefix replaces the model-name root; suffix
+            # is appended to it. Without prefix support, multiple segments
+            # using prefix=>"equil" / prefix=>"prod" all collapse to the
+            # bare model name and the later segment overwrites the earlier
+            # one's .gdat / .cdat (B3 from 2026-05-09 sweep).
+            base = prefix if prefix else model_name
+            out_name = f"{base}_{suffix}" if suffix else base
 
             # continue=>1: use current model time as t_start
             if continue_flag:
