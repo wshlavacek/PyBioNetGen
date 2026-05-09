@@ -55,9 +55,11 @@ The highest-priority remaining task is now tightening action parsing and validat
 
 ### 4. Decide the fate of the remaining shared block-setter cleanup tail
 
-- [ ] Decide whether the remaining setter-cleanup sessions from the older punch list still buy enough value to justify the churn.
-- [ ] If yes, finish them in small slices with tests.
-- [ ] If not, retire that part of the plan explicitly so the queue stays honest.
+- [x] Decide whether the remaining setter-cleanup sessions from the older punch list still buy enough value to justify the churn.
+- [x] If yes, finish them in small slices with tests.
+- [x] If not, retire that part of the plan explicitly so the queue stays honest.
+
+Done: extracted `_set_item_attribute` on `ModelBlock`/`NetworkBlock` and unified all 17 subclass `__setattr__` overrides on Style A wording (ef885dd added gap-filling tests; 8de992a did the helper extraction).
 
 ### 5. Do a final non-Atomizer TODO/FIXME cleanup pass
 
