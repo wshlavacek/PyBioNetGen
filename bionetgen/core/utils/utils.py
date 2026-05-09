@@ -566,7 +566,7 @@ class ActionList:
         squote_word = pp.sglQuotedString
         quote_word = dquote_word ^ squote_word
         # all action argument types
-        # TODO: deal w/ zero argument list
+        # Tracked in upstream issue #71: empty [] / {} action-arg literals don't parse
         list_arg = "[" + pp.delimitedList(quote_word) + "]"
         #
         arg_type_bool = pp.Word("0") ^ pp.Word("1")
@@ -582,7 +582,7 @@ class ActionList:
         # may be either bareword (max_stoich=>{R=>6}) or quoted
         # (max_stoich=>{"R"=>6}). Accept both.
         curly_arg_token = (base_name ^ quote_word) + "=>" + arg_type_int
-        # TODO: handle 0 case
+        # Tracked in upstream issue #71: empty [] / {} action-arg literals don't parse
         arg_type_curly = "{" + pp.delimitedList(curly_arg_token) + "}"
         arg_types = (
             arg_type_bool
@@ -648,9 +648,7 @@ def find_BNG_path(BNGPATH=None):
     BNGPATH : str
         (optional) path to the folder that contains BNG2.pl
     """
-    # TODO: Figure out how to use the BNG2.pl if it's set
-    # in the PATH variable. Solution: set os.environ BNGPATH
-    # and make everything use that route
+    # Tracked in upstream issue #72: resolve BNG2.pl from $PATH via $BNGPATH
 
     def _try_path(candidate_path):
         if candidate_path is None:

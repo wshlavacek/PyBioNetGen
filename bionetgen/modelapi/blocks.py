@@ -43,8 +43,8 @@ class ModelBlock:
         after it is originally created
     _recompile : bool
         a tag that tells a potential future simulator if the model
-        needs to be recompiled. TODO: has to be computed from _changes
-        property upon get request.
+        needs to be recompiled. Tracked in upstream issue #74:
+        should be derived state computed from `_changes`.
 
     Methods
     -------
@@ -139,11 +139,7 @@ class ModelBlock:
         """
         Resets the change history for this block.
         """
-        # TODO: Make these properties such that it checks each
-        # item for changes/recompile tags
-        # for item in self.items:
-        #     self.items[item]._recompile = False
-        #     self.items[item]._changes = {}
+        # Tracked in upstream issue #74: per-item change/recompile tracking
         self._changes = OrderedDict()
         self._recompile = False
 

@@ -711,8 +711,7 @@ class BNGGdiff:
                 node_to_add_to["graph"]["node"] = nodes_to_add
             # add to rename map
             rmap[self._get_node_id(node)] = self._get_node_id(copied_node)
-            # TODO: Need to get in there and rename and recolor each
-            # node under the one we just copied
+            # Tracked in upstream issue #70: copied subnodes aren't renamed/recolored
             if "graph" in copied_node:
                 # let's rename the graph
                 if "@id" in copied_node["graph"]:

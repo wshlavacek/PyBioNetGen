@@ -623,8 +623,7 @@ class Component:
                             if self.canonical_label != other.canonical_label:
                                 return False
                         # check bonds
-                        # TODO: try to decide if A(b!1).B(a!1) is the same
-                        # as A(b!2).B(a!2), if so, the bond check is much harder
+                        # Tracked in upstream issue #73: pattern equality should normalize bond labels
                         # for bond in self.bonds:
                         #     if bond not in other.bonds:
                         #         logger.debug(
