@@ -60,9 +60,9 @@ class Pattern:
     __hash__ = None  # type: ignore[assignment]
 
     def __init__(
-        self, molecules=[], bonds=None, compartment=None, label=None, canonicalize=False
+        self, molecules=None, bonds=None, compartment=None, label=None, canonicalize=False
     ):
-        self.molecules = molecules
+        self.molecules = list(molecules) if molecules is not None else []
         self._bonds = bonds
         self.compartment = compartment
         self.label = label
@@ -289,6 +289,12 @@ class Pattern:
                             other.canonical_label is not None
                         ):
                             return self.canonical_label == other.canonical_label
+                        if len(self.molecules) != len(other.molecules):
+                            logger.debug(
+                                f"molecule count differs: {len(self.molecules)} vs {len(other.molecules)}",
+                                loc=loc,
+                            )
+                            return False
                         # now we can check contents
                         for molecule in self:
                             if molecule not in other.molecules:
@@ -368,8 +374,6 @@ class Pattern:
     def __iter__(self):
         return self.molecules.__iter__()
 
-    # TODO: Implement __contains__
-
 
 class Molecule:
     """
@@ -398,9 +402,9 @@ class Molecule:
 
     __hash__ = None  # type: ignore[assignment]
 
-    def __init__(self, name="0", components=[], compartment=None, label=None):
+    def __init__(self, name="0", components=None, compartment=None, label=None):
         self._name = name
-        self._components = components
+        self._components = list(components) if components is not None else []
         self._compartment = compartment
         self._label = label
         self.canonical_order = None
@@ -431,6 +435,12 @@ class Molecule:
                     # we can check canonical labels
                     if self.canonical_label != other.canonical_label:
                         return False
+                if len(self.components) != len(other.components):
+                    logger.debug(
+                        f"component count differs: {len(self.components)} vs {len(other.components)}",
+                        loc=loc,
+                    )
+                    return False
                 # check components now
                 for component in self:
                     if component not in other.components:
@@ -540,14 +550,14 @@ class Molecule:
     def label(self, value):
         self._label = value
 
-    def _add_component(self, name, state=None, states=[]):
+    def _add_component(self, name, state=None, states=None):
         comp_obj = Component()
         comp_obj.name = name
         comp_obj.state = state
-        comp_obj.states = states
+        comp_obj.states = list(states) if states is not None else []
         self.components.append(comp_obj)
 
-    def add_component(self, name, state=None, states=[]):
+    def add_component(self, name, state=None, states=None):
         self._add_component(name, state, states)
 
 

@@ -300,6 +300,24 @@ class TestMolecule:
         b = make_molecule("A", compartment="CP")
         assert a != b
 
+    def test_equality_subset_components(self):
+        # Regression: __eq__ must check component count, not just
+        # whether self's components are a subset of other's.
+        c1 = make_component("a")
+        c2 = make_component("b")
+        a = make_molecule("M", [c1])
+        b = make_molecule("M", [make_component("a"), c2])
+        assert a != b
+        assert b != a
+
+    def test_default_init_does_not_share_components_list(self):
+        # Regression: mutable default `components=[]` made fresh
+        # Molecules share the same list across instances.
+        m1 = Molecule()
+        m2 = Molecule()
+        m1.components.append(make_component("a"))
+        assert m2.components == []
+
     # ── Default init values ───────────────────────────────────
 
     def test_default_init(self):
@@ -310,6 +328,15 @@ class TestMolecule:
         assert m.canonical_order is None
         assert m.canonical_label is None
         assert m.parent_pattern is None
+
+    def test_add_component_default_states_isolated(self):
+        # Regression: mutable default `states=[]` on add_component
+        # leaked state across components.
+        m = Molecule(name="M")
+        m.add_component("a")
+        m.components[0].states.append("0")
+        m.add_component("b")
+        assert m.components[1].states == []
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -515,6 +542,22 @@ class TestPattern:
         a = make_pattern([make_molecule("A")])
         b = make_pattern([make_molecule("B")])
         assert a != b
+
+    def test_equality_subset_molecules(self):
+        # Regression: __eq__ must check molecule count, not just
+        # whether self's molecules are a subset of other's.
+        a = make_pattern([make_molecule("A")])
+        b = make_pattern([make_molecule("A"), make_molecule("B")])
+        assert a != b
+        assert b != a
+
+    def test_default_init_does_not_share_molecules_list(self):
+        # Regression: mutable default `molecules=[]` made fresh
+        # Patterns share the same list across instances.
+        p1 = Pattern()
+        p2 = Pattern()
+        p1.molecules.append(make_molecule("A"))
+        assert p2.molecules == []
 
     # ── Canonicalize (pynauty may or may not be installed) ────
 

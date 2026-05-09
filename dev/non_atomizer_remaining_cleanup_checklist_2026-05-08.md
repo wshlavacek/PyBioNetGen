@@ -44,9 +44,14 @@ The highest-priority remaining task is now tightening action parsing and validat
 
 ### 3. Do one more model fidelity pass in the core model/modelapi path
 
-- [ ] Revisit `bionetgen/modelapi/pattern.py` for equality/validation gaps that still matter.
-- [ ] Revisit `bionetgen/modelapi/xmlparsers.py` for any remaining fidelity edge cases not already covered by the new round-trip tests.
-- [ ] Revisit `bionetgen/modelapi/bngfile.py` and `bionetgen/modelapi/blocks.py` for still-relevant contract mismatches or stale TODOs.
+- [x] Revisit `bionetgen/modelapi/pattern.py` for equality/validation gaps that still matter.
+  - Fixed `Pattern.__eq__` and `Molecule.__eq__` returning True for subset matches (no length check).
+  - Fixed mutable default args (`molecules=[]`, `components=[]`, `states=[]`) that caused fresh instances to share lists.
+  - Dropped a stale `# TODO: Implement __contains__` comment — `__contains__` was already implemented.
+- [x] Revisit `bionetgen/modelapi/xmlparsers.py` for any remaining fidelity edge cases not already covered by the new round-trip tests.
+  - No concrete fidelity bugs left after the prior round-trip cleanup; remaining TODOs (operations / rule-mods classes) are architectural feature gaps, not round-trip issues. Deferred.
+- [x] Revisit `bionetgen/modelapi/bngfile.py` and `bionetgen/modelapi/blocks.py` for still-relevant contract mismatches or stale TODOs.
+  - Remaining TODOs are about action stripping, the write-from-self route, recompile tagging, and deferred parameter evaluation — all feature gaps, none observably affect fidelity. Deferred.
 
 ### 4. Decide the fate of the remaining shared block-setter cleanup tail
 
