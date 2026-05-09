@@ -255,6 +255,40 @@ class TestBNGCLI:
         with pytest.raises(BNGRunError):
             cli.run()
 
+    @patch("bionetgen.core.utils.utils.find_BNG_path", return_value=("/fake/bng", "/fake/bng/BNG2.pl"))
+    def test_run_failure_surfaces_bng_stderr_in_error(self, mock_find, tmp_path):
+        """B8: BNGRunError carries through BNG2.pl stdout/stderr captured by run_command.
+
+        The bridge calls BNGCLI with suppress=True + timeout=set; run_command must
+        capture (not DEVNULL) so the BNG2.pl error tail surfaces in the exception.
+        """
+        from subprocess import CompletedProcess
+
+        from bionetgen.core.exc import BNGRunError
+
+        bngl = _make_bngl(tmp_path)
+        output_dir = str(tmp_path / "output")
+
+        fake_completed = CompletedProcess(
+            args=["perl", "/fake/bng/BNG2.pl", bngl],
+            returncode=1,
+            stdout=b"BNG2.pl progress\n",
+            stderr=b"Missing end parentheses at and(t>=0)),0,...\n",
+        )
+
+        cli = _create_cli(bngl, output_dir, "/fake/bng", suppress=True, timeout=10)
+
+        with patch(
+            "bionetgen.core.utils.utils.run_command",
+            return_value=(1, fake_completed),
+        ):
+            with pytest.raises(BNGRunError) as exc_info:
+                cli.run()
+
+        msg = str(exc_info.value)
+        assert "Missing end parentheses" in msg
+        assert "BNG2.pl progress" in msg
+
     @patch("bionetgen.core.utils.utils.run_command", return_value=(0, []))
     @patch("bionetgen.core.utils.utils.find_BNG_path", return_value=("/fake/bng", "/fake/bng/BNG2.pl"))
     def test_bngpath_env_restored_after_run(self, mock_find, mock_run_cmd, tmp_path):

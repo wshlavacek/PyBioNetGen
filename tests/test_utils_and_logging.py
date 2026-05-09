@@ -2,6 +2,7 @@
 
 import os
 import subprocess
+import sys
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -182,6 +183,11 @@ class TestTestBngexec:
 class TestRunCommand:
     @patch("bionetgen.core.utils.utils.subprocess.run")
     def test_timeout_suppress(self, mock_run):
+        """B8: even with suppress=True we capture so failures can surface
+        BNG2.pl's stderr through BNGRunError. (Output is buffered when
+        timeout is set, so suppress=True vs False makes no behavioral
+        difference for the user here.)
+        """
         mock_result = MagicMock()
         mock_result.returncode = 0
         mock_run.return_value = mock_result
@@ -192,8 +198,7 @@ class TestRunCommand:
         mock_run.assert_called_once_with(
             ["cmd"],
             timeout=30,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
+            capture_output=True,
             cwd=None,
             check=False,
         )
@@ -213,6 +218,22 @@ class TestRunCommand:
             cwd=None,
             check=False,
         )
+
+    def test_timeout_suppress_real_subprocess_captures_stderr(self):
+        """B8 end-to-end: a real failing command under suppress=True+timeout
+        returns a CompletedProcess with stderr bytes available."""
+        rc, result = run_command(
+            [
+                sys.executable,
+                "-c",
+                "import sys; sys.stderr.write('bridge_b8_canary\\n'); sys.exit(2)",
+            ],
+            suppress=True,
+            timeout=10,
+        )
+        assert rc == 2
+        assert getattr(result, "stderr", None) is not None
+        assert b"bridge_b8_canary" in result.stderr
 
     @patch("bionetgen.core.utils.utils.subprocess.Popen")
     def test_no_timeout_suppress(self, mock_popen):
@@ -266,8 +287,7 @@ class TestRunCommand:
         mock_run.assert_called_once_with(
             ["cmd"],
             timeout=10,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
+            capture_output=True,
             cwd="/tmp",
             check=False,
         )

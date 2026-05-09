@@ -744,21 +744,18 @@ def run_command(command, suppress=True, timeout=None, cwd=None):
     be killed.
     """
     if timeout is not None:
-        if suppress:
-            # I am unsure how to do both timeout and the live polling of stdo
-            rc = subprocess.run(
-                command,
-                timeout=timeout,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                cwd=cwd,
-                check=False,
-            )
-            return rc.returncode, rc
-        else:
-            # I am unsure how to do both timeout and the live polling of stdo
-            rc = subprocess.run(command, timeout=timeout, capture_output=True, cwd=cwd, check=False)
-            return rc.returncode, rc
+        # Always capture stdout/stderr — this lets BNGCLI surface BNG2.pl's
+        # error tail in BNGRunError when the command fails. With timeout set,
+        # subprocess.run buffers all output anyway, so suppress=True vs False
+        # makes no behavioral difference for the user during the run.
+        rc = subprocess.run(
+            command,
+            timeout=timeout,
+            capture_output=True,
+            cwd=cwd,
+            check=False,
+        )
+        return rc.returncode, rc
     else:
         if suppress:
             process = subprocess.Popen(
