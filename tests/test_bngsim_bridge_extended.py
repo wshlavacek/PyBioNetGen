@@ -2617,9 +2617,13 @@ class TestExtractPositionalArgs:
         assert value == "1.5"
 
     def test_empty_args(self):
+        # ActionList.validate_action now rejects setParameter with zero
+        # positional args, so build a well-formed Action first and clear
+        # its args afterward to exercise the helper's defensive fallback.
         from bionetgen.core.tools.bngsim_bridge import _extract_positional_args
 
-        action = _make_action("setParameter", {})
+        action = _make_action("setParameter", {'"k"': None, "1.0": None})
+        action.args = {}
         name, value = _extract_positional_args(action)
         assert name == ""
         assert value == "0"

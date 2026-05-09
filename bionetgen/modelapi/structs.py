@@ -306,39 +306,25 @@ class Action(ModelObj):
         action arguments as keys and their values as values
     """
 
-    def __init__(self, action_type=None, action_args={}) -> None:
+    def __init__(self, action_type=None, action_args=None) -> None:
         super().__init__()
+        if action_args is None:
+            action_args = {}
         AList = ActionList()
         self.normal_types = AList.normal_types
         self.no_setter_syntax = AList.no_setter_syntax
         self.square_braces = AList.square_braces
         self.possible_types = AList.possible_types
-        # Set initial values
         self.name = action_type
         self.type = action_type
         self.args = action_args
-        # check type
-        if self.type not in self.possible_types:
-            raise BNGParseError(message=f"Action type {self.type} not recognized!")
+        AList.validate_action(action_type, action_args)
         seen_args = []
-        for arg in action_args:
-            arg_name, arg_value = arg, action_args[arg]
-            valid_arg_list = AList.arg_dict[self.type]
-            # TODO: actions that don't take argument names should be parsed separately to check validity of arg-val tuples
-            # TODO: currently not type checking arguments
-            if valid_arg_list is None:
-                raise BNGParseError(
-                    message=f"Argument {arg_name} is given, but action {self.type} does not take arguments"
-                )
-            if len(valid_arg_list) > 0:
-                if arg_name not in AList.arg_dict[self.type]:
-                    raise BNGParseError(
-                        message=f"Action argument {arg_name} not recognized!\nCheck to make sure action is correctly formatted"
-                    )
+        for arg_name, arg_value in action_args.items():
             if arg_name in seen_args:
                 logger.warning(
                     f"argument {arg_name} already given, using latter value {arg_value}",
-                    loc=f"{__file__} : Action.parse_args()",
+                    loc=f"{__file__} : Action.__init__",
                 )
             else:
                 seen_args.append(arg_name)

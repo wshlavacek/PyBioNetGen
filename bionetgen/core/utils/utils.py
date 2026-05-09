@@ -2,7 +2,7 @@ import os
 import shutil
 import subprocess
 
-from bionetgen.core.exc import BNGPerlError
+from bionetgen.core.exc import BNGParseError, BNGPerlError
 from bionetgen.core.utils.logging import BNGLogger
 
 
@@ -459,8 +459,102 @@ class ActionList:
         self.irregular_args["blocks"] = "list"
         self.irregular_args["opts"] = "list"
 
+        # Expected positional arity (min, max) for actions whose arguments
+        # are positional rather than `name=>value` keyword pairs. `max=None`
+        # means unbounded. Actions absent from this table are treated as
+        # variable-arity (`(0, None)`).
+        self.positional_arity = {
+            # no_setter_syntax
+            "quit": (0, 0),
+            "setModelName": (1, 1),
+            "substanceUnits": (0, 1),
+            "version": (0, 1),
+            "setOption": (2, 2),
+            "setConcentration": (2, 2),
+            "addConcentration": (2, 2),
+            "setParameter": (2, 2),
+            # square_braces — list of zero or more entries
+            "saveConcentrations": (0, None),
+            "resetConcentrations": (0, None),
+            "saveParameters": (0, None),
+            "resetParameters": (0, None),
+        }
+
     def is_before_model(self, action_name):
         return action_name in self.before_model
+
+    def validate_action(self, action_type, action_args):
+        """
+        Centralized schema check shared by parse-time construction
+        (BNGParser) and direct construction (Action.__init__). Raises
+        BNGParseError on any inconsistency.
+
+        Positional actions (no_setter_syntax / square_braces) store their
+        arguments as a dict whose keys are the literal positional values
+        and whose values are None — this canonical shape matches what the
+        parser emits and is what gen_string serializes back out.
+        """
+        if action_type not in self.possible_types:
+            raise BNGParseError(
+                message=f"Action type {action_type} not recognized!"
+            )
+
+        if not isinstance(action_args, dict):
+            raise BNGParseError(
+                message=(
+                    f"Action {action_type} arguments must be a dict, "
+                    f"got {type(action_args).__name__}"
+                )
+            )
+
+        if action_type in self.normal_types:
+            valid = self.arg_dict.get(action_type)
+            if valid is None:
+                if len(action_args) > 0:
+                    raise BNGParseError(
+                        message=(
+                            f"Action {action_type} does not take arguments"
+                        )
+                    )
+                return
+            if len(valid) > 0:
+                for arg_name in action_args:
+                    if arg_name not in valid:
+                        raise BNGParseError(
+                            message=(
+                                f"Action argument {arg_name} not recognized "
+                                f"for action {action_type}!"
+                            )
+                        )
+            return
+
+        # Positional path covers no_setter_syntax and square_braces.
+        for arg_name, arg_value in action_args.items():
+            if arg_value is not None:
+                raise BNGParseError(
+                    message=(
+                        f"Action {action_type} is positional; pass each "
+                        f"value as a dict key mapped to None (got "
+                        f"{arg_name!r}={arg_value!r}). For example: "
+                        f"{{'\"A()\"': None, '100': None}}."
+                    )
+                )
+
+        mn, mx = self.positional_arity.get(action_type, (0, None))
+        n = len(action_args)
+        if n < mn or (mx is not None and n > mx):
+            if mn == mx:
+                expected = f"exactly {mn}"
+            elif mx is None:
+                expected = f"at least {mn}"
+            else:
+                expected = f"between {mn} and {mx}"
+            raise BNGParseError(
+                message=(
+                    f"Action {action_type} expects {expected} positional "
+                    f"argument(s); got {n}."
+                )
+            )
 
     def define_parser(self):
         ## Define action grammar

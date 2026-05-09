@@ -286,6 +286,11 @@ class BNGParser:
                 arg_dict[arg_name] = arg_value
             ablock.add_action(atype, arg_dict)
             return
+        if atype in self.alist.possible_types:
+            raise BNGParseError(
+                self.bngfile.path,
+                f"Action {action} has a malformed argument shape for {atype}.",
+            )
         raise BNGParseError(
             self.bngfile.path, f"Action type {atype} is not recognized."
         )

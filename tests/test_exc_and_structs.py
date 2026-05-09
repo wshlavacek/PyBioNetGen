@@ -363,10 +363,37 @@ class TestAction:
         assert s == "simulate()"
 
     def test_no_setter_syntax(self):
-        a = Action(action_type="setConcentration", action_args={"A()": "100"})
+        a = Action(
+            action_type="setConcentration",
+            action_args={'"A()"': None, "100": None},
+        )
         s = a.gen_string()
         assert "=>" not in s
-        assert "A()" in s
+        assert '"A()"' in s
+        assert "100" in s
+
+    def test_no_setter_syntax_rejects_keyword_shape(self):
+        with pytest.raises(BNGParseError):
+            Action(action_type="setConcentration", action_args={"A()": "100"})
+
+    def test_no_setter_syntax_arity_too_few(self):
+        with pytest.raises(BNGParseError):
+            Action(action_type="setConcentration", action_args={'"A()"': None})
+
+    def test_no_setter_syntax_arity_too_many(self):
+        with pytest.raises(BNGParseError):
+            Action(
+                action_type="quit",
+                action_args={'"x"': None},
+            )
+
+    def test_square_braces_accept_variable_arity(self):
+        a = Action(
+            action_type="saveConcentrations",
+            action_args={'"snapshot1"': None},
+        )
+        s = a.gen_string()
+        assert s == 'saveConcentrations(["snapshot1"])'
 
     def test_square_braces(self):
         a = Action(action_type="saveConcentrations", action_args={})

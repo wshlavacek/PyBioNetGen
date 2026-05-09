@@ -38,9 +38,9 @@ The highest-priority remaining task is now tightening action parsing and validat
 
 ### 2. Tighten action parsing and validation in `modelapi`
 
-- [ ] Centralize action-argument schema/validation so parse-time and direct-construction behavior match.
-- [ ] Improve validation for positional-vs-keyword actions and malformed argument shapes.
-- [ ] Replace stale inline TODOs with either tests, code, or tracked notes.
+- [x] Centralize action-argument schema/validation so parse-time and direct-construction behavior match.
+- [x] Improve validation for positional-vs-keyword actions and malformed argument shapes.
+- [x] Replace stale inline TODOs with either tests, code, or tracked notes.
 
 ### 3. Do one more model fidelity pass in the core model/modelapi path
 
