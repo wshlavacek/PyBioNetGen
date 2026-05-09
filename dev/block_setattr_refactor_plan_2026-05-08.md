@@ -1,5 +1,11 @@
 # Block `__setattr__` Refactor Plan
 
+> **Status: completed.** The plan below was executed in two commits:
+> `ef885dd` (gap-filling tests covering each subclass's `__setattr__` warning paths) and
+> `8de992a` (extracted `_set_item_attribute` on `ModelBlock`/`NetworkBlock`; all 17 subclass overrides now delegate through it).
+> Section 4 of `dev/non_atomizer_remaining_cleanup_checklist_2026-05-08.md` is ticked.
+> This document is retained as historical context only; the current non-Atomizer queue lives in that checklist.
+
 Date: 2026-05-08
 
 Owner: next session, fresh context

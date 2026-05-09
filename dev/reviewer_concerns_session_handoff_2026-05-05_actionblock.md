@@ -1,5 +1,13 @@
 # Reviewer Concerns Session Handoff
 
+> **Status: superseded.** This handoff is from the 2026-05-05 reviewer-concerns
+> cleanup series. The work it carried forward has since been folded into the
+> larger non-Atomizer cleanup tracked in
+> `dev/non_atomizer_remaining_cleanup_checklist_2026-05-08.md` (Sections 1–6 are
+> complete as of 2026-05-09). The primary plan referenced below
+> (`reviewer_concerns_remediation_plan_2026-05-04.md`) is no longer in the tree.
+> Retained as historical context only.
+
 Date: 2026-05-05
 
 Repo: `~/Code/PyBioNetGen-myfork`

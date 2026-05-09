@@ -8,11 +8,11 @@ Purpose: capture the still-relevant cleanup work after the recent runtime, round
 
 ## Current Call
 
-Non-Atomizer cleanup is mostly done, but not fully done.
+Non-Atomizer cleanup is **done** for everything in the scope of this checklist.
 
-Sections 1–6 are complete: bridge correctness/exception cleanup, action parsing/validation, model-fidelity pass, shared block-setter dedup, TODO/FIXME sweep, and the legacy-test-code hygiene pass have all landed.
+Sections 1–7 are all complete (see each section below for the landing commits and outcome notes). The default owned suite passes (`1286 passed, 2 skipped`), the opt-in subprocess model sweep passes (`2 passed` over 21 models), `mypy` is clean, and the tracked `dev/` cleanup notes either describe live work or are explicitly marked as superseded.
 
-The only remaining item is Section 7 — re-run the owned validation/sweep paths after the recent bridge/modelapi work and prune any stale `dev/` notes so the queue stays honest.
+This document can stay in-tree as the historical record of the cleanup wave. New non-Atomizer work should start a fresh checklist rather than reopening sections here.
 
 ## Recently Completed Work
 
@@ -78,28 +78,28 @@ Done in `6dc3c36`: in `tests/test_bng_models.py`, the three model-sweep tests no
 
 ### 7. Re-run owned validation and refresh the dev notes
 
-- [ ] Re-run the owned non-Atomizer validation path after the remaining bridge/modelapi work is done.
-- [ ] Re-run the opt-in subprocess model sweeps after bridge changes to ensure they still pass cleanly.
-- [ ] Retire or update stale `dev/` cleanup notes so the remaining queue is accurate.
+- [x] Re-run the owned non-Atomizer validation path after the remaining bridge/modelapi work is done.
+- [x] Re-run the opt-in subprocess model sweeps after bridge changes to ensure they still pass cleanly.
+- [x] Retire or update stale `dev/` cleanup notes so the remaining queue is accurate.
+
+Validation re-run (2026-05-09, post-Section-6):
+
+- Default owned suite: `1286 passed, 2 skipped` in ~48s under the dev-checks invocation (`PYBNG_DEV_BNGSIM_PATH=~/Code/PyBNF-Private/bngsim uv run --no-project --with-requirements requirements-dev.txt --with-editable ~/Code/PyBNF-Private/bngsim --with lxml --with networkx python -m pytest tests/`). The two skips are the `test.net` integration tests in `test_bngsim_bridge.py` whose fixture isn't generated when those tests run before `test_bng_core` produces it — the new skip reasons (commit `6dc3c36`) name the prerequisite explicitly.
+- Opt-in subprocess sweep: `2 passed` in ~5m05s (`BNG_RUN_MODEL_SWEEPS=1 BNG_MODEL_SWEEP_TIMEOUT=300 ... python -m pytest tests/test_bng_models.py::test_model_running_CLI tests/test_bng_models.py::test_model_running_lib -v`). Both `test_model_running_CLI` and `test_model_running_lib` cleared the full 21-model corpus.
+- `mypy bionetgen tests`: clean (74 source files).
+- The `test_nf_parameter_scan_re_evaluates_seed_species` failure called out in the prior session note (bngsim stale-`.so` issue, `wshlavacek/PyBNF-Private#23`) did not reproduce in this run.
+
+Stale tracked `dev/` notes refreshed:
+
+- `dev/block_setattr_refactor_plan_2026-05-08.md` — banner added marking the plan as completed; the Section 4 work landed in `ef885dd` + `8de992a`.
+- `dev/reviewer_concerns_session_handoff_2026-05-05_actionblock.md` — banner added marking the handoff as superseded by this checklist; the primary plan it referenced (`reviewer_concerns_remediation_plan_2026-05-04.md`) is no longer in-tree.
+- `dev/reviewer_concerns_session_handoff_2026-05-05_blocks.md` — same banner, same reasoning.
+
+Untracked notes under `dev/` (the directory is `.gitignore`d) are personal scratch and were left alone; the queue itself is accurate from the checklist now.
 
 ## Immediate Next Session
 
-Work Section 7 — re-run owned validation and refresh the dev notes.
-
-Concrete goal: confirm the owned non-Atomizer suite is still green end-to-end (default + opt-in `BNG_RUN_MODEL_SWEEPS=1` subprocess sweep), then retire/update any `dev/*.md` notes that are now out of date so the remaining queue is accurate.
-
-Likely touch points:
-
-- default suite: `python -m pytest tests/` under the standard dev-checks invocation
-- opt-in sweep: `BNG_RUN_MODEL_SWEEPS=1 python -m pytest tests/test_bng_models.py::test_model_running_CLI tests/test_bng_models.py::test_model_running_lib`
-- `dev/*.md` — fold or delete notes that are subsumed by what already landed; keep this checklist as the single source of truth for what is still open
-
-Definition of done for that session:
-
-- the default owned suite passes cleanly under the documented dev-checks invocation
-- the opt-in subprocess model sweep passes (or any failures are characterized in this checklist, not silently dropped)
-- stale `dev/*.md` files are either updated to reflect current reality or retired with a one-line pointer at this checklist
-- the change is committed atomically
+Nothing is open against this checklist. Sections 1–7 all landed; see the per-section notes above for landing commits and outcomes. If the next session wants to push the non-Atomizer surface further (e.g. picking up the deferred items in `dev/code-quality-punchlist-2026-05-05.md` like shrinking the long bridge functions, or tightening `mypy` strictness module-by-module), start a fresh checklist rather than reopening sections here.
 
 ## Out Of Scope
 
