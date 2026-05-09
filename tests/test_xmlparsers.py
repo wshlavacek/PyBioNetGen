@@ -167,6 +167,39 @@ class TestBondsXML:
         result = b.get_bond_id(comp)
         assert result == "?"
 
+    def test_b13_first_partner_multi_bond_records_flat_ints(self):
+        """B13: when a single site is the first partner for multiple bonds
+        (the ``hub(x!1!2)`` shape), every appended bond id must be a flat
+        int. The buggy resolver appended a list ``[N]`` for the first
+        partner's second-and-later bonds, which then rendered as ``![N]``
+        — a compartment specifier — on regen."""
+        bonds = [
+            OrderedDict([("@id", "B1"), ("@site1", "O1_P1_M1_C1"), ("@site2", "O1_P1_M2_C1")]),
+            OrderedDict([("@id", "B2"), ("@site1", "O1_P1_M1_C1"), ("@site2", "O1_P1_M3_C1")]),
+        ]
+        b = BondsXML(bonds)
+        # The hub site is the first partner of both bonds; must hold [1, 2].
+        hub_ids = b.bonds_dict[("O1", "P1", "M1", "C1")]
+        assert hub_ids == [1, 2], hub_ids
+        for bid in hub_ids:
+            assert isinstance(bid, int), f"expected int, got {type(bid).__name__}: {bid!r}"
+        # Spokes each see one bond.
+        assert b.bonds_dict[("O1", "P1", "M2", "C1")] == [1]
+        assert b.bonds_dict[("O1", "P1", "M3", "C1")] == [2]
+
+    def test_b13_first_partner_three_bonds_records_flat_ints(self):
+        """B13: same site on three bonds (``hub(x!1!2!3)``)."""
+        bonds = [
+            OrderedDict([("@id", "B1"), ("@site1", "O1_P1_M1_C1"), ("@site2", "O1_P1_M2_C1")]),
+            OrderedDict([("@id", "B2"), ("@site1", "O1_P1_M1_C1"), ("@site2", "O1_P1_M3_C1")]),
+            OrderedDict([("@id", "B3"), ("@site1", "O1_P1_M1_C1"), ("@site2", "O1_P1_M4_C1")]),
+        ]
+        b = BondsXML(bonds)
+        hub_ids = b.bonds_dict[("O1", "P1", "M1", "C1")]
+        assert hub_ids == [1, 2, 3], hub_ids
+        for bid in hub_ids:
+            assert isinstance(bid, int)
+
 
 # ---- PatternXML ----
 
@@ -285,6 +318,57 @@ class TestPatternXML:
         # Both components should have bond 1
         assert 1 in px.parsed_obj.molecules[0].components[0].bonds
         assert 1 in px.parsed_obj.molecules[1].components[0].bonds
+
+    def test_b13_hub_two_bonds_renders_as_flat_bang_ids(self):
+        """B13: ``hub(x!1!2).spoke(y!1).spoke(y!2)`` regen. The hub site
+        is the first partner of both bonds; its two bond IDs must render
+        as ``!1!2``, not ``!1![2]``. ``![N]`` is read as a compartment
+        specifier by BNG2.pl and aborts the parse."""
+        bonds = [
+            OrderedDict([("@id", "B1"), ("@site1", "O1_P1_M1_C1"), ("@site2", "O1_P1_M2_C1")]),
+            OrderedDict([("@id", "B2"), ("@site1", "O1_P1_M1_C1"), ("@site2", "O1_P1_M3_C1")]),
+        ]
+        hub_x = _simple_component_xml("O1_P1_M1_C1", "x", num_bonds="2")
+        sp1_y = _simple_component_xml("O1_P1_M2_C1", "y", num_bonds="1")
+        sp2_y = _simple_component_xml("O1_P1_M3_C1", "y", num_bonds="1")
+        hub = _simple_molecule_xml("hub", comp_list=hub_x)
+        hub["@id"] = "M1"
+        sp1 = _simple_molecule_xml("spoke", comp_list=sp1_y)
+        sp1["@id"] = "M2"
+        sp2 = _simple_molecule_xml("spoke", comp_list=sp2_y)
+        sp2["@id"] = "M3"
+        pat_xml = _simple_pattern_xml([hub, sp1, sp2], bonds=bonds)
+        px = PatternXML(pat_xml)
+        rendered = str(px.parsed_obj)
+        # Negative assertion is the load-bearing one — ![N] is the BNG2.pl
+        # compartment-specifier syntax; emitting it here is the bug.
+        assert "![" not in rendered, rendered
+        # Positive assertion: hub site emits both bonds as flat !N tokens.
+        assert "hub(x!1!2)" in rendered, rendered
+        assert "spoke(y!1)" in rendered
+        assert "spoke(y!2)" in rendered
+
+    def test_b13_hub_three_bonds_renders_as_flat_bang_ids(self):
+        """B13: same shape as above with three bonds."""
+        bonds = [
+            OrderedDict([("@id", "B1"), ("@site1", "O1_P1_M1_C1"), ("@site2", "O1_P1_M2_C1")]),
+            OrderedDict([("@id", "B2"), ("@site1", "O1_P1_M1_C1"), ("@site2", "O1_P1_M3_C1")]),
+            OrderedDict([("@id", "B3"), ("@site1", "O1_P1_M1_C1"), ("@site2", "O1_P1_M4_C1")]),
+        ]
+        hub_x = _simple_component_xml("O1_P1_M1_C1", "x", num_bonds="3")
+        spokes = [
+            (_simple_molecule_xml("spoke", comp_list=_simple_component_xml(f"O1_P1_M{i}_C1", "y", num_bonds="1")), f"M{i}")
+            for i in (2, 3, 4)
+        ]
+        hub = _simple_molecule_xml("hub", comp_list=hub_x)
+        hub["@id"] = "M1"
+        for mol, mid in spokes:
+            mol["@id"] = mid
+        pat_xml = _simple_pattern_xml([hub] + [m for m, _ in spokes], bonds=bonds)
+        px = PatternXML(pat_xml)
+        rendered = str(px.parsed_obj)
+        assert "![" not in rendered, rendered
+        assert "hub(x!1!2!3)" in rendered, rendered
 
     def test_str_and_repr(self):
         mol = _simple_molecule_xml("A")

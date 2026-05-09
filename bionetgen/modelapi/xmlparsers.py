@@ -182,7 +182,11 @@ class BondsXML:
                 if bond_partner_1 not in self.bonds_dict:
                     self.bonds_dict[bond_partner_1] = [ibond + 1]
                 else:
-                    self.bonds_dict[bond_partner_1].append([ibond + 1])
+                    # B13: must append the int, not a [int] list — the
+                    # rendered Component.__str__ emits ``f"!{bond}"`` per
+                    # entry, so a list ``[2]`` would render as ``![2]``,
+                    # which BNG2.pl reads as a compartment specifier.
+                    self.bonds_dict[bond_partner_1].append(ibond + 1)
                 if bond_partner_2 not in self.bonds_dict:
                     self.bonds_dict[bond_partner_2] = [ibond + 1]
                 else:
