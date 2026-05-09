@@ -2761,6 +2761,64 @@ class TestParamNameResolution:
         with pytest.raises(ValueError, match="Cannot evaluate"):
             _eval_numeric("not_a_param", extra_ns={"k_known": 1.0})
 
+    def test_b5_caret_is_exponentiation(self):
+        """B5: BNGL ``^`` means exponentiation (Python's ``**``), not bitwise XOR.
+
+        Repro from ode/AMPK_MTORC1_ULK1_v2.bngl:
+            fracFKBP1A_0=0.5*minusd+sqrt((0.25*minusd^2)+minuse)
+        which the resolver dropped because Python parses ``minusd^2`` as XOR.
+        """
+        from bionetgen.core.tools.bngsim_bridge import _eval_numeric
+
+        # Smallest expression the bug actually breaks on.
+        assert _eval_numeric("minusd^2", extra_ns={"minusd": 3.0}) == 9.0
+        # And the full repro line (with sqrt + composition).
+        val = _eval_numeric(
+            "0.5*minusd+sqrt((0.25*minusd^2)+minuse)",
+            extra_ns={"minusd": 2.0, "minuse": 0.0},
+        )
+        assert val == pytest.approx(2.0)
+
+    def test_b5_python_keyword_identifier(self):
+        """B5: BNGL parameter names that collide with Python keywords (e.g.
+        ``lambda``) must still resolve — Python's parser rejects them as
+        identifiers, so we have to alias the name on both sides.
+
+        Repro from ode/modified_THEM_v1_1.bngl, parameter ``lambda`` and
+        the setConcentration value ``(1/3)*(5.5/11)*Lcpc/(1+lambda)``.
+        """
+        from bionetgen.core.tools.bngsim_bridge import _eval_numeric
+
+        val = _eval_numeric(
+            "(1/3)*(5.5/11)*Lcpc/(1+lambda)",
+            extra_ns={"Lcpc": 1.0, "lambda": 0.12},
+        )
+        # (1/3)*(5.5/11)*1/(1.12) ≈ 0.14881
+        assert val == pytest.approx((1 / 3) * (5.5 / 11) / 1.12)
+
+    def test_b5_unknown_keyword_still_raises(self):
+        """The keyword aliasing must NOT swallow truly undefined names."""
+        from bionetgen.core.tools.bngsim_bridge import _eval_numeric
+
+        with pytest.raises(ValueError, match="Cannot evaluate"):
+            _eval_numeric("1 + lambda", extra_ns={"other": 1.0})
+
+    def test_b5_resolver_picks_up_caret_expressions(self):
+        """End-to-end through _resolve_bngmodel_params: parameters whose
+        BNGL value uses ``^`` must now resolve into the {name: float} dict."""
+        from bionetgen.core.tools.bngsim_bridge import _resolve_bngmodel_params
+
+        bngmodel = MagicMock()
+        bngmodel.parameters.items = {
+            "minusd": MagicMock(value="3"),
+            "minuse": MagicMock(value="0"),
+            "fracFKBP1A_0": MagicMock(
+                value="0.5*minusd+sqrt((0.25*minusd^2)+minuse)",
+            ),
+        }
+        resolved = _resolve_bngmodel_params(bngmodel)
+        assert resolved["fracFKBP1A_0"] == pytest.approx(3.0)
+
     def test_resolve_bngmodel_params_iterative(self):
         """_resolve_bngmodel_params handles parameters that reference each other,
         regardless of declaration order."""

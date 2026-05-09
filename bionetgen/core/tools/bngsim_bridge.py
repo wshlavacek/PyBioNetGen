@@ -9,6 +9,7 @@ and routing simulation requests to BNGsim when available.
 import ast
 import concurrent.futures
 import inspect
+import keyword
 import logging
 import operator
 import os
@@ -891,6 +892,43 @@ _CMP_OPS = {
 # words like ``ifx`` or ``stiff`` untouched.
 _BNG_IF_RE = re.compile(r"\bif\s*(?=\()")
 
+# BNGL allows parameter / observable identifiers that collide with Python
+# keywords (e.g. ``lambda`` in ode/modified_THEM_v1_1.bngl). Python's parser
+# rejects these as identifiers, so at eval time we rewrite both the
+# expression text and the namespace key to a safe placeholder. ``if`` is
+# excluded because it has its own ``_BNG_IF_`` rewrite above; the constants
+# ``True``/``False``/``None`` would never appear as BNGL parameter names.
+_BNG_KW_PREFIX = "_BNG_KW_"
+_BNG_KW_NAMES = frozenset(
+    k for k in keyword.kwlist if k not in {"if", "True", "False", "None"}
+)
+_BNG_KW_RE = re.compile(r"\b(?:" + "|".join(re.escape(k) for k in _BNG_KW_NAMES) + r")\b")
+
+
+def _normalize_bngl_expr(expr_str):
+    """Translate BNGL-isms that Python's parser rejects.
+
+    Currently handles:
+    - ``^`` (BNGL exponentiation) → ``**`` (Python's; same precedence)
+    - parameter identifiers that are Python keywords (e.g. ``lambda``) →
+      ``_BNG_KW_<name>`` placeholders. The matching namespace alias is
+      added by ``_aliased_keyword_namespace``.
+    """
+    out = expr_str.replace("^", "**")
+    out = _BNG_KW_RE.sub(lambda m: _BNG_KW_PREFIX + m.group(0), out)
+    return out
+
+
+def _aliased_keyword_namespace(ns):
+    """Mirror keyword-named keys in *ns* under their ``_BNG_KW_<name>`` alias."""
+    if ns is None:
+        return ns
+    aliased = dict(ns)
+    for k in list(aliased):
+        if k in _BNG_KW_NAMES:
+            aliased[_BNG_KW_PREFIX + k] = aliased[k]
+    return aliased
+
 
 def _safe_eval_expr(expr_str, ns):
     """Evaluate ``expr_str`` against ``ns`` using a whitelisted AST walker.
@@ -903,8 +941,11 @@ def _safe_eval_expr(expr_str, ns):
     """
     msg = f"Cannot evaluate numeric expression: {expr_str!r}"
 
+    rewritten = _BNG_IF_RE.sub("_BNG_IF_", expr_str)
+    rewritten = _normalize_bngl_expr(rewritten)
+    ns = _aliased_keyword_namespace(ns)
     try:
-        tree = ast.parse(_BNG_IF_RE.sub("_BNG_IF_", expr_str), mode="eval")
+        tree = ast.parse(rewritten, mode="eval")
     except SyntaxError:
         raise ValueError(msg) from None
 
