@@ -10,9 +10,9 @@ Purpose: capture the still-relevant cleanup work after the recent runtime, round
 
 Non-Atomizer cleanup is mostly done, but not fully done.
 
-The `bionetgen/core/tools/bngsim_bridge.py` arithmetic-expression / exception-cleanup slice is complete.
+Sections 1–5 are complete: bridge correctness/exception cleanup, action parsing/validation, model-fidelity pass, shared block-setter dedup, and TODO/FIXME sweep have all landed.
 
-The highest-priority remaining task is now tightening action parsing and validation in `bionetgen/modelapi`.
+The highest-priority remaining task is now Section 6 — a low-noise hygiene pass on legacy test code (broad catches, noisy prints, environment-sensitive skip reasons).
 
 ## Recently Completed Work
 
@@ -63,9 +63,11 @@ Done: extracted `_set_item_attribute` on `ModelBlock`/`NetworkBlock` and unified
 
 ### 5. Do a final non-Atomizer TODO/FIXME cleanup pass
 
-- [ ] Re-inventory non-Atomizer `TODO` / `FIXME` / `XXX` markers after the bridge work lands.
-- [ ] Remove or rewrite stale low-signal markers.
-- [ ] Move real deferred work into tracked docs/issues instead of leaving vague inline notes behind.
+- [x] Re-inventory non-Atomizer `TODO` / `FIXME` / `XXX` markers after the bridge work lands.
+- [x] Remove or rewrite stale low-signal markers.
+- [x] Move real deferred work into tracked docs/issues instead of leaving vague inline notes behind.
+
+Done: triage in `dev/todo_triage_2026-05-08.md`. Started at 27 markers in 11 files; recalibrated to 20 CULL / 7 ISSUE → 5 distinct upstream issues. `77bd96c` stripped the 20 stale comments. Issues filed at `RuleWorld/PyBioNetGen` #70–#74. `6a2227d` anchored the remaining 7 markers to those issue refs. Zero stale TODO/FIXME/XXX markers in non-Atomizer code now.
 
 ### 6. Do a low-noise hygiene pass on legacy test code
 
@@ -80,20 +82,21 @@ Done: extracted `_set_item_attribute` on `ModelBlock`/`NetworkBlock` and unified
 
 ## Immediate Next Session
 
-Work the `modelapi` action parsing / validation pass next.
+Work Section 6 — low-noise hygiene pass on legacy test code.
 
-Concrete goal: tighten non-Atomizer action parsing / validation in `modelapi` so parse-time and direct-construction behavior stay aligned, starting with action-argument schema handling and malformed positional-vs-keyword cases.
+Concrete goal: tighten the owned non-Atomizer test files so they fail loudly, skip explicitly, and don't paper over real failures with broad excepts or noisy prints.
 
 Likely touch points:
 
-- `bionetgen/modelapi/**`
-- targeted model/modelapi tests under `tests/`
+- `tests/**` (owned non-Atomizer tests only — anything that imports `bionetgen.atomizer.*` is out of scope)
+- skip-reason strings + `pytest.importorskip` / `pytest.mark.skipif` decorators on environment-sensitive tests
 
 Definition of done for that session:
 
-- parse-time and direct-construction behavior agree for the owned action shapes
-- malformed action argument shapes fail consistently
-- targeted tests pass through `scripts/run_dev_checks.py`
+- no remaining broad `except Exception:` or bare `except:` in owned tests unless explicitly justified by a comment
+- no `print()` calls in owned tests for diagnostic purposes — convert to assertions, fixtures, or dropped entirely
+- environment-sensitive tests state their prerequisite explicitly in the skip reason (e.g. "requires BNG2.pl on PATH", "requires bngsim editable install")
+- the full owned validation path passes
 - the change is committed atomically
 
 ## Out Of Scope
