@@ -1095,38 +1095,11 @@ class TestExecuteBngsimActions:
         model.save_concentrations.assert_called()
         model.reset.assert_called()
 
-    def test_b15_setparameter_resyncs_seed_species(self):
-        """B15: ``setParameter`` mid-protocol must re-derive seed species
-        whose initializer is a parameter expression — same shape as the
-        existing parameter_scan path, which already calls
-        _sync_species_concentrations after set_param.
-
-        Repro from ode/test_BW_reset.bngl: ``saveConcentrations() ;
-        setParameter("BW",5) ; simulate(...)`` — BNG2.pl re-evaluates
-        ``R RT`` (where ``RT = 10*BW``) so run1 starts at R=50; bngsim
-        kept the XML-time R=10 because the protocol loop's setParameter
-        handler skipped the seed-species re-sync that parameter_scan does.
+    def _run_with_initializers(self, actions, initializers, model):
+        """Helper for B15-family tests: run actions with the given seed
+        species initializers patched into _parse_net_species_initializers.
         """
         from bionetgen.core.tools.bngsim_bridge import _execute_bngsim_actions
-
-        set_param = _make_action("setParameter", {'"BW"': None, '5': None})
-        sim = _make_action("simulate_ode", {"t_end": "10", "n_steps": "10"})
-
-        model = _make_mock_model(
-            param_names=["BW", "RT"],
-            params={"BW": 1.0, "RT": 10.0},
-        )
-        # set_param updates the live parameter so the re-sync sees BW=5.
-        live_params = {"BW": 1.0, "RT": 10.0}
-
-        def _set(name, value):
-            live_params[name] = value
-
-        def _get(name):
-            return live_params.get(name, 0.0)
-
-        model.set_param.side_effect = _set
-        model.get_param.side_effect = _get
 
         mock_bngsim = MagicMock()
         mock_sim = MagicMock()
@@ -1138,18 +1111,92 @@ class TestExecuteBngsimActions:
              patch(f"{BRIDGE}._try_prepare_codegen", return_value=""), \
              patch(
                  f"{BRIDGE}._parse_net_species_initializers",
-                 return_value=[("R", "BW * 10")],
+                 return_value=initializers,
              ), \
              tempfile.TemporaryDirectory() as tmpdir:
             _execute_bngsim_actions(
-                [set_param, sim], model, tmpdir, "test_model",
-                net_path="/dummy.net",
+                actions, model, tmpdir, "test_model", net_path="/dummy.net",
             )
 
+    def _make_bw_model(self, bw=1.0):
+        """Mock model with a BW parameter whose value updates on set_param."""
+        live = {"BW": bw, "RT": 10.0 * bw}
+        model = _make_mock_model(param_names=["BW", "RT"], params=live)
+        model.set_param.side_effect = lambda n, v: live.update({n: v})
+        model.get_param.side_effect = lambda n: live.get(n, 0.0)
+        return model
+
+    def test_b15_setparameter_resyncs_seed_species_at_initial_state(self):
+        """B15: ``setParameter`` re-derives parameter-dependent seed
+        species when the model is at its initial state (just after load
+        or resetConcentrations) — mirrors parameter_scan.
+
+        Repro from ode/test_BW_reset.bngl: ``saveConcentrations() ;
+        setParameter("BW",5) ; simulate(...)`` — BNG2.pl re-evaluates
+        ``R RT`` (where ``RT = 10*BW``) so run1 starts at R=50; bngsim
+        kept the XML-time R=10 because the protocol loop's setParameter
+        handler skipped the seed-species re-sync.
+        """
+        set_param = _make_action("setParameter", {'"BW"': None, '5': None})
+        sim = _make_action("simulate_ode", {"t_end": "10", "n_steps": "10"})
+
+        model = self._make_bw_model()
+        self._run_with_initializers(
+            [set_param, sim], [("R", "BW * 10")], model,
+        )
+
         model.set_param.assert_called_with("BW", 5.0)
-        # The seed species ``R`` is parameter-derived (``BW * 10``) and
-        # must be re-derived to 50 after setParameter.
+        # Re-derive R = BW * 10 = 50 after setParameter.
         model.set_concentration.assert_any_call("R", 50.0)
+
+    def test_b15_setparameter_skips_resync_when_mid_trajectory(self):
+        """B15 follow-up: after a simulate, species are mid-trajectory.
+        setParameter must NOT re-derive seed species — that would
+        clobber the in-flight values that a continue=>1 segment is
+        supposed to pick up.
+
+        Repro from ode/actCells_v11b.bngl p2_control_pVL_FDC: segment 1
+        runs to t=42, then setParameter("er",1) + simulate(continue=>1)
+        from t=42..88. Re-deriving species at t=42 broke the trajectory
+        (S1 jumped 100x relative to BNG2.pl).
+        """
+        sim1 = _make_action("simulate_ode", {"t_end": "42", "n_steps": "420"})
+        set_er = _make_action("setParameter", {'"BW"': None, '7': None})
+        sim2 = _make_action("simulate_ode", {
+            "t_end": "88", "n_steps": "460", "continue": "1",
+        })
+
+        model = self._make_bw_model()
+        self._run_with_initializers(
+            [sim1, set_er, sim2], [("R", "BW * 10")], model,
+        )
+
+        model.set_param.assert_called_with("BW", 7.0)
+        # Must NOT have called set_concentration("R", ...): the
+        # mid-trajectory setParameter should leave species alone.
+        for c in model.set_concentration.call_args_list:
+            assert c.args[0] != "R", (
+                f"R was clobbered mid-trajectory: {c}"
+            )
+
+    def test_b15_resetconcentrations_restores_initial_state_flag(self):
+        """B15 follow-up: resetConcentrations puts species back to the
+        snapshot, so a subsequent setParameter must re-derive again
+        (test_BW_reset / test_7 second-segment behaviour).
+        """
+        sim1 = _make_action("simulate_ode", {"t_end": "10", "n_steps": "10"})
+        reset = _make_action("resetConcentrations", {})
+        set_param = _make_action("setParameter", {'"BW"': None, '10': None})
+        sim2 = _make_action("simulate_ode", {"t_end": "10", "n_steps": "10"})
+
+        model = self._make_bw_model()
+        self._run_with_initializers(
+            [sim1, reset, set_param, sim2], [("R", "BW * 10")], model,
+        )
+
+        model.set_param.assert_called_with("BW", 10.0)
+        # After reset + setParameter, R must be re-derived to 100.
+        model.set_concentration.assert_any_call("R", 100.0)
 
     def test_save_reset_parameters(self):
         save_action = _make_action("saveParameters", {})

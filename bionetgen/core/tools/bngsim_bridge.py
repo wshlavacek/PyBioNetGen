@@ -2887,6 +2887,16 @@ def _execute_bngsim_actions(
     if net_path:
         species_initializers = _parse_net_species_initializers(net_path)
 
+    # B15: BNG2.pl re-evaluates parameter-dependent seed-species
+    # initializers on setParameter only when species are at their
+    # *initial* values (just after model load or resetConcentrations).
+    # If the trajectory is mid-flight (after a simulate), setParameter
+    # only updates the parameter — species keep their current in-flight
+    # values, so a continue=>1 segment with setParameter picks up where
+    # the prior segment ended (e.g. actCells_v11b p2_control_pVL_FDC at
+    # t=42 + setParameter("er",1) + simulate(continue=>1)).
+    species_at_initial_state = True
+
     def _make_ode_kwargs():
         """Build kwargs for ODE Simulator construction, including codegen."""
         kw = {}
@@ -2956,6 +2966,10 @@ def _execute_bngsim_actions(
             # continue=>1: use current model time as t_start
             if continue_flag:
                 t_start = model_time
+
+            # Once we run a simulate, species are no longer at initial
+            # values (B15 follow-up — see species_at_initial_state above).
+            species_at_initial_state = False
 
             if _is_nf_method(method):
                 if sample_times is not None:
@@ -3092,15 +3106,15 @@ def _execute_bngsim_actions(
                 except Exception as e:
                     logger.warning("setParameter(%s, %s) failed: %s", name, value, e)
                 # BNG2.pl re-derives parameter-dependent seed-species
-                # initial concentrations on setParameter (e.g. R = 10*BW).
-                # bngsim's network-model set_param updates the parameter
-                # but leaves species at their XML-time values, so without
-                # this re-sync the next simulate starts from stale ICs
-                # (seen in test_BW_reset, test_7, and the multi-segment
-                # p1/p2/case1/case2 cluster). Mirror the parameter_scan
-                # path which already calls _sync_species_concentrations
-                # after set_param.
-                if species_initializers:
+                # initial concentrations on setParameter (e.g. R = 10*BW)
+                # only while species are still at their initial values.
+                # Once the model is mid-trajectory, setParameter just
+                # updates the parameter; species keep their current
+                # in-flight values (so a continue=>1 segment continues
+                # from where the prior segment ended). Mirror the
+                # parameter_scan path which calls
+                # _sync_species_concentrations after set_param.
+                if species_initializers and species_at_initial_state:
                     _sync_species_concentrations(bngsim_model, species_initializers)
             else:
                 live_nf_params[name] = numeric_value
@@ -3195,6 +3209,11 @@ def _execute_bngsim_actions(
                 bngsim_model.reset()
             nf_conc_overrides = dict(saved_nf_conc_overrides)
             nf_conc_deltas = dict(saved_nf_conc_deltas)
+            # Reset returns species to the snapshot values, which we
+            # treat as the segment's initial state — a subsequent
+            # setParameter must re-derive parameter-dependent seed
+            # species against the new param values (B15 follow-up).
+            species_at_initial_state = True
             continue
 
         # ── saveParameters ──────────────────────────────────────
