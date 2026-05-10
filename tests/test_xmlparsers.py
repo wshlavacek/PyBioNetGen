@@ -940,6 +940,65 @@ class TestRuleBlockXML:
         with pytest.raises(BNGParseError, match="Unrecognized rate law type"):
             rb.resolve_ratelaw(rate_xml)
 
+    def test_resolve_ratelaw_function_product(self):
+        """B10: FunctionProduct rate-law type — used by rules whose rate is
+        the product of two local functions evaluated in the contexts of two
+        different reactant patterns. BNG2.pl's serializer (RateLaw.pm:670)
+        emits 'FunctionProduct("name1(args1)","name2(args2)")'; we must
+        produce the same shape so the BNGL round-trips and reaches NFsim
+        (which supports FunctionProduct natively)."""
+        xml = _make_rule_xml("r1", "A", "B", "0.5")
+        rb = RuleBlockXML(xml)
+        rate_xml = OrderedDict([
+            ("@type", "FunctionProduct"),
+            ("@name1", "_localFuncL1"),
+            ("@name2", "_localFuncR1"),
+            ("ListOfArguments1", OrderedDict([
+                ("Argument", OrderedDict([("@id", "x")])),
+            ])),
+            ("ListOfArguments2", OrderedDict([
+                ("Argument", OrderedDict([("@id", "y")])),
+            ])),
+        ])
+        result = rb.resolve_ratelaw(rate_xml)
+        assert result == 'FunctionProduct("_localFuncL1(x)","_localFuncR1(y)")'
+
+    def test_resolve_ratelaw_function_product_multi_arg(self):
+        """B10: FunctionProduct with multiple args per side — the dict path
+        produces a single OrderedDict for one Argument and a list for many,
+        mirroring the existing MM/Sat handling."""
+        xml = _make_rule_xml("r1", "A", "B", "0.5")
+        rb = RuleBlockXML(xml)
+        rate_xml = OrderedDict([
+            ("@type", "FunctionProduct"),
+            ("@name1", "fL"),
+            ("@name2", "fR"),
+            ("ListOfArguments1", OrderedDict([
+                ("Argument", [
+                    OrderedDict([("@id", "x")]),
+                    OrderedDict([("@id", "z")]),
+                ]),
+            ])),
+            ("ListOfArguments2", OrderedDict([
+                ("Argument", OrderedDict([("@id", "y")])),
+            ])),
+        ])
+        result = rb.resolve_ratelaw(rate_xml)
+        assert result == 'FunctionProduct("fL(x,z)","fR(y)")'
+
+    def test_resolve_ratelaw_function_product_no_args(self):
+        """B10: FunctionProduct where one side takes no arguments — empty
+        parens. BNG2.pl is happy parsing this back."""
+        xml = _make_rule_xml("r1", "A", "B", "0.5")
+        rb = RuleBlockXML(xml)
+        rate_xml = OrderedDict([
+            ("@type", "FunctionProduct"),
+            ("@name1", "fL"),
+            ("@name2", "fR"),
+        ])
+        result = rb.resolve_ratelaw(rate_xml)
+        assert result == 'FunctionProduct("fL()","fR()")'
+
     def test_resolve_rxn_side_none(self):
         xml = _make_rule_xml("r1", "A", "B", "0.5")
         rb = RuleBlockXML(xml)
