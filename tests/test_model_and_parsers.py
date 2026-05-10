@@ -243,6 +243,53 @@ class TestBNGFile:
             assert "end actions" not in content
 
     @patch("bionetgen.modelapi.bngfile.find_BNG_path", return_value=("/fake", "/fake/BNG2.pl"))
+    def test_b18_strip_actions_does_not_glue_comment_into_following_def(self, mock_find):
+        r"""B18: line-continuation collapse must not glue a backslash-
+        terminated comment line onto the next physical line. Repro
+        from ode/immob_compart_v1.bngl had a commented-out
+        ``# foo()=if(t<42,0,\`` immediately above a live
+        ``foo()=if(t<42,9.899,\`` definition; the naive
+        ``re.sub(r'\\[ \t]*\n', '', mstr)`` collapsed both lines into
+        the comment so the live definition silently disappeared from
+        the rendered .bngl (and the .net), dropping two functions from
+        the bngsim observable output.
+        """
+        from bionetgen.modelapi.bngfile import BNGFile
+
+        bf = BNGFile("/some/model.bngl")
+        bngl = textwrap.dedent("""\
+            begin model
+            begin parameters
+              k1 0.1
+            end parameters
+            begin functions
+            # foo()=if((t<42),0,\\
+            foo()=if((t<42),9.899,\\
+            if((t<49),9.899,0))
+            end functions
+            end model
+            begin actions
+              simulate({method=>"ode"})
+            end actions
+        """)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            src = os.path.join(tmpdir, "model.bngl")
+            with open(src, "w") as f:
+                f.write(bngl)
+            out_dir = os.path.join(tmpdir, "out")
+            os.makedirs(out_dir)
+            stripped_path = bf.strip_actions(src, out_dir)
+            with open(stripped_path) as f:
+                content = f.read()
+
+        # The live foo() definition must survive the strip — earlier
+        # the comment swallowed it.
+        assert "foo()=if((t<42),9.899,if((t<49),9.899,0))" in content
+        # The commented stub remains a comment.
+        assert "# foo()=if((t<42),0," in content
+
+    @patch("bionetgen.modelapi.bngfile.find_BNG_path", return_value=("/fake", "/fake/BNG2.pl"))
     def test_strip_actions_unmatched_begin_actions_raises(self, mock_find):
         from bionetgen.core.exc import BNGFileError
         from bionetgen.modelapi.bngfile import BNGFile

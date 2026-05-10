@@ -173,7 +173,20 @@ class BNGFile:
             # BNG2.pl tolerates trailing whitespace between ``\`` and the
             # newline (e.g. ``method=>"ode",\<space><newline>`` in
             # ode/inhibitors_1.bngl); accept the same shape here.
-            mstr = re.sub(r"\\[ \t]*\n", "", mstr)
+            #
+            # B18: only collapse ``\`` that appears before any ``#`` on its
+            # line. A continuation marker after the comment introducer is
+            # part of the comment body in BNG2.pl — collapsing it would
+            # glue the next physical line (often a real definition) into
+            # the comment, dropping it from the model. Repro:
+            # ode/immob_compart_v1.bngl had a commented-out
+            # ``# lnFDCden_p2_C()=if(t<42,0,\`` immediately above a
+            # live ``lnFDCden_p2_C()=if(t<42,9.899,\`` definition; the
+            # naive collapse turned the live definition into part of
+            # the comment, so bngsim's .net was missing two functions.
+            mstr = re.sub(
+                r"^([^#\n]*)\\[ \t]*\n", r"\1", mstr, flags=re.MULTILINE,
+            )
             mlines = mstr.split("\n")
             self.parsed_actions = []
             self.parsed_protocol_actions = []
