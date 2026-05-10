@@ -997,6 +997,72 @@ class TestExecuteBngsimActions:
         model.set_concentration.assert_any_call("BafA1", 1.0)
         model.set_concentration.assert_any_call("BafA1()", 1.0)
 
+    def test_b17_set_concentration_resolves_component_reorder(self):
+        """B17: BNG2.pl canonicalizes ``RTK(pTyrGEF,pTyrGAP)`` to
+        ``RTK(pTyrGAP,pTyrGEF)`` before lookup; bngsim requires an
+        exact match. Bridge must canonicalize on fallback.
+
+        Repro from ode/Ras_bistability_v2.bngl:
+        ``setConcentration("RTK(pTyrGEF,pTyrGAP)",1.0e3)``. Without
+        canonicalization, the call silently failed and S12 stayed at
+        0 in bngsim while subprocess shows 1000.
+        """
+        from bionetgen.core.tools.bngsim_bridge import _execute_bngsim_actions
+
+        action = _make_action(
+            "setConcentration",
+            {'"RTK(pTyrGEF,pTyrGAP)"': None, '1000': None},
+        )
+        model = _make_mock_model()
+        model.species_names = ["RTK(pTyrGAP,pTyrGEF)", "Other()"]
+        # First call (user form) raises; second call (canonical) succeeds.
+        model.set_concentration = MagicMock(
+            side_effect=[
+                Exception("Species 'RTK(pTyrGEF,pTyrGAP)' not found in model"),
+                None,
+            ],
+        )
+        mock_bngsim = MagicMock()
+        with patch(f"{BRIDGE}.bngsim", mock_bngsim), \
+             patch(f"{BRIDGE}.BNGSIM_AVAILABLE", True), \
+             patch(f"{BRIDGE}._try_prepare_codegen", return_value=""), \
+             patch(f"{BRIDGE}._parse_net_species_initializers", return_value=[]), \
+             tempfile.TemporaryDirectory() as tmpdir:
+            _execute_bngsim_actions(
+                [action], model, tmpdir, "test_model",
+            )
+        assert model.set_concentration.call_count == 2
+        model.set_concentration.assert_any_call("RTK(pTyrGEF,pTyrGAP)", 1000.0)
+        model.set_concentration.assert_any_call("RTK(pTyrGAP,pTyrGEF)", 1000.0)
+
+    def test_b17_canonicalizer_handles_states_and_bonds(self):
+        """B17 unit: component sort key is the bare component name
+        (part before ``~`` state and ``!`` bond markers).
+        """
+        from bionetgen.core.tools.bngsim_bridge import (
+            _canonicalize_species_pattern,
+        )
+
+        assert _canonicalize_species_pattern(
+            "RTK(pTyrGEF,pTyrGAP)"
+        ) == "RTK(pTyrGAP,pTyrGEF)"
+        # Already canonical — unchanged.
+        assert _canonicalize_species_pattern(
+            "RTK(pTyrGAP,pTyrGEF)"
+        ) == "RTK(pTyrGAP,pTyrGEF)"
+        # Single component — unchanged.
+        assert _canonicalize_species_pattern("X(c)") == "X(c)"
+        # Bare name — unchanged.
+        assert _canonicalize_species_pattern("BafA1") == "BafA1"
+        # State and bond annotations are preserved; sort by bare name.
+        assert _canonicalize_species_pattern(
+            "M(z~on,a!1)"
+        ) == "M(a!1,z~on)"
+        # Complex (dot-joined): each molecule sorted independently.
+        assert _canonicalize_species_pattern(
+            "B(y,x).A(d,c)"
+        ) == "B(x,y).A(c,d)"
+
     def test_b2_set_concentration_uses_literal_when_present(self):
         """When the literal name IS a species, no fallback should fire."""
         from bionetgen.core.tools.bngsim_bridge import _execute_bngsim_actions

@@ -1009,6 +1009,55 @@ def _eval_numeric(expr_str, extra_ns=None):
         raise ValueError(f"Cannot evaluate numeric expression: {expr_str!r}") from None
 
 
+def _canonicalize_species_pattern(name):
+    """Return a copy of *name* with each molecule's components in the
+    BNG canonical (alphabetical) order.
+
+    BNG2.pl accepts ``setConcentration("RTK(pTyrGEF,pTyrGAP)", 1e3)``
+    even when the .net stores the species as ``RTK(pTyrGAP,pTyrGEF)``;
+    it canonicalizes the input pattern before lookup. bngsim's
+    ``set_concentration`` requires an exact name match, so the bridge
+    must do the same canonicalization (B17).
+
+    Components are sorted by their bare name (the part before ``~``
+    state and ``!`` bond markers). For complexes joined by ``.``, the
+    molecule order is preserved — only intra-molecule component order
+    is touched, because reordering bonded molecules requires renumbering
+    bond labels (out of scope for the lookup helper).
+    """
+    if not name or "(" not in name:
+        return name
+
+    def _sort_key(comp):
+        # 'c~state!1' → 'c'; sort by the bare component identifier.
+        for sep in ("~", "!"):
+            idx = comp.find(sep)
+            if idx >= 0:
+                return comp[:idx]
+        return comp
+
+    out_parts = []
+    for mol in name.split("."):
+        lp = mol.find("(")
+        rp = mol.rfind(")")
+        if lp < 0 or rp <= lp:
+            out_parts.append(mol)
+            continue
+        head = mol[:lp]
+        body = mol[lp + 1:rp]
+        tail = mol[rp + 1:]
+        if not body.strip():
+            out_parts.append(mol)
+            continue
+        comps = [c for c in body.split(",")]
+        sorted_comps = sorted(comps, key=_sort_key)
+        if sorted_comps == comps:
+            out_parts.append(mol)
+        else:
+            out_parts.append(f"{head}({','.join(sorted_comps)}){tail}")
+    return ".".join(out_parts)
+
+
 def _resolve_species_name(bngsim_model, name):
     """Map a user-given species identifier to bngsim's exact species name.
 
@@ -1018,8 +1067,14 @@ def _resolve_species_name(bngsim_model, name):
     bare lookup raises ``Species 'BafA1' not found`` and the bridge silently
     swallowed it — which is the root cause of the inter-segment divergence
     in B2 (ode/AVdyn.bngl etc.). Mirror BNG2.pl: if the literal name isn't
-    a species, append ``()`` and retry. Falls back to the original name
-    when neither matches so the bngsim setter raises its own clear error.
+    a species, append ``()`` and retry.
+
+    Also handles intra-molecule component reordering (B17): BNG2.pl
+    canonicalizes ``RTK(pTyrGEF,pTyrGAP)`` to ``RTK(pTyrGAP,pTyrGEF)``
+    before lookup; bngsim does not, so do it here.
+
+    Falls back to the original name when nothing matches so the bngsim
+    setter raises its own clear error.
     """
     if bngsim_model is None:
         return name
@@ -1032,6 +1087,9 @@ def _resolve_species_name(bngsim_model, name):
         parens_form = f"{name}()"
         if parens_form in species_names:
             return parens_form
+        canonical = _canonicalize_species_pattern(name)
+        if canonical != name and canonical in species_names:
+            return canonical
     except TypeError:
         # species_names not iterable — leave the lookup to the caller.
         pass
