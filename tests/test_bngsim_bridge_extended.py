@@ -1245,6 +1245,49 @@ class TestExecuteBngsimActions:
                 f"R was clobbered mid-trajectory: {c}"
             )
 
+    def test_b19_save_after_simulate_then_reset_does_not_resync(self):
+        """B19: ``saveConcentrations`` after a simulate captures a
+        post-trajectory state (e.g. an equilibrium); the subsequent
+        ``resetConcentrations`` restores that state, and a follow-on
+        ``setParameter`` must NOT re-derive seed species — that would
+        clobber the equilibrium values preserved in the snapshot.
+
+        Repro from ode/MTORC1_assembly_v2.bngl:
+            simulate(equil)               # reach equilibrium
+            saveConcentrations()          # snapshot equilibrium
+            resetConcentrations()         # restore equilibrium
+            setParameter("kdeg_MLST8",1)  # change degradation rate
+            simulate(prod)                # simulate degradation
+        Without this fix, MLST8 was reset to its formula-derived
+        ``MLST8_cpc_U2OS`` value at start of prod, losing the
+        equilibrium and diverging from BNG2.pl by ~98%.
+        """
+        sim_equil = _make_action("simulate_ode", {
+            "t_end": "10800", "n_steps": "300",
+        })
+        save = _make_action("saveConcentrations", {})
+        reset = _make_action("resetConcentrations", {})
+        set_param = _make_action("setParameter", {'"BW"': None, '5': None})
+        sim_prod = _make_action("simulate_ode", {
+            "t_end": "21600", "n_steps": "300",
+        })
+
+        model = self._make_bw_model()
+        self._run_with_initializers(
+            [sim_equil, save, reset, set_param, sim_prod],
+            [("R", "BW * 10")],
+            model,
+        )
+
+        model.set_param.assert_called_with("BW", 5.0)
+        # R must NOT have been re-derived — the saved snapshot is
+        # post-simulate, so reset restores post-simulate species
+        # values (the user's "equilibrium").
+        for c in model.set_concentration.call_args_list:
+            assert c.args[0] != "R", (
+                f"R clobbered after post-simulate save+reset+setParameter: {c}"
+            )
+
     def test_b15_resetconcentrations_restores_initial_state_flag(self):
         """B15 follow-up: resetConcentrations puts species back to the
         snapshot, so a subsequent setParameter must re-derive again

@@ -2945,15 +2945,26 @@ def _execute_bngsim_actions(
     if net_path:
         species_initializers = _parse_net_species_initializers(net_path)
 
-    # B15: BNG2.pl re-evaluates parameter-dependent seed-species
-    # initializers on setParameter only when species are at their
-    # *initial* values (just after model load or resetConcentrations).
-    # If the trajectory is mid-flight (after a simulate), setParameter
-    # only updates the parameter — species keep their current in-flight
-    # values, so a continue=>1 segment with setParameter picks up where
-    # the prior segment ended (e.g. actCells_v11b p2_control_pVL_FDC at
-    # t=42 + setParameter("er",1) + simulate(continue=>1)).
-    species_at_initial_state = True
+    # B15/B16/B19: BNG2.pl only re-evaluates parameter-dependent seed-
+    # species initializers on setParameter when the active species
+    # values are still the formula-derived "initial" values — never
+    # mid-trajectory (continue=>1 segments must continue from the
+    # in-flight state — actCells_v11b p2_control_pVL_FDC, B16) and
+    # never after restoring a *post-simulate* saveConcentrations
+    # snapshot (the snapshot represents an equilibrium / midpoint
+    # state that re-derivation would clobber — Kholodenko_2000_wsh
+    # Fig2B, MTORC1_assembly_v2 prod, MTORC1_assembly_v3 KO_mLST8;
+    # B19).
+    #
+    # Track two flags:
+    #   ``state_is_initial`` — current species are at their initial
+    #     formula-derived values.
+    #   ``saved_state_is_initial`` — the latest saveConcentrations
+    #     snapshot was taken from an initial state.
+    # save propagates state→saved; reset propagates saved→state;
+    # simulate clears state.
+    state_is_initial = True
+    saved_state_is_initial = True
 
     def _make_ode_kwargs():
         """Build kwargs for ODE Simulator construction, including codegen."""
@@ -3026,8 +3037,8 @@ def _execute_bngsim_actions(
                 t_start = model_time
 
             # Once we run a simulate, species are no longer at initial
-            # values (B15 follow-up — see species_at_initial_state above).
-            species_at_initial_state = False
+            # values (B15 follow-up).
+            state_is_initial = False
 
             if _is_nf_method(method):
                 if sample_times is not None:
@@ -3165,14 +3176,13 @@ def _execute_bngsim_actions(
                     logger.warning("setParameter(%s, %s) failed: %s", name, value, e)
                 # BNG2.pl re-derives parameter-dependent seed-species
                 # initial concentrations on setParameter (e.g. R = 10*BW)
-                # only while species are still at their initial values.
-                # Once the model is mid-trajectory, setParameter just
-                # updates the parameter; species keep their current
-                # in-flight values (so a continue=>1 segment continues
-                # from where the prior segment ended). Mirror the
-                # parameter_scan path which calls
+                # only while species are still at their formula-derived
+                # initial values. Mid-trajectory or after a post-simulate
+                # snapshot has been restored, setParameter just updates
+                # the parameter; species keep their current values.
+                # Mirror the parameter_scan path which calls
                 # _sync_species_concentrations after set_param.
-                if species_initializers and species_at_initial_state:
+                if species_initializers and state_is_initial:
                     _sync_species_concentrations(bngsim_model, species_initializers)
             else:
                 live_nf_params[name] = numeric_value
@@ -3259,6 +3269,11 @@ def _execute_bngsim_actions(
                 bngsim_model.save_concentrations()
             saved_nf_conc_overrides = dict(nf_conc_overrides)
             saved_nf_conc_deltas = dict(nf_conc_deltas)
+            # The new snapshot reflects whatever species the user just
+            # captured. Track whether that capture was an initial
+            # state (so a later reset+setParameter cycle knows whether
+            # to re-derive seed species — B19).
+            saved_state_is_initial = state_is_initial
             continue
 
         # ── resetConcentrations ─────────────────────────────────
@@ -3267,11 +3282,14 @@ def _execute_bngsim_actions(
                 bngsim_model.reset()
             nf_conc_overrides = dict(saved_nf_conc_overrides)
             nf_conc_deltas = dict(saved_nf_conc_deltas)
-            # Reset returns species to the snapshot values, which we
-            # treat as the segment's initial state — a subsequent
-            # setParameter must re-derive parameter-dependent seed
-            # species against the new param values (B15 follow-up).
-            species_at_initial_state = True
+            # Reset restores species to the latest snapshot. Whether the
+            # post-reset state counts as "initial" depends on what was
+            # snapshotted: an initial-state snapshot stays initial; a
+            # post-simulate snapshot does not — B19. Without this
+            # distinction, B15's setParameter-after-reset re-derivation
+            # clobbers equilibrium concentrations preserved by the
+            # snapshot (Kholodenko_2000_wsh Fig2B, MTORC1_assembly_v*).
+            state_is_initial = saved_state_is_initial
             continue
 
         # ── saveParameters ──────────────────────────────────────
