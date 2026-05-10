@@ -87,6 +87,18 @@ class TestActionList:
         for name in ["simulate", "generate_network", "writeFile", "quit"]:
             assert al.is_before_model(name) is False
 
+    def test_b12_check_iso_recognized_for_generate_network(self):
+        """B12: check_iso is a real BNG2.pl flag (Perl2/SpeciesList.pm,
+        RxnRule.pm) controlling canonical-isomorphism checking when adding
+        species. The fork's modelapi action allowlist must accept it on
+        generate_network round-trip; nf/prion2_YTLedits.bngl uses it."""
+        al = ActionList()
+        assert "check_iso" in al.arg_dict["generate_network"]
+        # Round-trip validation must not raise BNGParseError.
+        al.validate_action(
+            "generate_network", {"check_iso": 1, "overwrite": 1}
+        )
+
 
 # ======================================================================
 # find_BNG_path tests

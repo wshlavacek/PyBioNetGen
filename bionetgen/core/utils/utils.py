@@ -105,6 +105,7 @@ class ActionList:
             "max_agg",
             "max_iter",
             "max_stoich",
+            "check_iso",
             "TextReaction",
             "TextSpecies",
         ]
