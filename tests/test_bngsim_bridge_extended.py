@@ -1095,6 +1095,62 @@ class TestExecuteBngsimActions:
         model.save_concentrations.assert_called()
         model.reset.assert_called()
 
+    def test_b15_setparameter_resyncs_seed_species(self):
+        """B15: ``setParameter`` mid-protocol must re-derive seed species
+        whose initializer is a parameter expression — same shape as the
+        existing parameter_scan path, which already calls
+        _sync_species_concentrations after set_param.
+
+        Repro from ode/test_BW_reset.bngl: ``saveConcentrations() ;
+        setParameter("BW",5) ; simulate(...)`` — BNG2.pl re-evaluates
+        ``R RT`` (where ``RT = 10*BW``) so run1 starts at R=50; bngsim
+        kept the XML-time R=10 because the protocol loop's setParameter
+        handler skipped the seed-species re-sync that parameter_scan does.
+        """
+        from bionetgen.core.tools.bngsim_bridge import _execute_bngsim_actions
+
+        set_param = _make_action("setParameter", {'"BW"': None, '5': None})
+        sim = _make_action("simulate_ode", {"t_end": "10", "n_steps": "10"})
+
+        model = _make_mock_model(
+            param_names=["BW", "RT"],
+            params={"BW": 1.0, "RT": 10.0},
+        )
+        # set_param updates the live parameter so the re-sync sees BW=5.
+        live_params = {"BW": 1.0, "RT": 10.0}
+
+        def _set(name, value):
+            live_params[name] = value
+
+        def _get(name):
+            return live_params.get(name, 0.0)
+
+        model.set_param.side_effect = _set
+        model.get_param.side_effect = _get
+
+        mock_bngsim = MagicMock()
+        mock_sim = MagicMock()
+        mock_sim.run.return_value = _make_mock_result()
+        mock_bngsim.Simulator.return_value = mock_sim
+
+        with patch(f"{BRIDGE}.bngsim", mock_bngsim), \
+             patch(f"{BRIDGE}.BNGSIM_AVAILABLE", True), \
+             patch(f"{BRIDGE}._try_prepare_codegen", return_value=""), \
+             patch(
+                 f"{BRIDGE}._parse_net_species_initializers",
+                 return_value=[("R", "BW * 10")],
+             ), \
+             tempfile.TemporaryDirectory() as tmpdir:
+            _execute_bngsim_actions(
+                [set_param, sim], model, tmpdir, "test_model",
+                net_path="/dummy.net",
+            )
+
+        model.set_param.assert_called_with("BW", 5.0)
+        # The seed species ``R`` is parameter-derived (``BW * 10``) and
+        # must be re-derived to 50 after setParameter.
+        model.set_concentration.assert_any_call("R", 50.0)
+
     def test_save_reset_parameters(self):
         save_action = _make_action("saveParameters", {})
         reset_action = _make_action("resetParameters", {})

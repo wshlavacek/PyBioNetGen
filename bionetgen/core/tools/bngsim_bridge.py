@@ -3091,6 +3091,17 @@ def _execute_bngsim_actions(
                     logger.debug("setParameter(%s, %s)", name, value)
                 except Exception as e:
                     logger.warning("setParameter(%s, %s) failed: %s", name, value, e)
+                # BNG2.pl re-derives parameter-dependent seed-species
+                # initial concentrations on setParameter (e.g. R = 10*BW).
+                # bngsim's network-model set_param updates the parameter
+                # but leaves species at their XML-time values, so without
+                # this re-sync the next simulate starts from stale ICs
+                # (seen in test_BW_reset, test_7, and the multi-segment
+                # p1/p2/case1/case2 cluster). Mirror the parameter_scan
+                # path which already calls _sync_species_concentrations
+                # after set_param.
+                if species_initializers:
+                    _sync_species_concentrations(bngsim_model, species_initializers)
             else:
                 live_nf_params[name] = numeric_value
             # Track for NFsim propagation
