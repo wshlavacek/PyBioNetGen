@@ -4026,6 +4026,41 @@ def _run_bngl_subprocess(
     return cli.result
 
 
+def run_bngl_with_bngsim_backend_hook(
+    bngl_path,
+    output_dir,
+    bngpath,
+    suppress=False,
+    log_file=None,
+    timeout=None,
+    app=None,
+    bngsim_backend_helper=None,
+):
+    """Run BNGL through BNG2.pl with the BNGsim backend helper enabled.
+
+    This Stage 4 path keeps BNG2.pl as the BNGL action driver. A hook-capable
+    BNG2.pl may delegate atomic simulation jobs to the helper advertised in
+    the environment by :class:`BNGCLI`.
+    """
+    from bionetgen.core.tools.cli import BNGCLI
+
+    cli = BNGCLI(
+        bngl_path,
+        output_dir,
+        bngpath,
+        suppress=suppress,
+        log_file=log_file,
+        timeout=timeout,
+        app=app,
+        bngsim_backend=True,
+        bngsim_backend_helper=bngsim_backend_helper,
+    )
+    cli.run()
+    if cli.result is None:
+        raise BNGSimError("BNG2.pl failed.")
+    return cli.result
+
+
 def run_bngl_with_bngsim(
     bngl_path,
     output_dir,

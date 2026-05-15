@@ -1,4 +1,5 @@
 import os
+import sys
 
 from bionetgen.core.exc import BNGFileError, BNGRunError
 from bionetgen.core.utils.logging import BNGLogger
@@ -35,6 +36,8 @@ class BNGCLI:
         log_file=None,
         timeout=None,
         app=None,
+        bngsim_backend=False,
+        bngsim_backend_helper=None,
     ):
         self.app = app
         self.logger = BNGLogger(app=self.app)
@@ -87,6 +90,38 @@ class BNGCLI:
         self.stderr = "STDOUT"
         self.suppress = suppress
         self.timeout = timeout
+        self.bngsim_backend = bngsim_backend
+        self.bngsim_backend_helper = bngsim_backend_helper
+        self._old_bngsim_backend_env = {}
+
+    def _install_bngsim_backend_env(self):
+        """Expose the BNGsim backend helper contract to hook-capable BNG2.pl."""
+        keys = (
+            "BIONETGEN_BNGSIM_BACKEND",
+            "BIONETGEN_BNGSIM_BACKEND_HELPER",
+            "BIONETGEN_BNGSIM_BACKEND_HELPER_PYTHON",
+            "BIONETGEN_BNGSIM_BACKEND_HELPER_MODULE",
+        )
+        self._old_bngsim_backend_env = {key: os.environ.get(key) for key in keys}
+        if not self.bngsim_backend and self.bngsim_backend_helper is None:
+            return
+
+        helper = self.bngsim_backend_helper
+        if helper is None:
+            helper = f"{sys.executable} -m bionetgen.core.tools.bngsim_backend_helper"
+        os.environ["BIONETGEN_BNGSIM_BACKEND"] = "1"
+        os.environ["BIONETGEN_BNGSIM_BACKEND_HELPER"] = helper
+        os.environ["BIONETGEN_BNGSIM_BACKEND_HELPER_PYTHON"] = sys.executable
+        os.environ["BIONETGEN_BNGSIM_BACKEND_HELPER_MODULE"] = (
+            "bionetgen.core.tools.bngsim_backend_helper"
+        )
+
+    def _restore_bngsim_backend_env(self):
+        for key, value in self._old_bngsim_backend_env.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
 
     def _set_output(self, output):
         self.logger.debug(
@@ -99,6 +134,7 @@ class BNGCLI:
 
     def run(self):
         self.logger.debug("Running", loc=f"{__file__} : BNGCLI.run()")
+        self._install_bngsim_backend_env()
         # If BNG2.pl is not available, fall back to an empty result so that
         # library users can still instantiate and inspect models without a
         # full BioNetGen install.
@@ -113,6 +149,7 @@ class BNGCLI:
             else:
                 if "BNGPATH" in os.environ:
                     del os.environ["BNGPATH"]
+            self._restore_bngsim_backend_env()
             return
 
         from bionetgen.core.utils.utils import run_command
@@ -185,6 +222,7 @@ class BNGCLI:
             else:
                 if "BNGPATH" in os.environ:
                     del os.environ["BNGPATH"]
+            self._restore_bngsim_backend_env()
         else:
             self.logger.error("Command failed to run", loc=f"{__file__} : BNGCLI.run()")
             self.result = None
@@ -194,6 +232,7 @@ class BNGCLI:
             else:
                 if "BNGPATH" in os.environ:
                     del os.environ["BNGPATH"]
+            self._restore_bngsim_backend_env()
             stdout_str = None
             stderr_str = None
             if getattr(out, "stdout", None) is not None:
