@@ -937,7 +937,8 @@ def _classify_bngl_actions_for_bngsim(
     The only BNGL cases allowed into the existing hybrid path are atomic
     simulation requests with a BNGsim-supported method. Stateful workflows,
     scans, bifurcations, protocol blocks, write actions, output prefix
-    behavior, continuations, and unknown action types stay with BNG2.pl.
+    or suffix behavior, continuations, and unknown action types stay with
+    BNG2.pl.
     """
     if has_protocol:
         return BngsimRouteDecision(
@@ -971,6 +972,11 @@ def _classify_bngl_actions_for_bngsim(
                     ROUTE_SUBPROCESS,
                     "BNGL simulate prefix output behavior is owned by BNG2.pl",
                 )
+            if args.get("suffix") is not None:
+                return BngsimRouteDecision(
+                    ROUTE_SUBPROCESS,
+                    "BNGL simulate suffix output behavior is owned by BNG2.pl",
+                )
             if args.get("continue") is not None:
                 return BngsimRouteDecision(
                     ROUTE_SUBPROCESS,
@@ -985,8 +991,24 @@ def _classify_bngl_actions_for_bngsim(
                 f"BNGL action '{atype}' is not a conservative BNGsim route",
             )
 
+    if len(sim_actions) > 1:
+        return BngsimRouteDecision(
+            ROUTE_SUBPROCESS,
+            "BNGL multi-simulation workflows are owned by BNG2.pl",
+        )
+
     if method is not None:
         method_name = _strip_quotes(str(method).strip()).lower()
+        if sim_actions:
+            action_method = _bngl_action_method_for_routing(sim_actions[0])
+            if action_method == "pla":
+                return BngsimRouteDecision(
+                    ROUTE_SUBPROCESS,
+                    "BNGL PLA is not supported by BNGsim",
+                    method="pla",
+                )
+            if method_name == "ssa" and "poplevel" in (sim_actions[0].args or {}):
+                method_name = "psa"
         if method_name == "pla":
             return BngsimRouteDecision(
                 ROUTE_SUBPROCESS,
@@ -1009,12 +1031,6 @@ def _classify_bngl_actions_for_bngsim(
         return BngsimRouteDecision(
             ROUTE_SUBPROCESS,
             "BNGL has no simulation action that needs BNGsim",
-        )
-
-    if len(sim_actions) != 1:
-        return BngsimRouteDecision(
-            ROUTE_SUBPROCESS,
-            "BNGL multi-simulation workflows are owned by BNG2.pl",
         )
 
     method_name = _bngl_action_method_for_routing(sim_actions[0])
@@ -1116,10 +1132,23 @@ def classify_bngsim_route(
                 "BioNetGen XML routes directly to BNGsim NFsim",
                 method=method_name,
             )
+        method_name = _strip_quotes(str(method).strip()).lower() if method else None
+        if method_name == "pla":
+            if fmt in FALLBACK_FORMATS:
+                return BngsimRouteDecision(
+                    ROUTE_SUBPROCESS,
+                    "PLA is not supported by the direct BNGsim route",
+                    method=method_name,
+                )
+            return BngsimRouteDecision(
+                ROUTE_ERROR,
+                f"Format '{fmt}' requires BNGsim but method='pla' is not supported",
+                method=method_name,
+            )
         return BngsimRouteDecision(
             ROUTE_DIRECT_BNGSIM,
             f"Format '{fmt}' routes directly to BNGsim",
-            method=_strip_quotes(str(method).strip()).lower() if method else None,
+            method=method_name,
         )
 
     if fmt != FORMAT_BNGL:

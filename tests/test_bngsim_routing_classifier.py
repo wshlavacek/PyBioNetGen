@@ -61,6 +61,33 @@ class TestBngsimRouteClassifier:
 
         assert decision.route == ROUTE_DIRECT_BNGSIM
 
+    def test_direct_net_pla_uses_subprocess(self):
+        from bionetgen.core.tools.bngsim_bridge import ROUTE_SUBPROCESS
+
+        decision = _classify(
+            "net",
+            simulator="auto",
+            bngsim_available=True,
+            method="pla",
+        )
+
+        assert decision.route == ROUTE_SUBPROCESS
+        assert decision.method == "pla"
+
+    @pytest.mark.parametrize("fmt", ["sbml", "antimony"])
+    def test_direct_required_formats_reject_pla(self, fmt):
+        from bionetgen.core.tools.bngsim_bridge import ROUTE_ERROR
+
+        decision = _classify(
+            fmt,
+            simulator="auto",
+            bngsim_available=True,
+            method="pla",
+        )
+
+        assert decision.route == ROUTE_ERROR
+        assert decision.method == "pla"
+
     def test_bng_xml_defaults_to_direct_nf(self):
         from bionetgen.core.tools.bngsim_bridge import ROUTE_DIRECT_BNGSIM
 
@@ -120,6 +147,20 @@ class TestBngsimRouteClassifier:
         assert decision.route == ROUTE_BNGL_BNGSIM
         assert decision.method == expected_method
 
+    def test_bngl_method_override_preserves_legacy_psa_classification(self):
+        from bionetgen.core.tools.bngsim_bridge import ROUTE_BNGL_BNGSIM
+
+        decision = _classify(
+            "bngl",
+            simulator="auto",
+            bngsim_available=True,
+            method="ssa",
+            actions=[_action("simulate_ssa", {"poplevel": "100"})],
+        )
+
+        assert decision.route == ROUTE_BNGL_BNGSIM
+        assert decision.method == "psa"
+
     @pytest.mark.parametrize(
         "action",
         [
@@ -140,6 +181,32 @@ class TestBngsimRouteClassifier:
         assert decision.route == ROUTE_SUBPROCESS
         assert decision.method == "pla"
 
+    def test_bngl_method_override_does_not_pull_pla_into_bngsim(self):
+        from bionetgen.core.tools.bngsim_bridge import ROUTE_SUBPROCESS
+
+        decision = _classify(
+            "bngl",
+            simulator="auto",
+            bngsim_available=True,
+            method="ode",
+            actions=[_action("simulate_pla")],
+        )
+
+        assert decision.route == ROUTE_SUBPROCESS
+        assert decision.method == "pla"
+
+    def test_bngl_without_simulation_actions_uses_subprocess(self):
+        from bionetgen.core.tools.bngsim_bridge import ROUTE_SUBPROCESS
+
+        decision = _classify(
+            "bngl",
+            simulator="auto",
+            bngsim_available=True,
+            actions=[],
+        )
+
+        assert decision.route == ROUTE_SUBPROCESS
+
     @pytest.mark.parametrize(
         "actions",
         [
@@ -151,6 +218,7 @@ class TestBngsimRouteClassifier:
             [_action("bifurcate", {"method": "ode"})],
             [_action("writeSBML"), _action("simulate_ode")],
             [_action("simulate_ode", {"prefix": "equil"})],
+            [_action("simulate_ode", {"suffix": "prod"})],
             [_action("simulate_ode", {"continue": "1"})],
             [_action("simulate_ode"), _action("simulate_ssa")],
         ],
@@ -163,6 +231,19 @@ class TestBngsimRouteClassifier:
             simulator="auto",
             bngsim_available=True,
             actions=actions,
+        )
+
+        assert decision.route == ROUTE_SUBPROCESS
+
+    def test_bngl_method_override_does_not_hide_multi_sim_workflow(self):
+        from bionetgen.core.tools.bngsim_bridge import ROUTE_SUBPROCESS
+
+        decision = _classify(
+            "bngl",
+            simulator="auto",
+            bngsim_available=True,
+            method="ode",
+            actions=[_action("simulate_ode"), _action("simulate_ssa")],
         )
 
         assert decision.route == ROUTE_SUBPROCESS
