@@ -568,7 +568,7 @@ class ActionList:
         quote_word = dquote_word ^ squote_word
         # all action argument types
         # Tracked in upstream issue #71: empty [] / {} action-arg literals don't parse
-        list_arg = "[" + pp.delimitedList(quote_word) + "]"
+        list_arg = "[" + pp.DelimitedList(quote_word) + "]"
         #
         arg_type_bool = pp.Word("0") ^ pp.Word("1")
         arg_type_int = pp.Word(pp.nums)
@@ -576,7 +576,7 @@ class ActionList:
         arg_type_expr = pp.Word(
             pp.nums + "." + "+" + "-" + "e" + "E" + "(" + ")" + "/" + "*" + "^"
         )
-        arg_type_list = "[" + pp.delimitedList(quote_word ^ arg_type_float) + "]"
+        arg_type_list = "[" + pp.DelimitedList(quote_word ^ arg_type_float) + "]"
         arg_type_string = quote_word
         #
         # BNGL/Perl `=>` auto-quotes its left operand, so dict keys
@@ -584,7 +584,7 @@ class ActionList:
         # (max_stoich=>{"R"=>6}). Accept both.
         curly_arg_token = (base_name ^ quote_word) + "=>" + arg_type_int
         # Tracked in upstream issue #71: empty [] / {} action-arg literals don't parse
-        arg_type_curly = "{" + pp.delimitedList(curly_arg_token) + "}"
+        arg_type_curly = "{" + pp.DelimitedList(curly_arg_token) + "}"
         arg_types = (
             arg_type_bool
             ^ arg_type_int
@@ -601,7 +601,7 @@ class ActionList:
         #
         single_arg = base_name + "=>" + arg_types
         #
-        reg_arg_full = "{" + pp.Optional(pp.delimitedList(single_arg)) + "}"
+        reg_arg_full = "{" + pp.Optional(pp.DelimitedList(single_arg)) + "}"
         #
         reg_action_tk = (
             action_name + "(" + reg_arg_full + ")" + pp.Optional(";") + pp.stringEnd
@@ -759,27 +759,21 @@ def run_command(command, suppress=True, timeout=None, cwd=None):
         return rc.returncode, rc
     else:
         if suppress:
-            process = subprocess.Popen(
+            rc = subprocess.run(
                 command,
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
-                bufsize=-1,
                 cwd=cwd,
+                check=False,
             )
-            rc = process.wait()
-            return rc, process
+            return rc.returncode, rc
         else:
-            process = subprocess.Popen(
-                command, stdout=subprocess.PIPE, encoding="utf8", cwd=cwd
+            rc = subprocess.run(
+                command,
+                stdout=subprocess.PIPE,
+                encoding="utf8",
+                cwd=cwd,
+                check=False,
             )
-            out = []
-            while True:
-                output = process.stdout.readline()
-                if output == "" and process.poll() is not None:
-                    break
-                if output:
-                    o = output.strip()
-                    out.append(o)
-                    # print(o) # Removed to avoid bottleneck in tests
-            rc = process.wait()
-            return rc, out
+            out = [line.strip() for line in rc.stdout.splitlines() if line]
+            return rc.returncode, out

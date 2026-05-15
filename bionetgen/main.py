@@ -728,6 +728,7 @@ class BioNetGen(cement.App):
 
         # set the log handler
         log_handler = "colorlog"
+        framework_logging = False
 
         # register handlers
         handlers = [BNGBase]

@@ -281,7 +281,7 @@ class BNGParser:
         if len(action) == 0:
             return
         try:
-            action_list = self.alist.action_parser.parseString(action)
+            action_list = self.alist.action_parser.parse_string(action)
         except Exception as e:
             raise BNGParseError(
                 self.bngfile.path, f"Failed to parse action {action}"

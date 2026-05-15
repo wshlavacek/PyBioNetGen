@@ -247,46 +247,41 @@ class TestRunCommand:
         assert getattr(result, "stderr", None) is not None
         assert b"bridge_b8_canary" in result.stderr
 
-    @patch("bionetgen.core.utils.utils.subprocess.Popen")
-    def test_no_timeout_suppress(self, mock_popen):
-        mock_process = MagicMock()
-        mock_process.wait.return_value = 0
-        mock_popen.return_value = mock_process
+    @patch("bionetgen.core.utils.utils.subprocess.run")
+    def test_no_timeout_suppress(self, mock_run):
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_run.return_value = mock_result
 
         rc, result = run_command(["cmd"], suppress=True, timeout=None)
         assert rc == 0
-        assert result is mock_process
-        mock_popen.assert_called_once_with(
+        assert result is mock_result
+        mock_run.assert_called_once_with(
             ["cmd"],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
-            bufsize=-1,
             cwd=None,
+            check=False,
         )
 
-    @patch("bionetgen.core.utils.utils.subprocess.Popen")
-    def test_no_timeout_no_suppress(self, mock_popen):
-        """Reads stdout line by line until empty + poll is not None."""
-        mock_process = MagicMock()
-        mock_stdout = MagicMock()
-        # readline returns lines then empty string
-        mock_stdout.readline.side_effect = ["line1\n", "line2\n", ""]
-        mock_process.stdout = mock_stdout
-        # poll is only called when readline returns "", at which point process is done
-        mock_process.poll.return_value = 0
-        mock_process.wait.return_value = 0
-        mock_popen.return_value = mock_process
+    @patch("bionetgen.core.utils.utils.subprocess.run")
+    def test_no_timeout_no_suppress(self, mock_run):
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_result.stdout = "line1\nline2\n"
+        mock_run.return_value = mock_result
 
         rc, result = run_command(["cmd"], suppress=False, timeout=None)
         assert rc == 0
         assert isinstance(result, list)
         assert "line1" in result
         assert "line2" in result
-        mock_popen.assert_called_once_with(
+        mock_run.assert_called_once_with(
             ["cmd"],
             stdout=subprocess.PIPE,
             encoding="utf8",
             cwd=None,
+            check=False,
         )
 
     @patch("bionetgen.core.utils.utils.subprocess.run")
