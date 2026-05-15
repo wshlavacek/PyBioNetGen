@@ -59,9 +59,12 @@ def run(
         Simulation results.
     """
     from bionetgen.core.tools.bngsim_bridge import (
-        BNGSIM_AVAILABLE,
-        BNGSIM_REQUIRED_FORMATS,
         FORMAT_BNGL,
+        ROUTE_BNGL_BNGSIM,
+        ROUTE_DIRECT_BNGSIM,
+        ROUTE_ERROR,
+        ROUTE_SUBPROCESS,
+        classify_bngsim_route,
         detect_input_format,
         run_bngl_with_bngsim,
         run_with_bngsim,
@@ -70,42 +73,23 @@ def run(
     # Detect input format
     fmt = detect_input_format(inp, explicit_format=format)
 
-    # Determine whether to use BNGsim
-    use_bngsim = False
-    if simulator == "bngsim":
-        if not BNGSIM_AVAILABLE:
-            from bionetgen.core.exc import BNGSimError
-
-            raise BNGSimError(
-                "simulator='bngsim' was requested but BNGsim is not installed. "
-                "Install with: pip install bngsim"
-            )
-        use_bngsim = True
-    elif simulator == "auto":
-        use_bngsim = BNGSIM_AVAILABLE
-    elif simulator == "subprocess":
-        use_bngsim = False
-    else:
-        raise ValueError(
-            f"Unknown simulator '{simulator}'. "
-            "Valid options: 'auto', 'bngsim', 'subprocess'."
-        )
-
-    # Formats that require BNGsim have no subprocess fallback
-    if not use_bngsim and fmt in BNGSIM_REQUIRED_FORMATS:
+    route = classify_bngsim_route(
+        inp,
+        fmt,
+        simulator=simulator,
+        method=method,
+    )
+    if route.route == ROUTE_ERROR:
         from bionetgen.core.exc import BNGSimError
 
-        raise BNGSimError(
-            f"Format '{fmt}' requires BNGsim but it is not available. "
-            "Install with: pip install bngsim"
-        )
+        raise BNGSimError(route.reason)
 
     cur_dir = os.getcwd()
     conf = get_conf()
 
     def _run_with_output_dir(output_dir):
         try:
-            if use_bngsim and fmt == FORMAT_BNGL:
+            if route.route == ROUTE_BNGL_BNGSIM and fmt == FORMAT_BNGL:
                 result = run_bngl_with_bngsim(
                     inp,
                     output_dir,
@@ -117,7 +101,7 @@ def run(
                     log_file=None,
                     timeout=timeout,
                 )
-            elif use_bngsim:
+            elif route.route == ROUTE_DIRECT_BNGSIM:
                 result = run_with_bngsim(
                     inp,
                     output_dir,
@@ -126,7 +110,7 @@ def run(
                     t_span=t_span,
                     n_points=n_points,
                 )
-            else:
+            elif route.route == ROUTE_SUBPROCESS:
                 # Subprocess path — only for .bngl, .net, .bng-xml
                 cli = BNGCLI(
                     inp, output_dir, conf["bngpath"],
@@ -134,6 +118,10 @@ def run(
                 )
                 cli.run()
                 result = cli.result
+            else:
+                from bionetgen.core.exc import BNGSimError
+
+                raise BNGSimError(route.reason)
             return result
         finally:
             os.chdir(cur_dir)

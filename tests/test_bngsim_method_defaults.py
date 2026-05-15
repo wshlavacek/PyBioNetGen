@@ -99,12 +99,19 @@ class TestRunBnglWithBngsimMethodOverrides:
 
 class TestLibraryMethodDefaults:
     def test_bngl_run_passes_no_method_override_by_default(self):
+        from bionetgen.core.tools.bngsim_bridge import (
+            ROUTE_BNGL_BNGSIM,
+            BngsimRouteDecision,
+        )
         from bionetgen.modelapi.runner import run
 
         sentinel = object()
 
         with patch(f"{BRIDGE}.detect_input_format", return_value="bngl"), \
-             patch(f"{BRIDGE}.BNGSIM_AVAILABLE", True), \
+             patch(
+                 f"{BRIDGE}.classify_bngsim_route",
+                 return_value=BngsimRouteDecision(ROUTE_BNGL_BNGSIM, "atomic BNGL"),
+             ), \
              patch(f"{BRIDGE}.run_bngl_with_bngsim", return_value=sentinel) as mock_run:
 
             result = run("model.bngl", out="/tmp/out")
@@ -113,12 +120,19 @@ class TestLibraryMethodDefaults:
         assert mock_run.call_args.kwargs["method"] is None
 
     def test_bngl_run_passes_explicit_method_override(self):
+        from bionetgen.core.tools.bngsim_bridge import (
+            ROUTE_BNGL_BNGSIM,
+            BngsimRouteDecision,
+        )
         from bionetgen.modelapi.runner import run
 
         sentinel = object()
 
         with patch(f"{BRIDGE}.detect_input_format", return_value="bngl"), \
-             patch(f"{BRIDGE}.BNGSIM_AVAILABLE", True), \
+             patch(
+                 f"{BRIDGE}.classify_bngsim_route",
+                 return_value=BngsimRouteDecision(ROUTE_BNGL_BNGSIM, "atomic BNGL"),
+             ), \
              patch(f"{BRIDGE}.run_bngl_with_bngsim", return_value=sentinel) as mock_run:
 
             result = run("model.bngl", out="/tmp/out", method="ode")
@@ -129,10 +143,17 @@ class TestLibraryMethodDefaults:
 
 class TestCliMethodDefaults:
     def test_cli_run_passes_no_method_override_by_default(self):
+        from bionetgen.core.tools.bngsim_bridge import (
+            ROUTE_BNGL_BNGSIM,
+            BngsimRouteDecision,
+        )
         from bionetgen.main import BioNetGenTest
 
         with patch(f"{BRIDGE}.detect_input_format", return_value="bngl"), \
-             patch(f"{BRIDGE}.BNGSIM_AVAILABLE", True), \
+             patch(
+                 f"{BRIDGE}.classify_bngsim_route",
+                 return_value=BngsimRouteDecision(ROUTE_BNGL_BNGSIM, "atomic BNGL"),
+             ), \
              patch(f"{BRIDGE}.run_bngl_with_bngsim", return_value=MagicMock()) as mock_run, \
              patch("bionetgen.main.test_perl"):
 
@@ -143,10 +164,17 @@ class TestCliMethodDefaults:
         assert mock_run.call_args.kwargs["timeout"] is None
 
     def test_cli_run_passes_explicit_method_override(self):
+        from bionetgen.core.tools.bngsim_bridge import (
+            ROUTE_BNGL_BNGSIM,
+            BngsimRouteDecision,
+        )
         from bionetgen.main import BioNetGenTest
 
         with patch(f"{BRIDGE}.detect_input_format", return_value="bngl"), \
-             patch(f"{BRIDGE}.BNGSIM_AVAILABLE", True), \
+             patch(
+                 f"{BRIDGE}.classify_bngsim_route",
+                 return_value=BngsimRouteDecision(ROUTE_BNGL_BNGSIM, "atomic BNGL"),
+             ), \
              patch(f"{BRIDGE}.run_bngl_with_bngsim", return_value=MagicMock()) as mock_run, \
              patch("bionetgen.main.test_perl"):
 
@@ -158,10 +186,17 @@ class TestCliMethodDefaults:
         assert mock_run.call_args.kwargs["method"] == "ode"
 
     def test_cli_run_passes_timeout_override(self):
+        from bionetgen.core.tools.bngsim_bridge import (
+            ROUTE_BNGL_BNGSIM,
+            BngsimRouteDecision,
+        )
         from bionetgen.main import BioNetGenTest
 
         with patch(f"{BRIDGE}.detect_input_format", return_value="bngl"), \
-             patch(f"{BRIDGE}.BNGSIM_AVAILABLE", True), \
+             patch(
+                 f"{BRIDGE}.classify_bngsim_route",
+                 return_value=BngsimRouteDecision(ROUTE_BNGL_BNGSIM, "atomic BNGL"),
+             ), \
              patch(f"{BRIDGE}.run_bngl_with_bngsim", return_value=MagicMock()) as mock_run, \
              patch("bionetgen.main.test_perl"):
 
@@ -212,8 +247,8 @@ class TestDirectInputMethodDefaults:
         mock_run.assert_called_once()
 
     def test_direct_bng_xml_input_rejects_ode_override(self):
-        from bionetgen.core.tools.bngsim_bridge import run_with_bngsim
         from bionetgen.core.exc import BNGSimError
+        from bionetgen.core.tools.bngsim_bridge import run_with_bngsim
 
         with patch(f"{BRIDGE}.BNGSIM_AVAILABLE", True):
             with pytest.raises(BNGSimError, match="network-free simulation"):

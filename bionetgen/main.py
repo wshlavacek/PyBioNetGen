@@ -188,11 +188,14 @@ class BNGBase(cement.Controller):
         network-based methods are rejected.
         """
         from bionetgen.core.tools.bngsim_bridge import (
-            BNGSIM_AVAILABLE,
-            BNGSIM_REQUIRED_FORMATS,
             FORMAT_BNG_XML,
             FORMAT_BNGL,
             FORMAT_NET,
+            ROUTE_BNGL_BNGSIM,
+            ROUTE_DIRECT_BNGSIM,
+            ROUTE_ERROR,
+            ROUTE_SUBPROCESS,
+            classify_bngsim_route,
             detect_input_format,
             run_bngl_with_bngsim,
             run_with_bngsim,
@@ -204,20 +207,18 @@ class BNGBase(cement.Controller):
         # Detect format
         fmt = detect_input_format(args.input, explicit_format=args.format)
 
-        # Determine whether to use BNGsim
-        use_bngsim = BNGSIM_AVAILABLE and not args.no_bngsim
-
-        # Formats that require BNGsim
-        if not use_bngsim and fmt in BNGSIM_REQUIRED_FORMATS:
+        route = classify_bngsim_route(
+            args.input,
+            fmt,
+            simulator="subprocess" if args.no_bngsim else "auto",
+            method=args.method,
+        )
+        if route.route == ROUTE_ERROR:
             from bionetgen.core.exc import BNGSimError
 
-            raise BNGSimError(
-                f"Format '{fmt}' requires BNGsim but it is not available "
-                f"{'(--no-bngsim was set)' if args.no_bngsim else '(not installed)'}. "
-                "Install with: pip install bngsim"
-            )
+            raise BNGSimError(route.reason)
 
-        if use_bngsim and fmt == FORMAT_BNGL:
+        if route.route == ROUTE_BNGL_BNGSIM and fmt == FORMAT_BNGL:
             # Hybrid path: BNG2.pl for network gen, BNGsim for simulation
             test_perl(app=self.app)
             config_bngpath = self.app.config.get("bionetgen", "bngpath")
@@ -231,7 +232,7 @@ class BNGBase(cement.Controller):
                 timeout=args.timeout,
                 app=self.app,
             )
-        elif use_bngsim and fmt not in (FORMAT_BNGL,):
+        elif route.route == ROUTE_DIRECT_BNGSIM:
             # Direct BNGsim path for non-BNGL formats
             run_with_bngsim(
                 args.input,
@@ -239,11 +240,11 @@ class BNGBase(cement.Controller):
                 fmt=fmt,
                 method=args.method,
             )
-        elif fmt == FORMAT_BNGL:
+        elif route.route == ROUTE_SUBPROCESS and fmt == FORMAT_BNGL:
             # Traditional subprocess path for BNGL
             test_perl(app=self.app)
             runCLI(self.app)
-        elif fmt in (FORMAT_NET, FORMAT_BNG_XML):
+        elif route.route == ROUTE_SUBPROCESS and fmt in (FORMAT_NET, FORMAT_BNG_XML):
             # Subprocess fallback for .net and BNG XML
             # These can be run via BNG2.pl or run_network directly
             test_perl(app=self.app)
