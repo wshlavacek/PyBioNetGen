@@ -1,3 +1,4 @@
+import textwrap
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -26,6 +27,71 @@ def _classify(fmt, actions=None, **kwargs):
         has_protocol=False,
         **kwargs,
     )
+
+
+def _write_minimal_bngl(tmp_path, action_text):
+    path = tmp_path / "stage3_complex.bngl"
+    path.write_text(
+        textwrap.dedent(
+            f"""\
+            begin model
+            begin parameters
+              k 1
+            end parameters
+            begin molecule types
+              A()
+            end molecule types
+            begin seed species
+              A() 1
+            end seed species
+            begin observables
+              Molecules A A()
+            end observables
+            begin reaction rules
+            end reaction rules
+            {action_text}
+            end model
+            """
+        ),
+        encoding="utf-8",
+    )
+    return path
+
+
+COMPLEX_BNGL_ACTION_CASES = [
+    pytest.param(
+        'setParameter("k", 2)\nsimulate_ode({t_end=>1,n_steps=>1})',
+        id="setParameter",
+    ),
+    pytest.param(
+        'setConcentration("A()", 10)\nsimulate_ode({t_end=>1,n_steps=>1})',
+        id="setConcentration",
+    ),
+    pytest.param(
+        "saveConcentrations()\nresetConcentrations()\nsimulate_ode({t_end=>1,n_steps=>1})",
+        id="save-reset-concentrations",
+    ),
+    pytest.param(
+        "saveParameters()\nresetParameters()\nsimulate_ode({t_end=>1,n_steps=>1})",
+        id="save-reset-parameters",
+    ),
+    pytest.param(
+        'parameter_scan({method=>"ode",parameter=>"k",par_min=>0,par_max=>1,n_scan_pts=>2})',
+        id="parameter-scan",
+    ),
+    pytest.param(
+        'bifurcate({method=>"ode",parameter=>"k",par_min=>0,par_max=>1,n_scan_pts=>2})',
+        id="bifurcate",
+    ),
+    pytest.param(
+        'parameter_scan({method=>"protocol",parameter=>"k",par_min=>0,par_max=>1,n_scan_pts=>2})',
+        id="protocol-parameter-scan",
+    ),
+    pytest.param(
+        "writeSBML()\nsimulate_ode({t_end=>1,n_steps=>1})",
+        id="write-action",
+    ),
+]
 
 
 class TestBngsimRouteClassifier:
@@ -213,8 +279,11 @@ class TestBngsimRouteClassifier:
             [_action("setParameter", {'"k"': None, "2": None}), _action("simulate_ode")],
             [_action("setConcentration", {'"A()"': None, "10": None}), _action("simulate_ode")],
             [_action("saveConcentrations"), _action("simulate_ode")],
+            [_action("resetConcentrations"), _action("simulate_ode")],
+            [_action("saveParameters"), _action("simulate_ode")],
             [_action("resetParameters"), _action("simulate_ode")],
             [_action("parameter_scan", {"method": "ode"})],
+            [_action("parameter_scan", {"method": "protocol"})],
             [_action("bifurcate", {"method": "ode"})],
             [_action("writeSBML"), _action("simulate_ode")],
             [_action("simulate_ode", {"prefix": "equil"})],
@@ -264,6 +333,87 @@ class TestBngsimRouteClassifier:
         )
 
         assert decision.route == ROUTE_SUBPROCESS
+
+
+@pytest.mark.parametrize("action_text", COMPLEX_BNGL_ACTION_CASES)
+def test_parser_backed_complex_bngl_actions_use_subprocess(tmp_path, action_text):
+    from bionetgen.core.tools.bngsim_bridge import (
+        ROUTE_SUBPROCESS,
+        classify_bngsim_route,
+    )
+
+    bngl_path = _write_minimal_bngl(tmp_path, action_text)
+
+    decision = classify_bngsim_route(
+        str(bngl_path),
+        "bngl",
+        simulator="auto",
+        bngsim_available=True,
+        bngsim_has_nfsim=True,
+    )
+
+    assert decision.route == ROUTE_SUBPROCESS
+    assert "BNG2.pl" in decision.reason
+
+
+@pytest.mark.parametrize("action_text", COMPLEX_BNGL_ACTION_CASES)
+def test_library_complex_bngl_uses_bngcli_not_python_executor(tmp_path, action_text):
+    from bionetgen.modelapi.runner import run
+
+    bngl_path = _write_minimal_bngl(tmp_path, action_text)
+    out_dir = tmp_path / "out"
+    sentinel = object()
+    mock_cli = MagicMock()
+    mock_cli.result = sentinel
+
+    with patch(f"{BRIDGE}.BNGSIM_AVAILABLE", True), \
+         patch(f"{BRIDGE}.BNGSIM_HAS_NFSIM", True), \
+         patch(f"{BRIDGE}.run_bngl_with_bngsim") as mock_bngsim_run, \
+         patch(
+             f"{BRIDGE}._execute_bngsim_actions",
+             side_effect=AssertionError("complex BNGL must not use Python action replay"),
+         ), \
+         patch("bionetgen.modelapi.runner.get_conf", return_value={"bngpath": "/fake/bng"}), \
+         patch("bionetgen.modelapi.runner.BNGCLI", return_value=mock_cli) as mock_bngcli:
+        result = run(str(bngl_path), out=str(out_dir))
+
+    assert result is sentinel
+    mock_bngsim_run.assert_not_called()
+    mock_bngcli.assert_called_once()
+    assert mock_bngcli.call_args.args[:3] == (
+        str(bngl_path),
+        str(out_dir),
+        "/fake/bng",
+    )
+
+
+def test_run_bngl_with_bngsim_complex_action_falls_back_without_executor(tmp_path):
+    from bionetgen.core.tools.bngsim_bridge import run_bngl_with_bngsim
+
+    bngl_path = _write_minimal_bngl(
+        tmp_path,
+        'setParameter("k", 2)\nsimulate_ode({t_end=>1,n_steps=>1})',
+    )
+    sentinel = object()
+    mock_cli = MagicMock()
+    mock_cli.result = sentinel
+
+    with patch(f"{BRIDGE}.BNGSIM_AVAILABLE", True), \
+         patch(f"{BRIDGE}.BNGSIM_HAS_NFSIM", True), \
+         patch(
+             f"{BRIDGE}._execute_bngsim_actions",
+             side_effect=AssertionError("complex BNGL must not use Python action replay"),
+         ), \
+         patch("bionetgen.core.tools.cli.BNGCLI", return_value=mock_cli) as mock_bngcli:
+        result = run_bngl_with_bngsim(str(bngl_path), str(tmp_path / "out"), "/fake/bng")
+
+    assert result is sentinel
+    mock_bngcli.assert_called_once()
+    assert mock_bngcli.call_args.args[:3] == (
+        str(bngl_path),
+        str(tmp_path / "out"),
+        "/fake/bng",
+    )
 
 
 def test_library_subprocess_route_uses_bngcli(tmp_path):

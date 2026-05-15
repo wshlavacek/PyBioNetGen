@@ -3999,6 +3999,33 @@ def _parse_protocol_block(bngl_path):
 # ─── BNGL hybrid path ─────────────────────────────────────────────
 
 
+def _run_bngl_subprocess(
+    bngl_path,
+    output_dir,
+    bngpath,
+    suppress=False,
+    log_file=None,
+    timeout=None,
+    app=None,
+):
+    """Run the original BNGL through the legacy BNG2.pl subprocess stack."""
+    from bionetgen.core.tools.cli import BNGCLI
+
+    cli = BNGCLI(
+        bngl_path,
+        output_dir,
+        bngpath,
+        suppress=suppress,
+        log_file=log_file,
+        timeout=timeout,
+        app=app,
+    )
+    cli.run()
+    if cli.result is None:
+        raise BNGSimError("BNG2.pl failed.")
+    return cli.result
+
+
 def run_bngl_with_bngsim(
     bngl_path,
     output_dir,
@@ -4058,7 +4085,22 @@ def run_bngl_with_bngsim(
 
     # Step 0: Extract protocol block and table functions from the BNGL file
     # before parsing. The bngmodel parser does not handle these constructs.
-    protocol_lines = _parse_protocol_block(bngl_path)
+    has_protocol = _bngl_has_protocol_block(bngl_path)
+    protocol_lines = _parse_protocol_block(bngl_path) if has_protocol else []
+    if has_protocol:
+        logger.info(
+            "BNGL protocol block requires BNG2.pl workflow semantics; "
+            "using subprocess route."
+        )
+        return _run_bngl_subprocess(
+            bngl_path,
+            output_dir,
+            bngpath,
+            suppress=suppress,
+            log_file=log_file,
+            timeout=timeout,
+            app=app,
+        )
     tfun_specs = _parse_table_functions(bngl_path)
 
     # Step 1: Parse the BNGL file and save original actions
@@ -4068,6 +4110,24 @@ def run_bngl_with_bngsim(
     model_name = model.model_name
     original_actions = list(model.actions.items)
     bngmodel_params = _resolve_bngmodel_params(model)
+
+    route = _classify_bngl_actions_for_bngsim(
+        original_actions,
+        method=method,
+        has_protocol=False,
+        bngsim_has_nfsim=BNGSIM_HAS_NFSIM,
+    )
+    if route.route != ROUTE_BNGL_BNGSIM:
+        logger.info("%s; using subprocess route.", route.reason)
+        return _run_bngl_subprocess(
+            bngl_path,
+            output_dir,
+            bngpath,
+            suppress=suppress,
+            log_file=log_file,
+            timeout=timeout,
+            app=app,
+        )
 
     # Step 2: Determine what BNG2.pl needs to produce
     needs_network = _actions_need_network(
