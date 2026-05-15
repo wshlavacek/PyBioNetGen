@@ -35,6 +35,14 @@ def _new_ccompiler():
 logger = BNGLogger()
 
 
+class _ConfProxy:
+    def get(self, key, *args, **kwargs):
+        return get_conf().get(key, *args, **kwargs)
+
+
+conf = _ConfProxy()
+
+
 class RESULT(ctypes.Structure):
     _fields_ = [
         ("status", ctypes.c_int),
@@ -166,7 +174,6 @@ class CSimulator(BNGSimulator):
     """
 
     def __init__(self, model_file, generate_network=False):
-        conf = get_conf()
         # check cvode library paths
         if (conf.get("cvode_include") is None) or (conf.get("cvode_lib") is None):
             logger.warning(

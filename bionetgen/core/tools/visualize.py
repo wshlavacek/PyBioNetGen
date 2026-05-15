@@ -1,7 +1,7 @@
 import glob
 import os
 from tempfile import TemporaryDirectory
-from typing import NoReturn
+from typing import NoReturn, Optional
 
 import bionetgen
 from bionetgen.core.exc import BNGError, BNGFileError
@@ -206,7 +206,7 @@ class BNGVisualize:
         *,
         model_name: str,
         cur_dir: str,
-        dump_dir: str | None = None,
+        dump_dir: Optional[str] = None,
     ) -> VisResult:
         try:
             cli.run()

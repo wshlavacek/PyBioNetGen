@@ -742,7 +742,7 @@ class BioNetGenTest(cement.TestApp, BioNetGen):
         label = "bionetgen"
 
 
-@functools.cache
+@functools.lru_cache(maxsize=None)
 def get_default_app():
     """Return a configured BioNetGen cement app, initialized once per process."""
     app = BioNetGen()
