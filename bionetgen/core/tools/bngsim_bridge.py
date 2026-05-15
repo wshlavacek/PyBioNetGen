@@ -77,6 +77,21 @@ class BngsimRouteDecision:
     method: str | None = None
 
 
+@dataclass(frozen=True)
+class BngsimDirectJob:
+    """Normalized direct BNGsim job for non-BNGL artifacts."""
+
+    input_path: str
+    input_format: str
+    method: str
+    t_span: tuple[float, float]
+    n_points: int
+    output_dir: str
+    output_root: str
+    bngsim_options: dict | None = None
+    result_options: dict | None = None
+
+
 # ─── Format detection ──────────────────────────────────────────────
 
 
@@ -491,6 +506,95 @@ def _apply_nfsim_concentration_changes(
             )
 
 
+def _load_direct_bngsim_model(input_path, fmt):
+    """Load a direct network-backed artifact into a BNGsim Model."""
+    if fmt == FORMAT_NET:
+        return bngsim.Model.from_net(input_path)
+    if fmt == FORMAT_SBML:
+        return bngsim.Model.from_sbml(input_path)
+    if fmt == FORMAT_ANTIMONY:
+        return bngsim.Model.from_antimony(input_path)
+    raise BNGSimError(f"Unsupported format for BNGsim: '{fmt}'")
+
+
+def execute_bngsim_direct_job(job):
+    """Execute a normalized direct BNGsim job and write BNG-compatible files.
+
+    The caller owns BNGL parsing/action semantics and supplies a fully
+    normalized artifact job. This adapter only loads the direct artifact,
+    dispatches to BNGsim, and writes the direct-run result files.
+    """
+    if not BNGSIM_AVAILABLE:
+        raise BNGSimError(
+            f"BNGsim is required for format '{job.input_format}' but is not installed. "
+            "Install with: pip install bngsim"
+        )
+
+    input_path = os.path.abspath(job.input_path)
+    output_dir = os.path.abspath(job.output_dir)
+    sim_options = dict(job.bngsim_options or {})
+    result_options = dict(job.result_options or {})
+
+    if job.input_format == FORMAT_BNG_XML:
+        if not _is_nf_method(job.method):
+            raise BNGSimError(
+                f"BioNetGen XML files are for network-free simulation, "
+                f"but method='{job.method}' was requested. "
+                f"Use method='nf' or provide a .net file for ODE/SSA/PSA."
+            )
+        if not BNGSIM_HAS_NFSIM:
+            raise BNGSimError(
+                "BNGsim NFsim support is not available in this build. "
+                "Rebuild bngsim with -DBNGSIM_BUILD_NFSIM=ON."
+            )
+
+        seed = sim_options.pop("seed", None)
+        if seed is None:
+            seed = 42
+        gml = sim_options.pop("gml", None)
+        nf_params = sim_options.pop("nf_params", None)
+        param_overrides = sim_options.pop("param_overrides", None)
+        conc_overrides = sim_options.pop("conc_overrides", None)
+        conc_deltas = sim_options.pop("conc_deltas", None)
+
+        nf_kwargs = _nfsim_session_kwargs(nf_params)
+        with bngsim.NfsimSession(input_path, molecule_limit=gml, **nf_kwargs) as nfsim:
+            if param_overrides:
+                for pname, pval in param_overrides.items():
+                    try:
+                        nfsim.set_param(pname, float(pval))
+                    except Exception as exc:
+                        logger.debug("NFsim: set_param(%s, %s) skipped: %s", pname, pval, exc)
+
+            nfsim.initialize(seed)
+            _apply_nfsim_concentration_changes(
+                nfsim,
+                conc_overrides=conc_overrides,
+                conc_deltas=conc_deltas,
+            )
+            result = nfsim.simulate(job.t_span[0], job.t_span[1], job.n_points)
+
+        _write_bngsim_results(
+            result, output_dir, job.output_root,
+            param_overrides=param_overrides,
+            **result_options,
+        )
+        return _make_bng_result(output_dir, method=job.method)
+
+    if _is_nf_method(job.method):
+        raise BNGSimError(
+            f"Network-free method '{job.method}' requires a BioNetGen XML file. "
+            "Provide a .xml file or use method='ode'/'ssa'/'psa' with a .net file."
+        )
+
+    model = _load_direct_bngsim_model(input_path, job.input_format)
+    sim = bngsim.Simulator(model, method=job.method, **sim_options)
+    result = sim.run(t_span=job.t_span, n_points=job.n_points)
+
+    _write_bngsim_results(result, output_dir, job.output_root, **result_options)
+    return _make_bng_result(output_dir, method=job.method)
+
+
 def run_nfsim(
     xml_path,
     output_dir,
@@ -559,8 +663,6 @@ def run_nfsim(
         t_span = (0.0, 100.0)
     if n_points is None:
         n_points = 101
-    if seed is None:
-        seed = 42
 
     xml_path = os.path.abspath(xml_path)
     output_dir = os.path.abspath(output_dir)
@@ -568,34 +670,29 @@ def run_nfsim(
         model_name = os.path.splitext(os.path.basename(xml_path))[0]
 
     try:
-        nf_kwargs = _nfsim_session_kwargs(nf_params)
-        with bngsim.NfsimSession(xml_path, molecule_limit=gml, **nf_kwargs) as nfsim:
-            # Apply parameter overrides from setParameter actions
-            if param_overrides:
-                for pname, pval in param_overrides.items():
-                    try:
-                        nfsim.set_param(pname, float(pval))
-                    except Exception as exc:
-                        logger.debug("NFsim: set_param(%s, %s) skipped: %s", pname, pval, exc)
-
-            nfsim.initialize(seed)
-            _apply_nfsim_concentration_changes(
-                nfsim,
-                conc_overrides=conc_overrides,
-                conc_deltas=conc_deltas,
-            )
-
-            result = nfsim.simulate(t_span[0], t_span[1], n_points)
-
-        _write_bngsim_results(
-            result, output_dir, model_name,
-            print_functions=print_functions,
-            bngmodel=bngmodel,
-            bngmodel_params=bngmodel_params,
-            param_overrides=param_overrides,
+        job = BngsimDirectJob(
+            input_path=xml_path,
+            input_format=FORMAT_BNG_XML,
+            method="nf",
+            t_span=t_span,
+            n_points=n_points,
+            output_dir=output_dir,
+            output_root=model_name,
+            bngsim_options={
+                "seed": seed,
+                "gml": gml,
+                "nf_params": nf_params,
+                "param_overrides": param_overrides,
+                "conc_overrides": conc_overrides,
+                "conc_deltas": conc_deltas,
+            },
+            result_options={
+                "print_functions": print_functions,
+                "bngmodel": bngmodel,
+                "bngmodel_params": bngmodel_params,
+            },
         )
-
-        return _make_bng_result(output_dir, method="nf")
+        return execute_bngsim_direct_job(job)
 
     except Exception as e:
         if isinstance(e, (BNGSimError, BNGFormatError)):
@@ -708,25 +805,17 @@ def run_with_bngsim(
         n_points = 101
 
     try:
-        # Load model based on format
-        if fmt == FORMAT_NET:
-            model = bngsim.Model.from_net(input_path)
-        elif fmt == FORMAT_SBML:
-            model = bngsim.Model.from_sbml(input_path)
-        elif fmt == FORMAT_ANTIMONY:
-            model = bngsim.Model.from_antimony(input_path)
-        else:
-            raise BNGSimError(f"Unsupported format for BNGsim: '{fmt}'")
-
-        # Create simulator
-        sim = bngsim.Simulator(model, method=method, **sim_kwargs)
-
-        # Run simulation
-        result = sim.run(t_span=t_span, n_points=n_points)
-
-        # Write results to files for downstream compatibility
-        _write_bngsim_results(result, output_dir, model_name)
-        return _make_bng_result(output_dir, method=method)
+        job = BngsimDirectJob(
+            input_path=input_path,
+            input_format=fmt,
+            method=method,
+            t_span=t_span,
+            n_points=n_points,
+            output_dir=output_dir,
+            output_root=model_name,
+            bngsim_options=sim_kwargs,
+        )
+        return execute_bngsim_direct_job(job)
 
     except Exception as e:
         if isinstance(e, (BNGSimError, BNGFormatError)):
