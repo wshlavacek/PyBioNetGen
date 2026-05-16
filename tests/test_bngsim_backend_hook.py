@@ -321,6 +321,75 @@ def test_pla_action_does_not_call_helper(tmp_path, real_bng_backend_runtime):
 
 
 @pytest.mark.parametrize(
+    ("marker", "action_text", "expected_count"),
+    [
+        (
+            "SET_PARAMETER",
+            'setParameter("k",2)\n'
+            "generate_network({overwrite=>1})\n"
+            "simulate_ode({t_end=>1,n_steps=>2})",
+            1,
+        ),
+        (
+            "SET_CONCENTRATION",
+            'setConcentration("A()",20)\n'
+            "generate_network({overwrite=>1})\n"
+            "simulate_ode({t_end=>1,n_steps=>2})",
+            1,
+        ),
+        (
+            "SAVE_RESET",
+            "saveParameters()\n"
+            'setParameter("k",2)\n'
+            "resetParameters()\n"
+            "generate_network({overwrite=>1})\n"
+            "simulate_ode({t_end=>1,n_steps=>2})",
+            1,
+        ),
+        (
+            "CONTINUE",
+            "generate_network({overwrite=>1})\n"
+            'simulate_ode({suffix=>"setup",t_end=>1,n_steps=>2})\n'
+            'simulate_ode({suffix=>"setup",t_start=>1,t_end=>2,n_steps=>2,continue=>1})',
+            2,
+        ),
+    ],
+)
+def test_stateful_bngl_workflows_are_owned_by_bng2pl_before_backend_jobs(
+    tmp_path,
+    real_bng_backend_runtime,
+    marker,
+    action_text,
+    expected_count,
+):
+    _run_real_hook(tmp_path, real_bng_backend_runtime, marker, action_text)
+
+    jobs = _captured_jobs(real_bng_backend_runtime["capture"])
+    assert len(jobs) == expected_count
+    assert all(job["backend_flags"]["interpreted_by"] == "BNG2.pl" for job in jobs)
+    assert all(job["artifact_format"] == "net" for job in jobs)
+    assert all(job["method"] == "ode" for job in jobs)
+
+
+def test_bngl_numeric_expressions_are_normalized_by_bng2pl_for_backend_job(
+    tmp_path,
+    real_bng_backend_runtime,
+):
+    _run_real_hook(
+        tmp_path,
+        real_bng_backend_runtime,
+        "EXPR",
+        "generate_network({overwrite=>1})\n"
+        "simulate_ode({t_end=>1+1,n_steps=>2})",
+    )
+
+    jobs = _captured_jobs(real_bng_backend_runtime["capture"])
+    assert len(jobs) == 1
+    assert jobs[0]["simulation_options"]["t_end"] == 2
+    assert jobs[0]["simulation_options"]["n_steps"] == 2
+
+
+@pytest.mark.parametrize(
     ("marker", "expected_count", "final_artifact", "action_text", "protocol_text"),
     [
         (

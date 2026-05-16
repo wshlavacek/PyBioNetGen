@@ -1,6 +1,4 @@
-"""Tests for BNGResult, BNGNotebook, and bngsim_bridge pure-function helpers."""
-
-import math
+"""Tests for BNGResult, BNGNotebook, and direct BNG data helpers."""
 
 import numpy as np
 import pytest
@@ -8,21 +6,11 @@ import pytest
 from bionetgen.core.exc import BNGFileError
 from bionetgen.core.notebook import BNGNotebook
 from bionetgen.core.tools.bngsim_bridge import (
-    _BNG2PL_ACTIONS,
     _SIMULATE_METHOD_MAP,
-    _actions_need_network,
-    _actions_need_xml,
-    _eval_numeric,
-    _extract_positional_args,
-    _parse_net_species_initializers,
-    _resolve_scan_points,
-    _safe_math_namespace,
     _strip_quotes,
     _write_bng_dat,
-    _write_scan_file,
 )
 from bionetgen.core.tools.result import BNGResult
-from bionetgen.modelapi.structs import Action
 
 # ── Helpers ───────────────────────────────────────────────────────────
 
@@ -268,134 +256,6 @@ class TestStripQuotes:
         assert _strip_quotes("\"hello'") == "\"hello'"
 
 
-class TestSafeMathNamespace:
-    def test_contains_math_functions(self):
-        ns = _safe_math_namespace()
-        assert "exp" in ns
-        assert "log" in ns
-        assert "sqrt" in ns
-        assert "sin" in ns
-        assert "pi" in ns
-        assert callable(ns["exp"])
-        assert ns["pi"] == math.pi
-
-    def test_extra_params_added(self):
-        ns = _safe_math_namespace(extra={"k": 42.0})
-        assert ns["k"] == 42.0
-        # math functions still present
-        assert "exp" in ns
-
-    def test_builtins_restricted(self):
-        ns = _safe_math_namespace()
-        assert ns["__builtins__"] == {}
-
-
-class TestEvalNumeric:
-    def test_plain_float(self):
-        assert _eval_numeric("3.14") == pytest.approx(3.14)
-
-    def test_arithmetic_expression(self):
-        assert _eval_numeric("2 + 3 * 4") == pytest.approx(14.0)
-
-    def test_math_expression(self):
-        assert _eval_numeric("exp(0)") == pytest.approx(1.0)
-
-    def test_invalid_raises(self):
-        with pytest.raises(ValueError, match="Cannot evaluate"):
-            _eval_numeric("undefined_var_xyz")
-
-    def test_with_extra_ns(self):
-        result = _eval_numeric("k * 2", extra_ns={"k": 5.0})
-        assert result == pytest.approx(10.0)
-
-    def test_power_operator(self):
-        assert _eval_numeric("2 ** 10") == pytest.approx(1024.0)
-
-    def test_unary_minus(self):
-        assert _eval_numeric("-5 + 3") == pytest.approx(-2.0)
-
-    def test_modulo(self):
-        assert _eval_numeric("17 % 5") == pytest.approx(2.0)
-
-    def test_floor_div(self):
-        assert _eval_numeric("17 // 5") == pytest.approx(3.0)
-
-    @pytest.mark.parametrize(
-        "expr",
-        [
-            "__import__('os').system('echo pwned')",
-            "(0).__class__.__base__",
-            "[1, 2, 3]",
-            "(lambda: 42)()",
-            "1 if True else 2",
-            "[x for x in range(10)]",
-            "'a' + 'b'",
-            "exp(k=1)",
-            "1 << 2",
-        ],
-    )
-    def test_rejects_disallowed_syntax(self, expr):
-        with pytest.raises(ValueError, match="Cannot evaluate"):
-            _eval_numeric(expr)
-
-
-class TestParseNetSpeciesInitializers:
-    def test_parses_species_block(self, tmp_path):
-        net = tmp_path / "model.net"
-        net.write_text(
-            "begin species\n"
-            "  1 A(b) 5000\n"
-            "  2 B(a) k_init*100\n"
-            "end species\n"
-        )
-        # Numeric-literal ICs are filtered out; only parameter expressions
-        # need re-evaluation when scan parameters change.
-        result = _parse_net_species_initializers(str(net))
-        assert result == [("B(a)", "k_init*100")]
-
-    def test_missing_file_returns_empty(self, tmp_path):
-        result = _parse_net_species_initializers(str(tmp_path / "nonexistent.net"))
-        assert result == []
-
-
-class TestResolveScanPoints:
-    def test_with_par_scan_vals(self):
-        args = {"par_scan_vals": "[1.0, 2.0, 3.0]"}
-        pts = _resolve_scan_points(args)
-        np.testing.assert_allclose(pts, [1.0, 2.0, 3.0])
-
-    def test_with_linspace(self):
-        args = {"par_min": "0", "par_max": "10", "n_scan_pts": "5"}
-        pts = _resolve_scan_points(args)
-        np.testing.assert_allclose(pts, np.linspace(0, 10, 5))
-
-    def test_with_log_scale(self):
-        args = {"par_min": "1", "par_max": "1000", "n_scan_pts": "4", "log_scale": "1"}
-        pts = _resolve_scan_points(args)
-        np.testing.assert_allclose(pts, np.logspace(0, 3, 4))
-
-
-class TestWriteScanFile:
-    def test_writes_correct_format(self, tmp_path):
-        out = tmp_path / "test.scan"
-        rows = [
-            [0.1, 1.0, 2.0],
-            [0.2, 3.0, 4.0],
-        ]
-        _write_scan_file(str(out), "kf", ["obsA", "obsB"], rows)
-
-        lines = out.read_text().strip().split("\n")
-        assert lines[0].startswith("#")
-        assert "kf" in lines[0]
-        assert "obsA" in lines[0]
-        assert "obsB" in lines[0]
-        assert len(lines) == 3  # header + 2 data rows
-        # Data rows should be parseable as floats
-        vals = lines[1].split()
-        assert len(vals) == 3
-        assert float(vals[0]) == pytest.approx(0.1)
-
-
 class TestWriteBngDat:
     def test_writes_correct_format(self, tmp_path):
         out = tmp_path / "test.gdat"
@@ -415,58 +275,6 @@ class TestWriteBngDat:
         assert vals[0] == pytest.approx(0.0)
         assert vals[1] == pytest.approx(10.0)
         assert vals[2] == pytest.approx(20.0)
-
-
-class TestActionsNeedNetwork:
-    def test_simulate_ode_needs_network(self):
-        a = Action("simulate_ode", {"t_end": "100", "n_steps": "10"})
-        assert _actions_need_network([a]) is True
-
-    def test_simulate_nf_does_not_need_network(self):
-        # NF-only simulation should need XML, not a generated .net file.
-        a = Action("simulate_nf", {"t_end": "100", "n_steps": "10"})
-        assert _actions_need_network([a]) is False
-
-
-class TestActionsNeedXml:
-    def test_simulate_nf_needs_xml(self):
-        a = Action("simulate_nf", {"t_end": "100", "n_steps": "10"})
-        assert _actions_need_xml([a]) is True
-
-    def test_writeXML_needs_xml(self):
-        a = Action("writeXML", {})
-        assert _actions_need_xml([a]) is True
-
-    def test_simulate_ode_does_not_need_xml(self):
-        a = Action("simulate_ode", {"t_end": "100", "n_steps": "10"})
-        assert _actions_need_xml([a]) is False
-
-
-class TestExtractPositionalArgs:
-    def test_extracts_name_and_value(self):
-        a = Action("setParameter", {'"kf"': None, "1.0": None})
-        name, value = _extract_positional_args(a)
-        assert name == "kf"
-        assert value == "1.0"
-
-    def test_strips_quotes(self):
-        a = Action("setParameter", {"'kf'": None, "'2.5'": None})
-        name, value = _extract_positional_args(a)
-        assert name == "kf"
-        assert value == "2.5"
-
-
-class TestBNG2PLActions:
-    def test_is_frozenset(self):
-        assert isinstance(_BNG2PL_ACTIONS, frozenset)
-
-    def test_expected_members(self):
-        assert "generate_network" in _BNG2PL_ACTIONS
-        assert "writeXML" in _BNG2PL_ACTIONS
-        assert "writeSBML" in _BNG2PL_ACTIONS
-        assert "readFile" in _BNG2PL_ACTIONS
-        assert "visualize" in _BNG2PL_ACTIONS
-        assert "setModelName" in _BNG2PL_ACTIONS
 
 
 class TestSimulateMethodMap:
