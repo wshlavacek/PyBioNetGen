@@ -160,12 +160,7 @@ class TestWriteBngsimResults:
             gdat = os.path.join(tmpdir, "test_model.gdat")
             assert not os.path.isfile(gdat)
 
-    def test_nfsim_fallback_evaluates_functions_per_timepoint(self):
-        # NFsim Result.expressions comes back empty even when print_functions
-        # is requested; the writer must fall back to evaluating BNGL function
-        # bodies against (resolved-params + scan-overrides + obs) for every
-        # row so the .gdat carries function columns matching BNG2.pl's
-        # convention.
+    def test_print_functions_without_bngsim_expressions_does_not_eval_bngl(self):
         from bionetgen.core.tools.bngsim_bridge import _write_bngsim_results
 
         obs_names = ["Y1", "Y2x2"]
@@ -178,51 +173,24 @@ class TestWriteBngsimResults:
             obs_names=obs_names, obs_data=obs_data, n_times=3,
         )
 
-        bngmodel = MagicMock()
-        bngmodel.functions.items = {
-            # Y2 = Y2x2 / 2 (depends on observable only)
-            "Y2": MagicMock(expr="Y2x2 / 2", args=[]),
-            # Sfree = ST - Y1 - Y2x2 (depends on resolved param ST)
-            "Sfree": MagicMock(expr="ST - Y1 - Y2x2", args=[]),
-            # Lfree = LT_current - Y1 (depends on overridden param LT_current)
-            "Lfree": MagicMock(expr="LT_current - Y1", args=[]),
-        }
         with tempfile.TemporaryDirectory() as tmpdir:
             _write_bngsim_results(
                 result, tmpdir, "alt",
                 print_functions=True,
-                bngmodel=bngmodel,
-                bngmodel_params={"ST": 60.0, "LT_current": 331.0},
-                param_overrides={"LT_current": 150.0},  # setParameter("LT_current","LT_low")
             )
             gdat = os.path.join(tmpdir, "alt.gdat")
             with open(gdat) as f:
                 lines = f.readlines()
 
-        # Header carries function columns rendered with BNG/NFsim parens style.
-        assert "Y2()" in lines[0]
-        assert "Sfree()" in lines[0]
-        assert "Lfree()" in lines[0]
-
-        # Per-row arithmetic. Columns are time, Y1, Y2x2, Y2(), Sfree(), Lfree().
-        row1 = [float(v) for v in lines[2].split()[1:]]  # skip leading '#' guard? no, '#' only on header
-        # Actually the data rows don't start with '#'; lines[1] is row 0.
-        rows = [
-            [float(v) for v in line.split()] for line in lines[1:]
-        ]
-        # row index 1 → t=1, Y1=1, Y2x2=2 → Y2=1, Sfree=60-1-2=57, Lfree=150-1=149
-        assert rows[1][3] == pytest.approx(1.0)
-        assert rows[1][4] == pytest.approx(57.0)
-        assert rows[1][5] == pytest.approx(149.0)
-        # row index 2 → t=2, Y1=3, Y2x2=0 → Y2=0, Sfree=57, Lfree=147
-        assert rows[2][3] == pytest.approx(0.0)
-        assert rows[2][4] == pytest.approx(57.0)
-        assert rows[2][5] == pytest.approx(147.0)
+        assert "Y1" in lines[0]
+        assert "Y2x2" in lines[0]
+        assert "Y2()" not in lines[0]
+        assert "Sfree()" not in lines[0]
+        assert "Lfree()" not in lines[0]
 
     def test_nfsim_fallback_skipped_when_bngsim_returns_expressions(self):
-        # If BNGsim already supplies a non-empty expression block (the
-        # network/ODE path), the writer must not invoke the post-hoc
-        # evaluator — even if a bngmodel is also threaded through.
+        # If BNGsim supplies a non-empty expression block, the writer
+        # includes those direct result columns.
         from bionetgen.core.tools.bngsim_bridge import _write_bngsim_results
 
         func_data = np.array([[7.0], [8.0], [9.0]])
@@ -231,23 +199,14 @@ class TestWriteBngsimResults:
             func_names=["actually_from_bngsim"], func_data=func_data,
         )
 
-        # Provide a bngmodel that would evaluate to different values, just
-        # to prove the fallback didn't run.
-        bngmodel = MagicMock()
-        bngmodel.functions.items = {
-            "decoy": MagicMock(expr="999", args=[]),
-        }
         with tempfile.TemporaryDirectory() as tmpdir:
             _write_bngsim_results(
                 result, tmpdir, "ode",
                 print_functions=True,
-                bngmodel=bngmodel,
-                bngmodel_params={},
             )
             with open(os.path.join(tmpdir, "ode.gdat")) as f:
                 header = f.readline()
         assert "actually_from_bngsim" in header
-        assert "decoy" not in header
 
 
 # ─── _make_bng_result ────────────────────────────────────────────────
@@ -742,32 +701,3 @@ class TestSbmlWithBioNetGenComment:
             assert _sniff_xml_format(path) == FORMAT_SBML
         finally:
             os.unlink(path)
-
-
-# ─── Regression: BIONETGEN_SS_WORKERS env var ───────────────────────
-
-
-class TestSsWorkersEnv:
-    def test_default_when_unset(self, monkeypatch):
-        from bionetgen.core.tools.bngsim_bridge import (
-            _DEFAULT_SS_WORKERS, _resolve_ss_workers,
-        )
-        monkeypatch.delenv("BIONETGEN_SS_WORKERS", raising=False)
-        assert _resolve_ss_workers() == _DEFAULT_SS_WORKERS
-
-    def test_overrides_default(self, monkeypatch):
-        from bionetgen.core.tools.bngsim_bridge import _resolve_ss_workers
-        monkeypatch.setenv("BIONETGEN_SS_WORKERS", "8")
-        assert _resolve_ss_workers() == 8
-
-    def test_invalid_falls_back_to_default(self, monkeypatch):
-        from bionetgen.core.tools.bngsim_bridge import _resolve_ss_workers
-        monkeypatch.setenv("BIONETGEN_SS_WORKERS", "not-a-number")
-        assert _resolve_ss_workers(default=3) == 3
-
-    def test_zero_or_negative_falls_back(self, monkeypatch):
-        from bionetgen.core.tools.bngsim_bridge import _resolve_ss_workers
-        monkeypatch.setenv("BIONETGEN_SS_WORKERS", "0")
-        assert _resolve_ss_workers(default=2) == 2
-        monkeypatch.setenv("BIONETGEN_SS_WORKERS", "-1")
-        assert _resolve_ss_workers(default=2) == 2

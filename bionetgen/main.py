@@ -219,7 +219,8 @@ class BNGBase(cement.Controller):
             raise BNGSimError(route.reason)
 
         if route.route == ROUTE_BNGL_BNGSIM and fmt == FORMAT_BNGL:
-            # Hybrid path: BNG2.pl for network gen, BNGsim for simulation
+            # BNGL path: BNG2.pl owns workflow semantics and delegates
+            # normalized simulation jobs through the BNGsim backend hook.
             test_perl(app=self.app)
             config_bngpath = self.app.config.get("bionetgen", "bngpath")
             run_bngl_with_bngsim(

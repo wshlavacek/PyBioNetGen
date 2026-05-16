@@ -367,10 +367,6 @@ def test_library_complex_bngl_uses_bngsim_route_not_subprocess_classifier(tmp_pa
     with patch(f"{BRIDGE}.BNGSIM_AVAILABLE", True), \
          patch(f"{BRIDGE}.BNGSIM_HAS_NFSIM", True), \
          patch(f"{BRIDGE}.run_bngl_with_bngsim", return_value=sentinel) as mock_bngsim_run, \
-         patch(
-             f"{BRIDGE}._execute_bngsim_actions",
-             side_effect=AssertionError("complex BNGL must not use Python action replay"),
-         ), \
          patch("bionetgen.modelapi.runner.get_conf", return_value={"bngpath": "/fake/bng"}), \
          patch("bionetgen.modelapi.runner.BNGCLI") as mock_bngcli:
         result = run(str(bngl_path), out=str(out_dir))
@@ -397,10 +393,6 @@ def test_run_bngl_with_bngsim_complex_action_uses_backend_hook_without_executor(
     with patch(f"{BRIDGE}.BNGSIM_AVAILABLE", True), \
          patch(f"{BRIDGE}.BNGSIM_HAS_NFSIM", True), \
          patch(
-             f"{BRIDGE}._execute_bngsim_actions",
-             side_effect=AssertionError("complex BNGL must not use Python action replay"),
-         ), \
-         patch(
              f"{BRIDGE}.run_bngl_with_bngsim_backend_hook",
              return_value=sentinel,
          ) as mock_hook:
@@ -413,6 +405,94 @@ def test_run_bngl_with_bngsim_complex_action_uses_backend_hook_without_executor(
         str(tmp_path / "out"),
         "/fake/bng",
     )
+
+
+def test_stage6_removed_python_bngl_interpreter_symbols():
+    import bionetgen.core.tools.bngsim_bridge as bridge
+
+    removed_symbols = [
+        "_execute_bngsim_actions",
+        "_parse_simulate_params",
+        "_resolve_sample_times",
+        "_resolve_scan_points",
+        "_run_parameter_scan_bngsim",
+        "_run_bifurcate_bngsim",
+        "_run_protocol",
+        "_parse_protocol_block",
+        "_safe_math_namespace",
+        "_safe_eval_expr",
+        "_eval_numeric",
+        "_normalize_bngl_expr",
+        "_aliased_keyword_namespace",
+        "_resolve_bngmodel_params",
+        "_evaluate_bngmodel_functions",
+        "_evaluate_functions_per_timepoint",
+        "_strip_zero_arg_calls",
+        "_parse_net_species_initializers",
+        "_sync_species_concentrations",
+        "_parse_bngmodel_seed_species_initializers",
+        "_parse_xml_parameter_table",
+        "_resolve_xml_params",
+        "_apply_nfsim_derived_params",
+        "_apply_nfsim_seed_species_initializers",
+        "_write_scan_file",
+        "_read_scan_file",
+        "_scan_result_to_row",
+        "_parse_table_functions",
+        "_parse_tfun_args",
+        "_add_table_functions",
+    ]
+
+    for name in removed_symbols:
+        assert not hasattr(bridge, name)
+
+
+def test_run_bngl_with_bngsim_protocol_uses_backend_hook_without_python_parser(tmp_path):
+    from bionetgen.core.tools.bngsim_bridge import run_bngl_with_bngsim
+
+    bngl_path = _write_minimal_bngl(
+        tmp_path,
+        "simulate_ode({t_end=>1,n_steps=>1})",
+    )
+    bngl_path.write_text(
+        bngl_path.read_text(encoding="utf-8")
+        + "\nbegin protocol\nsimulate_ode({t_end=>1,n_steps=>1})\nend protocol\n",
+        encoding="utf-8",
+    )
+    sentinel = object()
+
+    with patch(f"{BRIDGE}.BNGSIM_AVAILABLE", True), \
+         patch(f"{BRIDGE}.BNGSIM_HAS_NFSIM", True), \
+         patch(
+             f"{BRIDGE}.run_bngl_with_bngsim_backend_hook",
+             return_value=sentinel,
+         ) as mock_hook:
+        result = run_bngl_with_bngsim(str(bngl_path), str(tmp_path / "out"), "/fake/bng")
+
+    assert result is sentinel
+    mock_hook.assert_called_once()
+
+
+def test_run_bngl_with_bngsim_scan_uses_backend_hook_without_python_scan_outputs(tmp_path):
+    from bionetgen.core.tools.bngsim_bridge import run_bngl_with_bngsim
+
+    bngl_path = _write_minimal_bngl(
+        tmp_path,
+        'parameter_scan({method=>"ode",parameter=>"k",par_min=>0,par_max=>1,n_scan_pts=>2})',
+    )
+    sentinel = object()
+
+    with patch(f"{BRIDGE}.BNGSIM_AVAILABLE", True), \
+         patch(f"{BRIDGE}.BNGSIM_HAS_NFSIM", True), \
+         patch(
+             f"{BRIDGE}.run_bngl_with_bngsim_backend_hook",
+             return_value=sentinel,
+         ) as mock_hook:
+        result = run_bngl_with_bngsim(str(bngl_path), str(tmp_path / "out"), "/fake/bng")
+
+    assert result is sentinel
+    mock_hook.assert_called_once()
+    assert not list((tmp_path / "out").glob("*.scan"))
 
 
 def test_library_subprocess_route_uses_bngcli(tmp_path):
