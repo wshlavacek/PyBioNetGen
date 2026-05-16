@@ -292,8 +292,8 @@ class TestBngsimRouteClassifier:
             [_action("simulate_ode"), _action("simulate_ssa")],
         ],
     )
-    def test_complex_bngl_workflows_use_subprocess(self, actions):
-        from bionetgen.core.tools.bngsim_bridge import ROUTE_SUBPROCESS
+    def test_supported_complex_bngl_workflows_use_backend_hook_route(self, actions):
+        from bionetgen.core.tools.bngsim_bridge import ROUTE_BNGL_BNGSIM
 
         decision = _classify(
             "bngl",
@@ -302,10 +302,10 @@ class TestBngsimRouteClassifier:
             actions=actions,
         )
 
-        assert decision.route == ROUTE_SUBPROCESS
+        assert decision.route == ROUTE_BNGL_BNGSIM
 
-    def test_bngl_method_override_does_not_hide_multi_sim_workflow(self):
-        from bionetgen.core.tools.bngsim_bridge import ROUTE_SUBPROCESS
+    def test_bngl_method_override_keeps_multi_sim_workflow_on_backend_hook_route(self):
+        from bionetgen.core.tools.bngsim_bridge import ROUTE_BNGL_BNGSIM
 
         decision = _classify(
             "bngl",
@@ -315,11 +315,11 @@ class TestBngsimRouteClassifier:
             actions=[_action("simulate_ode"), _action("simulate_ssa")],
         )
 
-        assert decision.route == ROUTE_SUBPROCESS
+        assert decision.route == ROUTE_BNGL_BNGSIM
 
-    def test_protocol_blocks_use_subprocess(self):
+    def test_protocol_blocks_use_backend_hook_route(self):
         from bionetgen.core.tools.bngsim_bridge import (
-            ROUTE_SUBPROCESS,
+            ROUTE_BNGL_BNGSIM,
             classify_bngsim_route,
         )
 
@@ -332,13 +332,13 @@ class TestBngsimRouteClassifier:
             has_protocol=True,
         )
 
-        assert decision.route == ROUTE_SUBPROCESS
+        assert decision.route == ROUTE_BNGL_BNGSIM
 
 
 @pytest.mark.parametrize("action_text", COMPLEX_BNGL_ACTION_CASES)
-def test_parser_backed_complex_bngl_actions_use_subprocess(tmp_path, action_text):
+def test_parser_backed_supported_complex_bngl_actions_use_backend_hook_route(tmp_path, action_text):
     from bionetgen.core.tools.bngsim_bridge import (
-        ROUTE_SUBPROCESS,
+        ROUTE_BNGL_BNGSIM,
         classify_bngsim_route,
     )
 
@@ -352,42 +352,40 @@ def test_parser_backed_complex_bngl_actions_use_subprocess(tmp_path, action_text
         bngsim_has_nfsim=True,
     )
 
-    assert decision.route == ROUTE_SUBPROCESS
+    assert decision.route == ROUTE_BNGL_BNGSIM
     assert "BNG2.pl" in decision.reason
 
 
 @pytest.mark.parametrize("action_text", COMPLEX_BNGL_ACTION_CASES)
-def test_library_complex_bngl_uses_bngcli_not_python_executor(tmp_path, action_text):
+def test_library_complex_bngl_uses_bngsim_route_not_subprocess_classifier(tmp_path, action_text):
     from bionetgen.modelapi.runner import run
 
     bngl_path = _write_minimal_bngl(tmp_path, action_text)
     out_dir = tmp_path / "out"
     sentinel = object()
-    mock_cli = MagicMock()
-    mock_cli.result = sentinel
 
     with patch(f"{BRIDGE}.BNGSIM_AVAILABLE", True), \
          patch(f"{BRIDGE}.BNGSIM_HAS_NFSIM", True), \
-         patch(f"{BRIDGE}.run_bngl_with_bngsim") as mock_bngsim_run, \
+         patch(f"{BRIDGE}.run_bngl_with_bngsim", return_value=sentinel) as mock_bngsim_run, \
          patch(
              f"{BRIDGE}._execute_bngsim_actions",
              side_effect=AssertionError("complex BNGL must not use Python action replay"),
          ), \
          patch("bionetgen.modelapi.runner.get_conf", return_value={"bngpath": "/fake/bng"}), \
-         patch("bionetgen.modelapi.runner.BNGCLI", return_value=mock_cli) as mock_bngcli:
+         patch("bionetgen.modelapi.runner.BNGCLI") as mock_bngcli:
         result = run(str(bngl_path), out=str(out_dir))
 
     assert result is sentinel
-    mock_bngsim_run.assert_not_called()
-    mock_bngcli.assert_called_once()
-    assert mock_bngcli.call_args.args[:3] == (
+    mock_bngsim_run.assert_called_once()
+    assert mock_bngsim_run.call_args.args[:3] == (
         str(bngl_path),
         str(out_dir),
         "/fake/bng",
     )
+    mock_bngcli.assert_not_called()
 
 
-def test_run_bngl_with_bngsim_complex_action_falls_back_without_executor(tmp_path):
+def test_run_bngl_with_bngsim_complex_action_uses_backend_hook_without_executor(tmp_path):
     from bionetgen.core.tools.bngsim_bridge import run_bngl_with_bngsim
 
     bngl_path = _write_minimal_bngl(
@@ -395,8 +393,6 @@ def test_run_bngl_with_bngsim_complex_action_falls_back_without_executor(tmp_pat
         'setParameter("k", 2)\nsimulate_ode({t_end=>1,n_steps=>1})',
     )
     sentinel = object()
-    mock_cli = MagicMock()
-    mock_cli.result = sentinel
 
     with patch(f"{BRIDGE}.BNGSIM_AVAILABLE", True), \
          patch(f"{BRIDGE}.BNGSIM_HAS_NFSIM", True), \
@@ -404,12 +400,15 @@ def test_run_bngl_with_bngsim_complex_action_falls_back_without_executor(tmp_pat
              f"{BRIDGE}._execute_bngsim_actions",
              side_effect=AssertionError("complex BNGL must not use Python action replay"),
          ), \
-         patch("bionetgen.core.tools.cli.BNGCLI", return_value=mock_cli) as mock_bngcli:
+         patch(
+             f"{BRIDGE}.run_bngl_with_bngsim_backend_hook",
+             return_value=sentinel,
+         ) as mock_hook:
         result = run_bngl_with_bngsim(str(bngl_path), str(tmp_path / "out"), "/fake/bng")
 
     assert result is sentinel
-    mock_bngcli.assert_called_once()
-    assert mock_bngcli.call_args.args[:3] == (
+    mock_hook.assert_called_once()
+    assert mock_hook.call_args.args[:3] == (
         str(bngl_path),
         str(tmp_path / "out"),
         "/fake/bng",

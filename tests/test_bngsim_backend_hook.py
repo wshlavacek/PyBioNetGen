@@ -64,8 +64,23 @@ def _patch_real_bng_action(bng_root):
     # model state, artifact path, method, options, and output prefix.
     if ($ENV{'BIONETGEN_BNGSIM_BACKEND'} && $method =~ /^(cvode|ssa|psa)$/)
     {
-        my $helper = $ENV{'BIONETGEN_BNGSIM_BACKEND_HELPER'};
-        return "BIONETGEN_BNGSIM_BACKEND_HELPER is not set." unless $helper;
+        my @helper_command;
+        if ($ENV{'BIONETGEN_BNGSIM_BACKEND_HELPER'})
+        {
+            @helper_command = ($ENV{'BIONETGEN_BNGSIM_BACKEND_HELPER'});
+        }
+        elsif ($ENV{'BIONETGEN_BNGSIM_BACKEND_HELPER_PYTHON'} && $ENV{'BIONETGEN_BNGSIM_BACKEND_HELPER_MODULE'})
+        {
+            @helper_command = (
+                $ENV{'BIONETGEN_BNGSIM_BACKEND_HELPER_PYTHON'},
+                '-m',
+                $ENV{'BIONETGEN_BNGSIM_BACKEND_HELPER_MODULE'},
+            );
+        }
+        else
+        {
+            return "BIONETGEN_BNGSIM_BACKEND_HELPER is not set.";
+        }
 
         if ($method eq 'pla')
         {
@@ -110,8 +125,8 @@ def _patch_real_bng_action(bng_root):
         print $job_fh encode_json(\%job);
         close($job_fh);
 
-        print "Running BNGsim backend helper: $helper $job_file\n";
-        my $rc = system($helper, $job_file);
+        print "Running BNGsim backend helper: @helper_command $job_file\n";
+        my $rc = system(@helper_command, $job_file);
         if ($rc != 0)
         {
             return sprintf("BNGsim backend helper failed with status %s.", $rc);

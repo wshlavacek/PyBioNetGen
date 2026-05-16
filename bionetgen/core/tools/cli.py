@@ -107,10 +107,11 @@ class BNGCLI:
             return
 
         helper = self.bngsim_backend_helper
-        if helper is None:
-            helper = f"{sys.executable} -m bionetgen.core.tools.bngsim_backend_helper"
         os.environ["BIONETGEN_BNGSIM_BACKEND"] = "1"
-        os.environ["BIONETGEN_BNGSIM_BACKEND_HELPER"] = helper
+        if helper is not None:
+            os.environ["BIONETGEN_BNGSIM_BACKEND_HELPER"] = helper
+        else:
+            os.environ.pop("BIONETGEN_BNGSIM_BACKEND_HELPER", None)
         os.environ["BIONETGEN_BNGSIM_BACKEND_HELPER_PYTHON"] = sys.executable
         os.environ["BIONETGEN_BNGSIM_BACKEND_HELPER_MODULE"] = (
             "bionetgen.core.tools.bngsim_backend_helper"

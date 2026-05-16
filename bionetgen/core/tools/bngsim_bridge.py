@@ -946,6 +946,16 @@ _BNGL_ROUTING_COMPLEX_ACTIONS = frozenset({
     "readFile", "visualize", "setModelName",
 })
 
+_BNGL_BACKEND_HOOK_WORKFLOW_ACTIONS = frozenset({
+    "parameter_scan", "bifurcate",
+    "setParameter", "setConcentration", "addConcentration",
+    "saveConcentrations", "resetConcentrations",
+    "saveParameters", "resetParameters",
+    "writeXML", "writeSBML", "writeModel", "writeNetwork", "writeFile",
+    "writeMfile", "writeCPYfile", "writeMexfile", "writeMDL",
+    "readFile", "visualize", "setModelName",
+})
+
 _BNGL_ROUTING_PASSTHROUGH_ACTIONS = frozenset({
     "generate_network", "generate_hybrid_model",
 })
@@ -981,6 +991,44 @@ def _bngl_action_method_for_routing(action):
     if method == "ssa" and "poplevel" in args:
         return "psa"
     return method
+
+
+def _bngl_workflow_method_for_routing(action):
+    """Return the backend method implied by a BNG2.pl-owned workflow action."""
+    atype = getattr(action, "type", None)
+    args = getattr(action, "args", None) or {}
+    if atype not in {"parameter_scan", "bifurcate"}:
+        return None
+    method = args.get("method")
+    if method is None:
+        return None
+    method = _strip_quotes(str(method).strip()).lower()
+    if method == "ode":
+        return "ode"
+    if method == "ssa" and "poplevel" in args:
+        return "psa"
+    return method
+
+
+def _bngl_actions_need_backend_hook(actions_items, has_protocol=False):
+    """Return True when BNG2.pl must own workflow semantics around BNGsim jobs."""
+    if has_protocol:
+        return True
+    sim_count = 0
+    for action in actions_items or []:
+        atype = getattr(action, "type", None)
+        args = getattr(action, "args", None) or {}
+        if atype in _BNGL_BACKEND_HOOK_WORKFLOW_ACTIONS:
+            return True
+        if atype in _SIMULATE_METHOD_MAP:
+            sim_count += 1
+            if (
+                args.get("prefix") is not None
+                or args.get("suffix") is not None
+                or args.get("continue") is not None
+            ):
+                return True
+    return sim_count > 1
 
 
 def _bngl_has_protocol_block(bngl_path):
@@ -1029,12 +1077,6 @@ def _classify_bngl_actions_for_bngsim(
     or suffix behavior, continuations, and unknown action types stay with
     BNG2.pl.
     """
-    if has_protocol:
-        return BngsimRouteDecision(
-            ROUTE_SUBPROCESS,
-            "BNGL protocol blocks are interpreted by BNG2.pl",
-        )
-
     if actions_items is None:
         return BngsimRouteDecision(
             ROUTE_SUBPROCESS,
@@ -1042,6 +1084,8 @@ def _classify_bngl_actions_for_bngsim(
         )
 
     sim_actions = []
+    has_backend_hook_workflow = bool(has_protocol)
+    workflow_methods = []
     for action in actions_items:
         atype = getattr(action, "type", None)
         args = getattr(action, "args", None) or {}
@@ -1050,27 +1094,19 @@ def _classify_bngl_actions_for_bngsim(
             continue
 
         if atype in _BNGL_ROUTING_COMPLEX_ACTIONS:
-            return BngsimRouteDecision(
-                ROUTE_SUBPROCESS,
-                f"BNGL action '{atype}' requires BNG2.pl workflow semantics",
-            )
+            has_backend_hook_workflow = True
+            workflow_method = _bngl_workflow_method_for_routing(action)
+            if workflow_method is not None:
+                workflow_methods.append(workflow_method)
+            continue
 
         if atype in _SIMULATE_METHOD_MAP:
-            if args.get("prefix") is not None:
-                return BngsimRouteDecision(
-                    ROUTE_SUBPROCESS,
-                    "BNGL simulate prefix output behavior is owned by BNG2.pl",
-                )
-            if args.get("suffix") is not None:
-                return BngsimRouteDecision(
-                    ROUTE_SUBPROCESS,
-                    "BNGL simulate suffix output behavior is owned by BNG2.pl",
-                )
-            if args.get("continue") is not None:
-                return BngsimRouteDecision(
-                    ROUTE_SUBPROCESS,
-                    "BNGL continue workflows are owned by BNG2.pl",
-                )
+            if (
+                args.get("prefix") is not None
+                or args.get("suffix") is not None
+                or args.get("continue") is not None
+            ):
+                has_backend_hook_workflow = True
             sim_actions.append(action)
             continue
 
@@ -1081,14 +1117,24 @@ def _classify_bngl_actions_for_bngsim(
             )
 
     if len(sim_actions) > 1:
+        has_backend_hook_workflow = True
+
+    if any(workflow_method == "pla" for workflow_method in workflow_methods):
         return BngsimRouteDecision(
             ROUTE_SUBPROCESS,
-            "BNGL multi-simulation workflows are owned by BNG2.pl",
+            "BNGL PLA is not supported by BNGsim",
+            method="pla",
         )
 
     if method is not None:
         method_name = _strip_quotes(str(method).strip()).lower()
         if sim_actions:
+            if any(_bngl_action_method_for_routing(action) == "pla" for action in sim_actions):
+                return BngsimRouteDecision(
+                    ROUTE_SUBPROCESS,
+                    "BNGL PLA is not supported by BNGsim",
+                    method="pla",
+                )
             action_method = _bngl_action_method_for_routing(sim_actions[0])
             if action_method == "pla":
                 return BngsimRouteDecision(
@@ -1107,7 +1153,7 @@ def _classify_bngl_actions_for_bngsim(
         if _method_supported_by_bngsim_for_routing(method_name, bngsim_has_nfsim):
             return BngsimRouteDecision(
                 ROUTE_BNGL_BNGSIM,
-                "BNGL method override is an atomic BNGsim-supported simulation",
+                "BNGL method override is a BNGsim-supported simulation",
                 method=method_name,
             )
         return BngsimRouteDecision(
@@ -1116,28 +1162,52 @@ def _classify_bngl_actions_for_bngsim(
             method=method_name,
         )
 
-    if not sim_actions:
+    candidate_methods = []
+    for action in sim_actions:
+        method_name = _bngl_action_method_for_routing(action)
+        if method_name == "pla":
+            return BngsimRouteDecision(
+                ROUTE_SUBPROCESS,
+                "BNGL PLA is not supported by BNGsim",
+                method="pla",
+            )
+        candidate_methods.append(method_name)
+
+    for method_name in workflow_methods:
+        if method_name == "pla":
+            return BngsimRouteDecision(
+                ROUTE_SUBPROCESS,
+                "BNGL PLA is not supported by BNGsim",
+                method="pla",
+            )
+        if method_name != "protocol":
+            candidate_methods.append(method_name)
+
+    if not candidate_methods and not has_backend_hook_workflow:
         return BngsimRouteDecision(
             ROUTE_SUBPROCESS,
             "BNGL has no simulation action that needs BNGsim",
         )
 
-    method_name = _bngl_action_method_for_routing(sim_actions[0])
-    if method_name == "pla":
-        return BngsimRouteDecision(
-            ROUTE_SUBPROCESS,
-            "BNGL PLA is not supported by BNGsim",
-            method="pla",
-        )
-    if _method_supported_by_bngsim_for_routing(method_name, bngsim_has_nfsim):
+    for method_name in candidate_methods:
+        if not _method_supported_by_bngsim_for_routing(method_name, bngsim_has_nfsim):
+            return BngsimRouteDecision(
+                ROUTE_SUBPROCESS,
+                f"BNGL method '{method_name}' is not supported by the BNGsim route",
+                method=method_name,
+            )
+
+    if has_backend_hook_workflow:
         return BngsimRouteDecision(
             ROUTE_BNGL_BNGSIM,
-            "BNGL action is an atomic BNGsim-supported simulation",
-            method=method_name,
+            "BNGL workflow is owned by BNG2.pl with BNGsim backend jobs",
+            method=candidate_methods[0] if candidate_methods else None,
         )
+
+    method_name = candidate_methods[0]
     return BngsimRouteDecision(
-        ROUTE_SUBPROCESS,
-        f"BNGL method '{method_name}' is not supported by the BNGsim route",
+        ROUTE_BNGL_BNGSIM,
+        "BNGL action is an atomic BNGsim-supported simulation",
         method=method_name,
     )
 
@@ -4125,9 +4195,9 @@ def run_bngl_with_bngsim(
     if has_protocol:
         logger.info(
             "BNGL protocol block requires BNG2.pl workflow semantics; "
-            "using subprocess route."
+            "using BNG2.pl-owned BNGsim backend hook."
         )
-        return _run_bngl_subprocess(
+        return run_bngl_with_bngsim_backend_hook(
             bngl_path,
             output_dir,
             bngpath,
@@ -4155,6 +4225,20 @@ def run_bngl_with_bngsim(
     if route.route != ROUTE_BNGL_BNGSIM:
         logger.info("%s; using subprocess route.", route.reason)
         return _run_bngl_subprocess(
+            bngl_path,
+            output_dir,
+            bngpath,
+            suppress=suppress,
+            log_file=log_file,
+            timeout=timeout,
+            app=app,
+        )
+    if _bngl_actions_need_backend_hook(original_actions, has_protocol=False):
+        logger.info(
+            "%s; using BNG2.pl-owned BNGsim backend hook.",
+            route.reason,
+        )
+        return run_bngl_with_bngsim_backend_hook(
             bngl_path,
             output_dir,
             bngpath,
