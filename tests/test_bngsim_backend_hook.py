@@ -278,6 +278,85 @@ def test_helper_contract_normalizes_single_ode_job():
     assert direct.result_options["print_functions"] is True
 
 
+def test_helper_method_override_restores_rm_from_env(monkeypatch):
+    """BIONETGEN_BNGSIM_BACKEND_METHOD=rm flips an nf job back to rm.
+
+    BNG2.pl has no ``rm`` method, so ``rm`` BNGL is rewritten to ``nf`` and
+    the ``simulate_nf`` hook always sends ``method='nf'``; the env var
+    carries the real method to the helper.
+    """
+    monkeypatch.setenv("BIONETGEN_BNGSIM_BACKEND_METHOD", "rm")
+    job = load_backend_job({
+        "artifact_path": "/tmp/model.xml",
+        "artifact_format": "bng-xml",
+        "method": "nf",
+        "simulation_options": {"t_start": "0", "t_end": "5", "n_steps": "5"},
+        "output_prefix": "/tmp/out/model",
+    })
+    assert job.method == "rm"
+    assert direct_job_from_backend_job(job).method == "rm"
+
+
+def test_helper_method_override_leaves_network_jobs_alone(monkeypatch):
+    """The rm override only applies to network-free jobs; ode stays ode."""
+    monkeypatch.setenv("BIONETGEN_BNGSIM_BACKEND_METHOD", "rm")
+    job = load_backend_job({
+        "artifact_path": "/tmp/model.net",
+        "artifact_format": "net",
+        "method": "cvode",
+        "simulation_options": {"t_start": "0", "t_end": "5", "n_steps": "5"},
+        "output_prefix": "/tmp/out/model",
+    })
+    assert job.method == "ode"
+
+
+def test_helper_without_method_override_keeps_nf(monkeypatch):
+    monkeypatch.delenv("BIONETGEN_BNGSIM_BACKEND_METHOD", raising=False)
+    job = load_backend_job({
+        "artifact_path": "/tmp/model.xml",
+        "artifact_format": "bng-xml",
+        "method": "nf",
+        "simulation_options": {"t_start": "0", "t_end": "5", "n_steps": "5"},
+        "output_prefix": "/tmp/out/model",
+    })
+    assert job.method == "nf"
+
+
+def test_rewrite_rm_method_to_nf_preserves_basename(tmp_path):
+    from bionetgen.core.tools.bngsim_bridge import _rewrite_rm_method_to_nf
+
+    src = tmp_path / "m.bngl"
+    src.write_text(
+        "begin actions\n"
+        'simulate({method=>"rm",t_start=>0,t_end=>5,n_steps=>5})\n'
+        "end actions\n"
+    )
+    run_path, temp_dir = _rewrite_rm_method_to_nf(str(src))
+    try:
+        text = open(run_path).read()
+        assert 'method=>"nf"' in text
+        assert '"rm"' not in text
+        # basename is preserved so BNG2.pl output-file naming is unchanged
+        assert os.path.basename(run_path) == "m.bngl"
+        # the original file is untouched
+        assert '"rm"' in src.read_text()
+    finally:
+        shutil.rmtree(temp_dir, ignore_errors=True)
+
+
+def test_bngl_network_free_methods_detects_rm():
+    from types import SimpleNamespace
+
+    from bionetgen.core.tools.bngsim_bridge import _bngl_network_free_methods
+
+    rm = SimpleNamespace(type="simulate", args={"method": '"rm"'})
+    nf = SimpleNamespace(type="simulate_nf", args={})
+    ode = SimpleNamespace(type="simulate_ode", args={})
+    assert _bngl_network_free_methods([rm]) == {"rm"}
+    assert _bngl_network_free_methods([rm, nf]) == {"rm", "nf"}
+    assert _bngl_network_free_methods([ode]) == set()
+
+
 def test_fake_helper_receives_single_normalized_ode_job(tmp_path, real_bng_backend_runtime):
     _run_real_hook(
         tmp_path,

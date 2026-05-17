@@ -126,6 +126,16 @@ def load_backend_job(payload: dict[str, Any]) -> BackendHelperJob:
     artifact_path = os.path.abspath(str(artifact_path))
 
     method = _normalize_method(payload.get("method"))
+    # BNG2.pl has no ``rm`` method, so ``method=>"rm"`` BNGL is rewritten to
+    # ``nf`` before BNG2.pl runs and the real method is carried out of band
+    # in BIONETGEN_BNGSIM_BACKEND_METHOD. Restore it here. The override
+    # applies only to network-free jobs (the simulate_nf hook always sends
+    # ``nf``); network jobs (ode/ssa/psa) in the same run are left alone.
+    method_override = os.environ.get(
+        "BIONETGEN_BNGSIM_BACKEND_METHOD", ""
+    ).strip().lower()
+    if method_override == "rm" and method == "nf":
+        method = "rm"
     artifact_format = _normalize_artifact_format(
         payload.get("artifact_format") or payload.get("input_format"),
         artifact_path,

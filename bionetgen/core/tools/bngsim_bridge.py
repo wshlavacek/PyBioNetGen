@@ -10,6 +10,8 @@ import inspect
 import logging
 import os
 import re
+import shutil
+import tempfile
 from dataclasses import dataclass
 
 from bionetgen.core.exc import BNGFormatError, BNGSimError
@@ -36,6 +38,15 @@ if BNGSIM_AVAILABLE:
         BNGSIM_HAS_NFSIM = bool(HAS_NFSIM)
     except (ImportError, AttributeError):
         BNGSIM_HAS_NFSIM = False
+
+BNGSIM_HAS_RULEMONKEY = False
+if BNGSIM_AVAILABLE:
+    try:
+        from bngsim import HAS_RULEMONKEY
+
+        BNGSIM_HAS_RULEMONKEY = bool(HAS_RULEMONKEY)
+    except (ImportError, AttributeError):
+        BNGSIM_HAS_RULEMONKEY = bool(getattr(bngsim, "RuleMonkeySession", None))
 
 BNGSIM_VERSION = None
 if BNGSIM_AVAILABLE:
@@ -549,6 +560,50 @@ def _partition_simulator_options(sim_options):
     return init_kwargs, run_kwargs
 
 
+def _run_rulemonkey_job(job, input_path, output_dir, sim_options, result_options):
+    """Execute a network-free RuleMonkey job from a BioNetGen XML artifact.
+
+    BNG2.pl has no ``rm`` method, so ``method=>"rm"`` BNGL is rewritten to
+    ``nf`` before BNG2.pl runs (see :func:`_rewrite_rm_method_to_nf`); the
+    ``simulate_nf`` backend hook fires and the helper restores ``rm`` from
+    ``BIONETGEN_BNGSIM_BACKEND_METHOD``. This adapter drives BNGsim's
+    ``RuleMonkeySession`` instead of ``NfsimSession``.
+    """
+    if not BNGSIM_HAS_RULEMONKEY:
+        raise BNGSimError(
+            "BNGsim RuleMonkey support is not available in this build."
+        )
+
+    seed = sim_options.pop("seed", None)
+    if seed is None:
+        seed = 42
+    gml = sim_options.pop("gml", None)
+    param_overrides = sim_options.pop("param_overrides", None)
+    # conc overrides/deltas come from setConcentration in multi-segment
+    # workflows; the simulate_nf hook does not forward them and
+    # RuleMonkeySession exposes no equivalent — warn if ever present.
+    for key in ("conc_overrides", "conc_deltas", "nf_params"):
+        if sim_options.pop(key, None):
+            logger.warning(
+                "RuleMonkey job: '%s' is not supported and was ignored", key
+            )
+
+    with bngsim.RuleMonkeySession(input_path, molecule_limit=gml) as rm_session:
+        if param_overrides:
+            for pname, pval in param_overrides.items():
+                try:
+                    rm_session.set_param(pname, float(pval))
+                except Exception as exc:
+                    logger.debug(
+                        "RuleMonkey: set_param(%s, %s) skipped: %s", pname, pval, exc
+                    )
+        rm_session.initialize(seed)
+        result = rm_session.simulate(job.t_span[0], job.t_span[1], job.n_points)
+
+    _write_bngsim_results(result, output_dir, job.output_root, **result_options)
+    return _make_bng_result(output_dir, method=job.method)
+
+
 def execute_bngsim_direct_job(job):
     """Execute a normalized direct BNGsim job and write BNG-compatible files.
 
@@ -568,6 +623,10 @@ def execute_bngsim_direct_job(job):
     result_options = dict(job.result_options or {})
 
     if job.input_format == FORMAT_BNG_XML:
+        if job.method == "rm":
+            return _run_rulemonkey_job(
+                job, input_path, output_dir, sim_options, result_options
+            )
         if not _is_nf_method(job.method):
             raise BNGSimError(
                 f"BioNetGen XML files are for network-free simulation, "
@@ -1334,6 +1393,43 @@ def _run_bngl_subprocess(
     return cli.result
 
 
+_RM_QUOTED_RE = re.compile(r'(method\s*=>\s*)(["\'])rm\2', re.IGNORECASE)
+_RM_BARE_RE = re.compile(r'(method\s*=>\s*)rm(?=[\s,)}\]])', re.IGNORECASE)
+
+
+def _bngl_network_free_methods(actions_items):
+    """Return the set of network-free methods (``nf``/``rm``) a BNGL uses."""
+    methods = set()
+    for action in actions_items or []:
+        method = _bngl_action_method_for_routing(action)
+        if method == "rm":
+            methods.add("rm")
+        elif _is_nf_method(method):
+            methods.add("nf")
+    return methods
+
+
+def _rewrite_rm_method_to_nf(bngl_path):
+    """Write a temp BNGL copy with ``method=>"rm"`` rewritten to ``"nf"``.
+
+    BNG2.pl has no ``rm`` method, so rewriting to ``nf`` makes its
+    ``simulate_nf`` path (and the BNGsim backend hook) fire; the helper
+    restores ``rm`` from ``BIONETGEN_BNGSIM_BACKEND_METHOD``. The copy keeps
+    the original basename so BNG2.pl's output-file naming is unchanged.
+
+    Returns ``(run_path, temp_dir)``; the caller removes ``temp_dir``.
+    """
+    with open(bngl_path, "r", errors="replace") as f:
+        text = f.read()
+    rewritten = _RM_QUOTED_RE.sub(r"\1\2nf\2", text)
+    rewritten = _RM_BARE_RE.sub(r'\1"nf"', rewritten)
+    temp_dir = tempfile.mkdtemp(prefix="bngsim_rm_")
+    run_path = os.path.join(temp_dir, os.path.basename(bngl_path))
+    with open(run_path, "w") as f:
+        f.write(rewritten)
+    return run_path, temp_dir
+
+
 def run_bngl_with_bngsim_backend_hook(
     bngl_path,
     output_dir,
@@ -1343,12 +1439,14 @@ def run_bngl_with_bngsim_backend_hook(
     timeout=None,
     app=None,
     bngsim_backend_helper=None,
+    backend_method=None,
 ):
     """Run BNGL through BNG2.pl with the BNGsim backend helper enabled.
 
     This Stage 4 path keeps BNG2.pl as the BNGL action driver. A hook-capable
     BNG2.pl may delegate atomic simulation jobs to the helper advertised in
-    the environment by :class:`BNGCLI`.
+    the environment by :class:`BNGCLI`. ``backend_method`` carries an
+    out-of-band method override (currently only ``rm``) to the helper.
     """
     from bionetgen.core.tools.cli import BNGCLI
 
@@ -1362,6 +1460,7 @@ def run_bngl_with_bngsim_backend_hook(
         app=app,
         bngsim_backend=True,
         bngsim_backend_helper=bngsim_backend_helper,
+        bngsim_backend_method=backend_method,
     )
     cli.run()
     if cli.result is None:
@@ -1421,14 +1520,48 @@ def run_bngl_with_bngsim(
             "on the backend-hook route."
         )
 
+    # ``rm`` (RuleMonkey) has no BNG2.pl method. Rewrite ``method=>"rm"`` to
+    # ``"nf"`` on a temp copy so the simulate_nf hook fires, and tell the
+    # helper the real method out of band.
+    run_path = bngl_path
+    backend_method = None
+    rm_temp_dir = None
+    nf_methods = _bngl_network_free_methods(_load_bngl_actions_for_routing(bngl_path))
+    if "rm" in nf_methods:
+        if not BNGSIM_HAS_RULEMONKEY:
+            logger.info(
+                "BNGL uses method=>\"rm\" but BNGsim RuleMonkey is unavailable; "
+                "using subprocess route."
+            )
+            return _run_bngl_subprocess(
+                bngl_path, output_dir, bngpath,
+                suppress=suppress, log_file=log_file, timeout=timeout, app=app,
+            )
+        if "nf" in nf_methods:
+            logger.info(
+                "BNGL mixes nf and rm methods, which the single-method backend "
+                "override cannot disambiguate; using subprocess route."
+            )
+            return _run_bngl_subprocess(
+                bngl_path, output_dir, bngpath,
+                suppress=suppress, log_file=log_file, timeout=timeout, app=app,
+            )
+        run_path, rm_temp_dir = _rewrite_rm_method_to_nf(bngl_path)
+        backend_method = "rm"
+
     logger.info("%s; using BNG2.pl-owned BNGsim backend hook.", decision.reason)
-    return run_bngl_with_bngsim_backend_hook(
-        bngl_path,
-        output_dir,
-        bngpath,
-        suppress=suppress,
-        log_file=log_file,
-        timeout=timeout,
-        app=app,
-        bngsim_backend_helper=sim_kwargs.get("bngsim_backend_helper"),
-    )
+    try:
+        return run_bngl_with_bngsim_backend_hook(
+            run_path,
+            output_dir,
+            bngpath,
+            suppress=suppress,
+            log_file=log_file,
+            timeout=timeout,
+            app=app,
+            bngsim_backend_helper=sim_kwargs.get("bngsim_backend_helper"),
+            backend_method=backend_method,
+        )
+    finally:
+        if rm_temp_dir and os.path.isdir(rm_temp_dir):
+            shutil.rmtree(rm_temp_dir, ignore_errors=True)

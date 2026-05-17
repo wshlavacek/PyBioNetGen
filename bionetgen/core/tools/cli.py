@@ -38,6 +38,7 @@ class BNGCLI:
         app=None,
         bngsim_backend=False,
         bngsim_backend_helper=None,
+        bngsim_backend_method=None,
     ):
         self.app = app
         self.logger = BNGLogger(app=self.app)
@@ -92,6 +93,7 @@ class BNGCLI:
         self.timeout = timeout
         self.bngsim_backend = bngsim_backend
         self.bngsim_backend_helper = bngsim_backend_helper
+        self.bngsim_backend_method = bngsim_backend_method
         self._old_bngsim_backend_env = {}
 
     def _install_bngsim_backend_env(self):
@@ -101,6 +103,7 @@ class BNGCLI:
             "BIONETGEN_BNGSIM_BACKEND_HELPER",
             "BIONETGEN_BNGSIM_BACKEND_HELPER_PYTHON",
             "BIONETGEN_BNGSIM_BACKEND_HELPER_MODULE",
+            "BIONETGEN_BNGSIM_BACKEND_METHOD",
         )
         self._old_bngsim_backend_env = {key: os.environ.get(key) for key in keys}
         if not self.bngsim_backend and self.bngsim_backend_helper is None:
@@ -116,6 +119,12 @@ class BNGCLI:
         os.environ["BIONETGEN_BNGSIM_BACKEND_HELPER_MODULE"] = (
             "bionetgen.core.tools.bngsim_backend_helper"
         )
+        # ``rm`` BNGL is rewritten to ``nf`` so BNG2.pl's simulate_nf hook
+        # fires; this carries the real method to the helper out of band.
+        if self.bngsim_backend_method:
+            os.environ["BIONETGEN_BNGSIM_BACKEND_METHOD"] = self.bngsim_backend_method
+        else:
+            os.environ.pop("BIONETGEN_BNGSIM_BACKEND_METHOD", None)
 
     def _restore_bngsim_backend_env(self):
         for key, value in self._old_bngsim_backend_env.items():
