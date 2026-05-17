@@ -38,6 +38,13 @@ NF_METHOD_ALIASES = {
     "nf_reject": "nf",
 }
 
+# Network-free methods (canonical names). BNG2.pl runs both ``nf`` and
+# rm-rewritten-to-``nf`` BNGL through ``sub simulate_nf``, which reports
+# timepoints as time elapsed since ``t_start`` (the output axis starts at
+# 0). The network methods (ode/ssa/psa) instead honor ``t_start`` via
+# ``run_network -i``. See ``direct_job_from_backend_job``.
+NETWORK_FREE_METHODS = frozenset({"nf", "rm"})
+
 ARTIFACT_FORMAT_ALIASES = {
     "net": FORMAT_NET,
     ".net": FORMAT_NET,
@@ -165,6 +172,17 @@ def direct_job_from_backend_job(job: BackendHelperJob) -> BngsimDirectJob:
     opts = dict(job.simulation_options)
     t_start = _as_number(opts.pop("t_start", None), 0.0)
     t_end = _as_number(opts.pop("t_end", None), 100.0)
+
+    # Network-free methods follow NFsim's output convention: BNG2.pl's
+    # ``sub simulate_nf`` reports timepoints as elapsed time since
+    # ``t_start`` (axis starts at 0) and warns the user it does so. Rebase
+    # the span to start at 0 so the BNGsim run matches BNG2.pl output --
+    # both the time column and any ``time()``-dependent rate laws, which
+    # would otherwise evaluate over the wrong interval. Network methods
+    # (ode/ssa/psa) keep ``t_start``; BNG2.pl honors it there.
+    if job.method in NETWORK_FREE_METHODS and t_start != 0.0:
+        t_end = t_end - t_start
+        t_start = 0.0
 
     n_points = _as_int(opts.pop("n_points", None))
     if n_points is None:

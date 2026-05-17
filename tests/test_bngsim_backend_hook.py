@@ -322,6 +322,87 @@ def test_helper_without_method_override_keeps_nf(monkeypatch):
     assert job.method == "nf"
 
 
+def test_helper_rebases_network_free_segment_time_to_zero():
+    """nf segments with t_start>0 are rebased to start at 0.
+
+    BNG2.pl's ``sub simulate_nf`` reports NFsim timepoints as elapsed time
+    since ``t_start`` (the output axis starts at 0). A multi-segment nf
+    protocol whose later segment carries ``t_start=>10800`` must run over
+    ``(0, duration)`` so the BNGsim output matches BNG2.pl -- both the
+    time column and any ``time()``-dependent rate laws.
+    """
+    job = load_backend_job({
+        "artifact_path": "/tmp/model.xml",
+        "artifact_format": "bng-xml",
+        "method": "nf",
+        "simulation_options": {
+            "t_start": "10800",
+            "t_end": "12600",
+            "n_steps": "300",
+        },
+        "output_prefix": "/tmp/out/model",
+    })
+    direct = direct_job_from_backend_job(job)
+
+    assert direct.method == "nf"
+    assert direct.t_span == (0.0, 1800.0)
+    assert direct.n_points == 301
+
+
+def test_helper_rebases_rm_segment_time_to_zero(monkeypatch):
+    """rm is network-free too: BNG2.pl runs rm-rewritten-to-nf BNGL
+    through ``simulate_nf``, so rm segments rebase the same way as nf."""
+    monkeypatch.setenv("BIONETGEN_BNGSIM_BACKEND_METHOD", "rm")
+    job = load_backend_job({
+        "artifact_path": "/tmp/model.xml",
+        "artifact_format": "bng-xml",
+        "method": "nf",
+        "simulation_options": {
+            "t_start": "100",
+            "t_end": "250",
+            "n_steps": "150",
+        },
+        "output_prefix": "/tmp/out/model",
+    })
+    direct = direct_job_from_backend_job(job)
+
+    assert direct.method == "rm"
+    assert direct.t_span == (0.0, 150.0)
+
+
+def test_helper_keeps_t_start_for_network_methods():
+    """ode/ssa/psa honor t_start (BNG2.pl passes ``run_network -i``)."""
+    job = load_backend_job({
+        "artifact_path": "/tmp/model.net",
+        "artifact_format": "net",
+        "method": "ssa",
+        "simulation_options": {
+            "t_start": "10800",
+            "t_end": "12600",
+            "n_steps": "300",
+        },
+        "output_prefix": "/tmp/out/model",
+    })
+    direct = direct_job_from_backend_job(job)
+
+    assert direct.method == "ssa"
+    assert direct.t_span == (10800.0, 12600.0)
+
+
+def test_helper_network_free_t_start_zero_is_noop():
+    """A network-free segment already at t_start=0 is left unchanged."""
+    job = load_backend_job({
+        "artifact_path": "/tmp/model.xml",
+        "artifact_format": "bng-xml",
+        "method": "nf",
+        "simulation_options": {"t_start": "0", "t_end": "1800", "n_steps": "300"},
+        "output_prefix": "/tmp/out/model",
+    })
+    direct = direct_job_from_backend_job(job)
+
+    assert direct.t_span == (0.0, 1800.0)
+
+
 def test_rewrite_rm_method_to_nf_preserves_basename(tmp_path):
     from bionetgen.core.tools.bngsim_bridge import _rewrite_rm_method_to_nf
 
