@@ -18,3 +18,5 @@ dev/
 test_sbml.xml
 .coverage
 htmlcov/
+.claude/
+uv.lock
