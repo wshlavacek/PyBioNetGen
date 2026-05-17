@@ -55,6 +55,27 @@ For :code:`.xml` files, the format is auto-detected by inspecting the file conte
 If auto-detection is ambiguous, use :code:`--format` to specify explicitly. When both :code:`--format` and
 auto-detection are available, they are cross-checked and a conflict produces an error.
 
+.. note::
+
+   **The** :code:`nf` **method handles** :code:`t_start` **differently from the network methods.**
+   The network methods (:code:`ode`, :code:`ssa`, :code:`psa`) honor a non-zero :code:`t_start`:
+   their output time axis — and any :code:`time()`-dependent rate law — starts at :code:`t_start`.
+   The network-free method :code:`nf` does *not*. NFsim has no concept of an absolute start time;
+   it reports time *elapsed since* :code:`t_start`, so an :code:`nf` segment's time axis always
+   starts at 0.
+
+   This has two consequences. In a multi-segment protocol, an :code:`nf` segment that follows an
+   earlier one (e.g. :code:`t_start=>100, t_end=>200`) is labeled :code:`0..100` rather than
+   :code:`100..200`, so the segments do not concatenate into a continuous timeline the way the
+   network methods do. And because :code:`time()` evaluates over :code:`0..(t_end - t_start)`
+   under :code:`nf` instead of :code:`t_start..t_end`, a model whose rates depend on :code:`time()`
+   can produce different trajectories under :code:`nf` than under :code:`ode`/:code:`ssa`/:code:`psa`.
+
+   This is longstanding BNG/NFsim behavior — BNG2.pl emits a warning about it — and PyBioNetGen
+   reproduces it consistently across its BNGsim and subprocess backends rather than silently
+   diverging between them. It is tracked upstream as `RuleWorld/nfsim#78
+   <https://github.com/RuleWorld/nfsim/issues/78>`_.
+
 Plot
 ====
 

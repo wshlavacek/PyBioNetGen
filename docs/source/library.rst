@@ -50,6 +50,16 @@ The :code:`simulator` parameter controls which backend is used:
 For :code:`.xml` files, :code:`format` disambiguates between SBML and BioNetGen XML.
 If omitted, the format is auto-detected from file content.
 
+.. note::
+
+   :code:`t_span` is interpreted differently by the network-free method. For
+   :code:`method='ode'/'ssa'/'psa'` the output time axis runs over the full
+   :code:`t_span` (start to end). For :code:`method='nf'`, NFsim reports time
+   *elapsed since* :code:`t_start`, so the axis runs :code:`0..(t_end - t_start)`
+   regardless of :code:`t_start`; this also shifts any :code:`time()`-dependent
+   rate law. See the CLI documentation and `RuleWorld/nfsim#78
+   <https://github.com/RuleWorld/nfsim/issues/78>`_ for details.
+
 Examples
 --------
 
