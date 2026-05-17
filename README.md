@@ -120,6 +120,8 @@ runtime (`BNG2.pl`) into a temp cache when it is not already available through
 
 The default dev checks therefore run the BNG2.pl-, BNGsim-, and atomizer-backed
 tests. The full model sweep remains opt-in via `BNG_RUN_MODEL_SWEEPS=1`.
+Run `python scripts/bngl_models_sweep.py --simulator both` to sweep the checked-in
+BNGL corpus through both the subprocess and in-process routes.
 
 Editable installs no longer trigger BioNetGen bundle downloads. Local
 development stays source-tree based by default, and vendoring the platform
