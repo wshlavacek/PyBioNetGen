@@ -164,6 +164,10 @@ def direct_job_from_backend_job(job: BackendHelperJob) -> BngsimDirectJob:
     result_options = {}
     if "print_functions" in opts:
         result_options["print_functions"] = bool(_as_int(opts.pop("print_functions"), 0))
+    # ``continue=>1`` segments append to the prior segment's output files
+    # (skipping the duplicated t_start row) instead of overwriting them.
+    if "continue" in opts:
+        result_options["append"] = bool(_as_int(opts.pop("continue"), 0))
 
     bngsim_options = {}
     for key in (

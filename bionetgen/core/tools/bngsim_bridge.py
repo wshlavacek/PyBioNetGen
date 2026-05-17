@@ -502,6 +502,53 @@ def _load_direct_bngsim_model(input_path, fmt):
     raise BNGSimError(f"Unsupported format for BNGsim: '{fmt}'")
 
 
+# Options the BNG2.pl backend hook / direct job may carry, split by which
+# BNGsim entry point consumes them. ``bngsim.Simulator.__init__`` takes
+# model-construction options; ``bngsim.Simulator.run`` takes per-run
+# integration options. Anything else (e.g. ``print_CDAT``, an output-format
+# flag BNG2.pl always emits) is not a BNGsim argument and is dropped here.
+_SIMULATOR_INIT_OPTIONS = frozenset({
+    "poplevel", "gml", "connectivity", "nfsim_v1143_compat",
+    "block_same_complex_binding", "traversal_limit", "jacobian",
+    "codegen", "net_path", "strict_ssa",
+})
+_SIMULATOR_RUN_OPTIONS = frozenset({
+    "seed", "rtol", "atol", "max_steps", "sample_times",
+})
+
+
+def _partition_simulator_options(sim_options):
+    """Split direct-job options into Simulator __init__ vs run kwargs.
+
+    Returns ``(init_kwargs, run_kwargs)``. Options BNGsim's network
+    Simulator does not accept are dropped: ``print_CDAT`` is an output
+    flag (the .cdat is always written for network models), and ``sparse``
+    / ``steady_state`` are not part of the BNGsim Simulator API — a
+    ``steady_state`` request is surfaced as a warning since it would
+    otherwise silently run as a plain time course.
+    """
+    init_kwargs = {}
+    run_kwargs = {}
+    dropped = []
+    for key, value in sim_options.items():
+        if value is None:
+            continue
+        if key in _SIMULATOR_INIT_OPTIONS:
+            init_kwargs[key] = value
+        elif key in _SIMULATOR_RUN_OPTIONS:
+            run_kwargs[key] = value
+        else:
+            dropped.append(key)
+    if dropped:
+        logger.debug("Direct BNGsim job: ignoring non-Simulator options %s", sorted(dropped))
+    if sim_options.get("steady_state"):
+        logger.warning(
+            "Direct BNGsim route does not support steady_state; "
+            "running a plain time course instead."
+        )
+    return init_kwargs, run_kwargs
+
+
 def execute_bngsim_direct_job(job):
     """Execute a normalized direct BNGsim job and write BNG-compatible files.
 
@@ -572,8 +619,9 @@ def execute_bngsim_direct_job(job):
         )
 
     model = _load_direct_bngsim_model(input_path, job.input_format)
-    sim = bngsim.Simulator(model, method=job.method, **sim_options)
-    result = sim.run(t_span=job.t_span, n_points=job.n_points)
+    init_kwargs, run_kwargs = _partition_simulator_options(sim_options)
+    sim = bngsim.Simulator(model, method=job.method, **init_kwargs)
+    result = sim.run(t_span=job.t_span, n_points=job.n_points, **run_kwargs)
 
     _write_bngsim_results(result, output_dir, job.output_root, **result_options)
     return _make_bng_result(output_dir, method=job.method)
