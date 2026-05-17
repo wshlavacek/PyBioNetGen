@@ -50,6 +50,15 @@ Buckets per model:
                  (e.g. Model.from_net rejects population species).
                  We classify by error string.
   ERROR        — actual unexpected crash worth filing
+
+Overlay merge (--overlay-subprocess / --overlay-bngsim):
+  A stochastic model's PASS/DIFF verdict at a low seed count is noisy —
+  the per-seed std estimate that feeds the ensemble test is itself
+  unreliable at N=10. To get a dependable verdict, such a model is
+  re-run at a higher seed count into a separate "overlay" sweep, and the
+  overlay's results for that model fully replace the base results here
+  so the model is judged at the escalated seed count. Pass an overlay
+  --out pair per escalation re-run; ``parity_run.py`` automates this.
 """
 import argparse
 import json
@@ -125,6 +134,27 @@ KNOWN_DETERMINISTIC_ARTIFACTS = {
     # NOTE: Post / erlang / residence_time were here (exponential-decay-
     # tail relative-error blow-up) but are now handled generally by the
     # combined abs+rel criterion — no per-model exception needed.
+    #
+    # Staircase function sampled exactly on a discontinuity. The
+    # APdat_*() functions are step lookups, if(t<=0,..,if(t<=230,V230,
+    # if(t<=240,V240,..))), with a breakpoint exactly at t=230 — an
+    # output grid point. At that sample BNG2.pl's run_network evaluates
+    # the function with an internal time <= 230 and BNGsim with a time
+    # ~1 ULP > 230, so the two pick adjacent staircase buckets and the
+    # column jumps one step (~24.5) at that single row. The .cdat (all
+    # species) and every non-staircase column agree to 12 sig figs and
+    # the .net files are byte-identical — same if(t<N) knife-edge family
+    # as the resolved rel=1.0 cluster, just a staircase the 1-sample
+    # shift mask can't bridge (the neighbouring buckets also differ).
+    # Verified by investigation 2026-05-17. Observed max_abs 24.55.
+    "ATG_model_v16": {
+        "max_abs_bound": 100.0,
+        "reason": "discontinuous staircase function (APdat_*) sampled "
+                  "exactly on its t=230 breakpoint; a ~1-ULP output-time "
+                  "difference flips one bucket on a single row. Species "
+                  "and all non-staircase columns agree to 12 sig figs. "
+                  "Verified 2026-05-17.",
+    },
 }
 
 # Comparable extensions for both regimes.
@@ -663,25 +693,56 @@ def main():
     ap.add_argument("--bngsim", required=True, help="bngsim sweep --out")
     ap.add_argument("--out", default="-", help="Markdown report path")
     ap.add_argument("--json-out", default="", help="Optional JSON dump")
+    ap.add_argument("--overlay-subprocess", action="append", default=[],
+                    help="Additional subprocess sweep --out whose models "
+                         "override the base run (e.g. a high-seed escalation "
+                         "re-run). Pair 1:1 with --overlay-bngsim, in order.")
+    ap.add_argument("--overlay-bngsim", action="append", default=[],
+                    help="Additional bngsim sweep --out; see --overlay-subprocess.")
     args = ap.parse_args()
+
+    if len(args.overlay_subprocess) != len(args.overlay_bngsim):
+        ap.error("--overlay-subprocess and --overlay-bngsim must be given "
+                 "the same number of times (they pair 1:1)")
 
     sub_summary = json.loads(Path(args.subprocess, "_summary.json").read_text())
     bng_summary = json.loads(Path(args.bngsim, "_summary.json").read_text())
 
+    # Overlay merge: a stochastic model flagged DIFF at the base seed count
+    # is re-run at a higher seed count into an overlay sweep; the overlay's
+    # results for that model fully replace the base results so the model is
+    # judged at the escalated seed count. ``escalated`` records the seed
+    # count each overridden model was re-judged at, for the report.
+    sub_results = list(sub_summary["results"])
+    bng_results = list(bng_summary["results"])
+    escalated = {}  # bngl -> n_seeds it was re-judged at
+    for ov_sub, ov_bng in zip(args.overlay_subprocess, args.overlay_bngsim):
+        ov_sub_summary = json.loads(Path(ov_sub, "_summary.json").read_text())
+        ov_bng_summary = json.loads(Path(ov_bng, "_summary.json").read_text())
+        ov_models = ({r["bngl"] for r in ov_sub_summary["results"]} |
+                     {r["bngl"] for r in ov_bng_summary["results"]})
+        sub_results = ([r for r in sub_results if r["bngl"] not in ov_models]
+                       + ov_sub_summary["results"])
+        bng_results = ([r for r in bng_results if r["bngl"] not in ov_models]
+                       + ov_bng_summary["results"])
+        ov_seeds = ov_bng_summary.get("n_seeds")
+        for m in ov_models:
+            escalated[m] = ov_seeds
+
     # Group results by (bngl, regime). For deterministic, one row per side.
     # For stochastic, one row per (bngl, seed) per side.
-    def index(summary):
+    def index(results):
         det = {}            # bngl -> result
         stoch = defaultdict(list)  # bngl -> list of result (per seed)
-        for r in summary["results"]:
+        for r in results:
             if r.get("regime") == "deterministic":
                 det[r["bngl"]] = r
             else:
                 stoch[r["bngl"]].append(r)
         return det, stoch
 
-    sub_det, sub_stoch = index(sub_summary)
-    bng_det, bng_stoch = index(bng_summary)
+    sub_det, sub_stoch = index(sub_results)
+    bng_det, bng_stoch = index(bng_results)
 
     all_models = sorted(set(sub_det) | set(sub_stoch) |
                         set(bng_det) | set(bng_stoch))
@@ -825,6 +886,11 @@ def main():
                 per_model[bngl] = {"bucket": "DIFF", "regime": "stochastic",
                                    "details": details}
 
+    # Tag models re-judged at an escalated seed count (overlay merge).
+    for bngl, seeds in escalated.items():
+        if bngl in per_model:
+            per_model[bngl]["escalated_seeds"] = seeds
+
     # Build the markdown report.
     lines = []
     lines.append("# BNGsim parity sweep — diff report")
@@ -836,6 +902,12 @@ def main():
     lines.append(f"- tolerance: deterministic rel={REL_TOL}, time={TIME_TOL}; "
                  f"stochastic K={ENSEMBLE_K} sigma over N={sub_summary.get('n_seeds')}, "
                  f"pass>={ENSEMBLE_PASS_FRAC}")
+    if escalated:
+        seed_counts = sorted({s for s in escalated.values() if s})
+        lines.append(
+            f"- escalated: {len(escalated)} stochastic model(s) flagged DIFF "
+            f"at the base seed count were re-run and re-judged at "
+            f"{', '.join(str(s) for s in seed_counts)} seeds (overlay merge)")
     lines.append("")
     lines.append("## Headline")
     lines.append("")
@@ -845,6 +917,21 @@ def main():
         lines.append(f"| {b} | {len(buckets[b])} |")
     lines.append(f"| **TOTAL** | **{len(all_models)}** |")
     lines.append("")
+    if escalated:
+        lines.append("## Escalated stochastic models")
+        lines.append("")
+        lines.append("Stochastic models re-judged at a higher seed count to "
+                     "separate genuine divergence from small-sample noise. "
+                     "A DIFF here survived the escalation and is real; any "
+                     "not listed as DIFF were small-sample noise.")
+        lines.append("")
+        lines.append("| model | escalated seeds | final bucket |")
+        lines.append("|---|---:|---|")
+        for bngl in sorted(escalated):
+            info = per_model.get(bngl, {})
+            lines.append(f"| `{Path(bngl).name}` | {escalated[bngl]} | "
+                         f"{info.get('bucket', '?')} |")
+        lines.append("")
     for b in ("DIFF", "KNOWN_ARTIFACT", "NOT_SUPPORTED", "ERROR"):
         if not buckets[b]:
             continue
@@ -855,6 +942,9 @@ def main():
             lines.append(f"### `{bngl}`")
             lines.append("")
             lines.append(f"- regime: {info.get('regime')}")
+            if "escalated_seeds" in info:
+                lines.append(f"- escalated: re-judged at "
+                             f"{info['escalated_seeds']} seeds")
             if "reason" in info:
                 lines.append(f"- reason: {info['reason']}")
             for k in ("sub_status", "bng_status", "sub_error", "bng_error",
@@ -894,6 +984,7 @@ def main():
         Path(args.json_out).write_text(json.dumps({
             "buckets": {b: sorted(v) for b, v in buckets.items()},
             "per_model": per_model,
+            "escalated": escalated,
         }, indent=2, default=str))
         print(f"JSON written to {args.json_out}")
 
