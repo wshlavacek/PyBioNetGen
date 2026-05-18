@@ -80,17 +80,39 @@ def parse_simulate_methods(text):
     return out
 
 
+def parse_workflow_methods(text):
+    """Return the method of each active parameter_scan/bifurcate action.
+
+    parameter_scan/bifurcate run a per-point simulation whose method is
+    given by the action's own ``method=>`` arg (default ode).
+    """
+    text = re.sub(r"#.*", "", text)
+    out = []
+    for blob in re.findall(
+        r"(?:parameter_scan|bifurcate)\s*\(\s*\{([^}]*)\}", text, re.DOTALL,
+    ):
+        method_m = re.search(r"method\s*=>\s*['\"]?(\w+)['\"]?", blob)
+        out.append((method_m.group(1) if method_m else "ode").lower())
+    return out
+
+
 def is_stochastic(text):
-    for _, method in parse_simulate_methods(text):
-        if method not in DETERMINISTIC_METHODS:
-            return True
-    return False
+    methods = [m for _, m in parse_simulate_methods(text)]
+    methods += parse_workflow_methods(text)
+    return any(m not in DETERMINISTIC_METHODS for m in methods)
 
 
 def patch_bngl(text, seed, tend_override=None):
-    """Inject seed=>K into every active simulate action; optional t_end override."""
+    """Inject seed=>K into every active simulate/scan action; optional t_end override.
+
+    parameter_scan/bifurcate get the seed too — BNG2.pl forwards the
+    action's params (including ``seed``) to each per-point simulation, so
+    an ``ssa`` scan needs the seed on the scan action, not a ``simulate``.
+    """
     out_lines = []
-    seed_inject = re.compile(r"(simulate(?:_\w+)?\s*\(\s*\{)")
+    seed_inject = re.compile(
+        r"((?:simulate(?:_\w+)?|parameter_scan|bifurcate)\s*\(\s*\{)"
+    )
     tend_re = re.compile(r"(t_end\s*=>\s*)([0-9eE.+\-*/() ]+)")
     for line in text.splitlines(keepends=True):
         stripped = line.lstrip()

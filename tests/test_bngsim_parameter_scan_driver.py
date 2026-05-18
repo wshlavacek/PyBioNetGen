@@ -15,6 +15,7 @@ from bionetgen.core.tools.bngsim_parameter_scan import (
     detect_inprocess_scan,
     scan_values,
     _write_scan_file,
+    _write_bifurcation_file,
 )
 
 
@@ -25,6 +26,18 @@ class _Action:
         self.type = action_type
         self.name = action_type
         self.args = action_args or {}
+
+
+def _make_request(**overrides):
+    """Build a ScanRequest with sensible defaults for the spacing tests."""
+    fields = dict(
+        action="parameter_scan", parameter="k", par_min=0.0, par_max=100.0,
+        n_scan_pts=5, log_scale=False, method="ode", t_start=0.0, t_end=1.0,
+        n_steps=1, suffix=None, prefix=None, reset_conc=True, seed=None,
+        atol=None, rtol=None, print_cdat=True,
+    )
+    fields.update(overrides)
+    return ScanRequest(**fields)
 
 
 def _scan_action(**overrides):
@@ -50,28 +63,41 @@ def _valid_sequence(**scan_overrides):
     ]
 
 
+def _bifurcate_action(**overrides):
+    args = {
+        "parameter": '"k1"',
+        "par_min": "1.0",
+        "par_max": "100.0",
+        "n_scan_pts": "10",
+        "log_scale": "1",
+        "method": '"ode"',
+        "t_start": "0",
+        "t_end": "100",
+        "n_steps": "10",
+    }
+    args.update(overrides)
+    return _Action("bifurcate", args)
+
+
+def _valid_bifurcate_sequence(**overrides):
+    return [
+        _Action("generate_network", {"overwrite": "1"}),
+        _bifurcate_action(**overrides),
+    ]
+
+
 # ─── scan_values spacing ───────────────────────────────────────────
 
 
 def test_scan_values_linear_spacing_inclusive_endpoints():
-    req = ScanRequest(
-        parameter="k", par_min=0.0, par_max=100.0, n_scan_pts=5,
-        log_scale=False, t_start=0.0, t_end=1.0, n_steps=1,
-        suffix=None, prefix=None, reset_conc=True, atol=None, rtol=None,
-        print_cdat=True,
-    )
-    vals = scan_values(req)
+    vals = scan_values(_make_request(par_min=0.0, par_max=100.0, n_scan_pts=5))
     assert vals == pytest.approx([0.0, 25.0, 50.0, 75.0, 100.0])
 
 
 def test_scan_values_log_spacing_is_geometric_and_inclusive():
-    req = ScanRequest(
-        parameter="k", par_min=1e-3, par_max=1e3, n_scan_pts=7,
-        log_scale=True, t_start=0.0, t_end=1.0, n_steps=1,
-        suffix=None, prefix=None, reset_conc=True, atol=None, rtol=None,
-        print_cdat=True,
-    )
-    vals = scan_values(req)
+    vals = scan_values(_make_request(
+        par_min=1e-3, par_max=1e3, n_scan_pts=7, log_scale=True,
+    ))
     assert vals[0] == pytest.approx(1e-3)
     assert vals[-1] == pytest.approx(1e3)
     # geometric: a constant ratio between successive points
@@ -80,13 +106,19 @@ def test_scan_values_log_spacing_is_geometric_and_inclusive():
 
 
 def test_scan_values_single_point():
-    req = ScanRequest(
-        parameter="k", par_min=5.0, par_max=5.0, n_scan_pts=1,
-        log_scale=False, t_start=0.0, t_end=1.0, n_steps=1,
-        suffix=None, prefix=None, reset_conc=True, atol=None, rtol=None,
-        print_cdat=True,
-    )
-    assert scan_values(req) == [5.0]
+    assert scan_values(
+        _make_request(par_min=5.0, par_max=5.0, n_scan_pts=1)
+    ) == [5.0]
+
+
+def test_scan_values_backward_pass_is_reversed_forward():
+    # bifurcate's backward pass swaps par_min/par_max -> its value list is
+    # exactly the forward list reversed (log or linear).
+    fwd = scan_values(_make_request(par_min=1.0, par_max=1e2, n_scan_pts=10,
+                                    log_scale=True))
+    bwd = scan_values(_make_request(par_min=1e2, par_max=1.0, n_scan_pts=10,
+                                    log_scale=True))
+    assert bwd == pytest.approx(list(reversed(fwd)))
 
 
 # ─── detect_inprocess_scan: accept ─────────────────────────────────
@@ -127,6 +159,53 @@ def test_detect_parses_optional_options():
     assert req.suffix == "scn" and req.prefix == "pfx"
     assert req.atol == 1e-9 and req.rtol == 1e-7
     assert req.print_cdat is False
+    assert req.action == "parameter_scan" and req.method == "ode"
+
+
+def test_detect_accepts_ssa_method_and_seed():
+    req = detect_inprocess_scan(_valid_sequence(method='"ssa"', seed="17"))
+    assert req is not None
+    assert req.method == "ssa"
+    assert req.seed == 17
+    # absent seed -> None (the driver then uses BNGsim's default)
+    assert detect_inprocess_scan(_valid_sequence(method='"ssa"')).seed is None
+
+
+def test_detect_accepts_bifurcate():
+    req = detect_inprocess_scan(_valid_bifurcate_sequence())
+    assert req is not None
+    assert req.action == "bifurcate"
+    # bifurcate always carries the prior point's end state
+    assert req.reset_conc is False
+
+
+def test_detect_bifurcate_ignores_reset_conc_arg():
+    # BNG2.pl forces reset_conc=>0 for bifurcate regardless of any value
+    # the user wrote.
+    req = detect_inprocess_scan(_valid_bifurcate_sequence(reset_conc="1"))
+    assert req is not None and req.reset_conc is False
+
+
+def test_detect_accepts_ssa_bifurcate():
+    req = detect_inprocess_scan(_valid_bifurcate_sequence(method='"ssa"'))
+    assert req is not None and req.action == "bifurcate" and req.method == "ssa"
+
+
+def test_detect_declines_bifurcate_with_steady_state():
+    # ExampleModel4_v6's bifurcate carries steady_state=>1 (bngsim #47).
+    assert detect_inprocess_scan(
+        _valid_bifurcate_sequence(steady_state="1")
+    ) is None
+
+
+def test_detect_declines_scan_plus_bifurcate():
+    # exactly one workflow action is allowed
+    seq = [
+        _Action("generate_network", {"overwrite": "1"}),
+        _scan_action(),
+        _bifurcate_action(),
+    ]
+    assert detect_inprocess_scan(seq) is None
 
 
 # ─── detect_inprocess_scan: decline / fallback ─────────────────────
@@ -137,8 +216,8 @@ def test_detect_declines_empty_actions():
     assert detect_inprocess_scan([]) is None
 
 
-def test_detect_declines_non_ode_method():
-    for method in ('"ssa"', '"nf"', '"pla"', '"psa"'):
+def test_detect_declines_unsupported_method():
+    for method in ('"nf"', '"pla"', '"psa"'):
         assert detect_inprocess_scan(_valid_sequence(method=method)) is None
 
 
@@ -160,8 +239,15 @@ def test_detect_declines_steady_state():
     assert detect_inprocess_scan(_valid_sequence(steady_state="0")) is not None
 
 
-def test_detect_declines_reset_conc_zero():
-    assert detect_inprocess_scan(_valid_sequence(reset_conc="0")) is None
+def test_detect_accepts_reset_conc_zero():
+    # Phase 2: reset_conc=>0 (carry the prior point's end state) is now
+    # supported for parameter_scan.
+    req = detect_inprocess_scan(_valid_sequence(reset_conc="0"))
+    assert req is not None and req.reset_conc is False
+    # reset_conc=>1 stays the default-equivalent.
+    assert detect_inprocess_scan(
+        _valid_sequence(reset_conc="1")
+    ).reset_conc is True
 
 
 def test_detect_declines_print_functions():
@@ -287,6 +373,23 @@ def test_write_scan_file_roundtrips_numerically(tmp_path):
         assert parsed_row[1:] == pytest.approx(obs)
 
 
+def test_write_bifurcation_file_matches_bng2_format(tmp_path):
+    bif_path = tmp_path / "m_bifurcation_A.scan"
+    # forward column: ascending parameter axis; backward column the same
+    # axis scanned in reverse (so backward[N-1-i] aligns with forward[i]).
+    fwd_col = [(1.0, 10.0), (2.0, 20.0), (3.0, 30.0)]
+    bwd_col = [(3.0, 33.0), (2.0, 22.0), (1.0, 11.0)]
+    _write_bifurcation_file(str(bif_path), "Kxy", "A", fwd_col, bwd_col)
+    lines = bif_path.read_text().splitlines()
+    assert lines[0] == "# " + f"{'Kxy':>14}" + " " + f"{'A_fwd':>16}" \
+        + " " + f"{'A_bwd':>16}"
+    # row i pairs forward[i] with backward[N-1-i]
+    assert lines[1] == f"{1.0:16.8e} {10.0:16.8e} {11.0:16.8e}"
+    assert lines[2] == f"{2.0:16.8e} {20.0:16.8e} {22.0:16.8e}"
+    assert lines[3] == f"{3.0:16.8e} {30.0:16.8e} {33.0:16.8e}"
+    assert len(lines) == 4
+
+
 # ─── end-to-end (BNGsim + BNG2.pl required) ────────────────────────
 
 # A tiny model whose scanned parameter (A0_scale) feeds an initial
@@ -392,3 +495,117 @@ def test_unsupported_scan_option_falls_back_and_still_runs(tmp_path):
     assert fb.shape == ref.shape == (3, 3)
     denom = (abs(fb) + abs(ref)).clip(min=1e-12)
     assert (abs(fb - ref) / denom).max() < 1e-4
+
+
+# ─── Phase 2: ssa parameter_scan ───────────────────────────────────
+
+# An ssa scan of A0_scale (feeds the A() initial count via A0 =
+# A0_scale*100): the log-spaced scan points yield fractional A0 values,
+# which the driver must round to integers for SSA (bngsim issue #43).
+_SSA_SCAN_ACTION = (
+    'parameter_scan({parameter=>"A0_scale",par_min=>1,par_max=>100,'
+    'n_scan_pts=>5,log_scale=>1,method=>"ssa",t_start=>0,t_end=>20,'
+    'n_steps=>10,seed=>1234})'
+)
+
+
+@pytest.mark.skipif(not BNGSIM_AVAILABLE, reason="BNGsim not installed")
+def test_ssa_scan_fast_path_is_taken_and_reproducible(tmp_path, caplog):
+    import bionetgen
+
+    model = tmp_path / "tinyssa.bngl"
+    model.write_text(_TINY_SCAN_MODEL % _SSA_SCAN_ACTION)
+
+    out_a = tmp_path / "a"
+    out_b = tmp_path / "b"
+    with caplog.at_level(logging.INFO, logger="bionetgen.bngsim_bridge"):
+        bionetgen.run(str(model), out=str(out_a))
+    bionetgen.run(str(model), out=str(out_b))
+
+    # the in-process fast path ran the ssa scan
+    assert any("fast path" in rec.message and "ssa" in rec.message
+               for rec in caplog.records)
+
+    scan_name = "tinyssa_A0_scale.scan"
+    a = _load_scan(out_a / scan_name)
+    b = _load_scan(out_b / scan_name)
+    assert a.shape == b.shape == (5, 3)
+    # same seed -> byte-reproducible across runs
+    assert (a == b).all()
+    # SSA observables are molecule counts: integer-valued (the parameter
+    # column may be fractional from the log spacing).
+    counts = a[:, 1:]
+    assert (counts == counts.round()).all()
+
+    # per-point .gdat artifacts exist
+    work = out_a / "tinyssa_A0_scale"
+    gdats = [p for p in work.iterdir() if p.suffix == ".gdat"]
+    assert len(gdats) == 5
+
+
+# ─── Phase 2: bifurcate ────────────────────────────────────────────
+
+# A reversible A<->B model that does not fully equilibrate within
+# t_end, so reset_conc=>0 carry-over genuinely matters (forward and
+# backward passes differ). bifurcate scans the rate constant k1.
+_BIFURCATE_MODEL = """\
+begin model
+begin parameters
+  k1 1.0
+  ktot 100
+end parameters
+begin molecule types
+  A()
+  B()
+end molecule types
+begin seed species
+  A() ktot
+  B() 0
+end seed species
+begin observables
+  Molecules A_tot A()
+  Molecules B_tot B()
+end observables
+begin reaction rules
+  A() <-> B() k1, k1
+end reaction rules
+end model
+
+generate_network({overwrite=>1})
+bifurcate({parameter=>"k1",par_min=>0.1,par_max=>10,n_scan_pts=>8,\
+log_scale=>1,method=>"ode",t_start=>0,t_end=>5,n_steps=>5})
+"""
+
+
+@pytest.mark.skipif(not BNGSIM_AVAILABLE, reason="BNGsim not installed")
+def test_bifurcate_fast_path_runs_and_matches_subprocess(tmp_path, caplog):
+    import bionetgen
+
+    model = tmp_path / "bif.bngl"
+    model.write_text(_BIFURCATE_MODEL)
+
+    fast_out = tmp_path / "fast"
+    ref_out = tmp_path / "ref"
+    with caplog.at_level(logging.INFO, logger="bionetgen.bngsim_bridge"):
+        bionetgen.run(str(model), out=str(fast_out))
+    bionetgen.run(str(model), out=str(ref_out), simulator="subprocess")
+
+    assert any("bifurcate fast path" in rec.message for rec in caplog.records)
+
+    # one _bifurcation_<obs>.scan per observable, matching subprocess
+    for obs in ("A_tot", "B_tot"):
+        name = f"bif_bifurcation_{obs}.scan"
+        fast = _load_scan(fast_out / name)
+        ref = _load_scan(ref_out / name)
+        assert fast.shape == ref.shape == (8, 3)
+        denom = (abs(fast) + abs(ref)).clip(min=1e-12)
+        assert (abs(fast - ref) / denom).max() < 1e-4
+
+    # per-point .gdat artifacts under the forward/backward workdirs
+    for sub in ("bif_forward", "bif_backward"):
+        gdats = [p for p in (fast_out / sub).iterdir() if p.suffix == ".gdat"]
+        assert len(gdats) == 8
+
+    # the intermediate forward/backward .scan files are not left behind
+    assert not (fast_out / "bif_forward.scan").exists()
+    assert not (fast_out / "bif_backward.scan").exists()

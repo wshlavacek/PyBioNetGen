@@ -1546,14 +1546,15 @@ def run_bngl_with_bngsim(
             "on the backend-hook route."
         )
 
-    # Fast path: a generate_network + single ode parameter_scan can be
-    # driven in-process by BNGsim (build the model once, vary the scanned
-    # parameter, re-integrate), avoiding the N process/socket/JSON boundary
-    # crossings the backend-hook route pays per scan point. This is a pure
-    # optimization — any decline or failure falls back to the backend hook.
+    # Fast path: a generate_network + single parameter_scan/bifurcate can
+    # be driven in-process by BNGsim (build the model once, vary the
+    # scanned parameter, re-integrate), avoiding the N process/socket/JSON
+    # boundary crossings the backend-hook route pays per scan point. This
+    # is a pure optimization — any decline or failure falls back to the
+    # backend hook.
     from bionetgen.core.tools.bngsim_parameter_scan import (
         detect_inprocess_scan,
-        run_parameter_scan_with_bngsim,
+        run_inprocess_scan,
     )
 
     try:
@@ -1567,7 +1568,7 @@ def run_bngl_with_bngsim(
     if scan_request is not None:
         model_name = os.path.splitext(os.path.basename(bngl_path))[0]
         try:
-            return run_parameter_scan_with_bngsim(
+            return run_inprocess_scan(
                 bngl_path,
                 output_dir,
                 bngpath,
@@ -1580,9 +1581,9 @@ def run_bngl_with_bngsim(
             )
         except Exception as exc:
             logger.warning(
-                "parameter_scan in-process fast path failed (%s); falling back "
+                "%s in-process fast path failed (%s); falling back "
                 "to the BNG2.pl backend-hook route.",
-                exc,
+                scan_request.action, exc,
             )
 
     # ``rm`` (RuleMonkey) has no BNG2.pl method. Rewrite ``method=>"rm"`` to

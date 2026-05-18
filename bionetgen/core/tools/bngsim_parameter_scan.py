@@ -1,23 +1,37 @@
-"""In-process BNGsim driver for the ``parameter_scan`` action.
+"""In-process BNGsim driver for the ``parameter_scan`` and ``bifurcate`` actions.
 
 A fast-path optimization layered over the BNG2.pl backend-hook route.
-For a ``generate_network`` followed by a single ``ode`` ``parameter_scan``,
-BNG2.pl generates the network once and this driver then owns the scan
-loop, driving BNGsim *in-process*: build the model once, vary the
-scanned parameter, and re-integrate. That avoids the N process / socket
-/ JSON boundary crossings the backend-hook route pays per scan point.
+For a ``generate_network`` followed by a single ``parameter_scan`` (or
+``bifurcate``), BNG2.pl generates the network once and this driver then
+owns the scan loop, driving BNGsim *in-process*: build the model once,
+vary the scanned parameter, and re-integrate. That avoids the N process
+/ socket / JSON boundary crossings the backend-hook route pays per scan
+point.
 
 Correctness never depends on this path. :func:`detect_inprocess_scan`
 returns ``None`` for anything it cannot handle conservatively, and
 ``run_bngl_with_bngsim`` falls back to the backend-hook route on a
 ``None`` decision or on any exception raised here.
 
-Scope (Phase 1): ``ode``/``cvode`` ``parameter_scan`` only, with a
-``par_min``/``par_max``/``n_scan_pts`` value range and a trivial action
-sequence (``generate_network`` + a single trailing ``parameter_scan``,
-optionally preceded by ``setParameter``). ``ssa``/``nf``/``rm`` scans,
-``bifurcate``, ``par_scan_vals``, ``sample_times``, ``steady_state``,
-``reset_conc=>0`` and non-trivial sequences all fall back.
+Scope:
+
+* ``parameter_scan`` — ``ode``/``cvode`` or ``ssa`` method, a
+  ``par_min``/``par_max``/``n_scan_pts`` value range, ``reset_conc``
+  either ``1`` (reset each point) or ``0`` (carry the prior point's end
+  state).
+* ``bifurcate`` — two ``parameter_scan`` passes (ascending then
+  descending, ``reset_conc`` forced to ``0``) merged per-observable into
+  ``<prefix>_bifurcation_<obs>.scan`` files.
+
+The action sequence must be trivial: ``generate_network`` plus a single
+trailing ``parameter_scan``/``bifurcate``, optionally preceded by
+``setParameter``. ``nf``/``rm``/``pla`` methods, ``par_scan_vals``,
+``sample_times``, ``steady_state``, ``print_functions`` and non-trivial
+sequences all fall back.
+
+For ``ssa`` the driver rounds param-linked initial concentrations to the
+nearest integer (matching BNG2.pl's ``run_network``, which simulates
+integer molecule counts); see the Phase 2 spike findings.
 """
 
 import logging
@@ -30,11 +44,11 @@ from dataclasses import dataclass
 
 logger = logging.getLogger("bionetgen.bngsim_bridge")
 
-# parameter_scan arg keys this driver knows how to honor in-process.
+# Scan/bifurcate arg keys this driver knows how to honor in-process.
 _SCAN_SUPPORTED_KEYS = frozenset({
     "parameter", "par_min", "par_max", "n_scan_pts", "log_scale",
     "method", "t_start", "t_end", "n_steps", "suffix", "prefix",
-    "reset_conc", "atol", "rtol", "print_CDAT",
+    "reset_conc", "atol", "rtol", "print_CDAT", "seed",
 })
 # Keys that are recognized but not handled in-process: their presence
 # (when meaningful) forces a fallback rather than a silent wrong answer.
@@ -49,10 +63,14 @@ _SCAN_IGNORED_KEYS = frozenset({
 
 # Action types allowed in a fast-path scan sequence.
 _SCAN_ALLOWED_ACTIONS = frozenset({
-    "generate_network", "parameter_scan", "setParameter",
+    "generate_network", "parameter_scan", "bifurcate", "setParameter",
 })
+# The two workflow actions the driver can drive in-process.
+_WORKFLOW_ACTIONS = frozenset({"parameter_scan", "bifurcate"})
 
 _ODE_METHODS = frozenset({"ode", "cvode"})
+_SSA_METHODS = frozenset({"ssa"})
+_SUPPORTED_METHODS = _ODE_METHODS | _SSA_METHODS
 
 # A backslash that is NOT a clean end-of-line continuation. BNGL line
 # continuation is ``\`` at end of line; a ``\`` followed by anything else
@@ -63,21 +81,22 @@ _ODE_METHODS = frozenset({"ode", "cvode"})
 # declining whenever the scan action text carries one.
 _BAD_BACKSLASH_RE = re.compile(r"\\(?![ \t]*\r?\n)")
 
-_PARAMETER_SCAN_RE = re.compile(
-    r"\bparameter_scan\s*\(\s*\{[^}]*\}\s*\)", re.DOTALL | re.IGNORECASE,
+_WORKFLOW_ACTION_RE = re.compile(
+    r"\b(?:parameter_scan|bifurcate)\s*\(\s*\{[^}]*\}\s*\)",
+    re.DOTALL | re.IGNORECASE,
 )
 _COMMENT_RE = re.compile(r"#.*")
 
 
 def _scan_action_text_is_clean(bngl_text):
-    """True if the ``parameter_scan`` action text has no parser ambiguity.
+    """True if the scan/bifurcate action text has no parser ambiguity.
 
     Returns ``False`` when the action carries a stray (non-line-continuation)
     backslash, which PyBioNetGen and BNG2.pl parse differently — the fast
     path then declines so BNG2.pl's interpretation governs.
     """
     text = _COMMENT_RE.sub("", bngl_text)
-    match = _PARAMETER_SCAN_RE.search(text)
+    match = _WORKFLOW_ACTION_RE.search(text)
     if match is None:
         return False
     return _BAD_BACKSLASH_RE.search(match.group(0)) is None
@@ -85,19 +104,22 @@ def _scan_action_text_is_clean(bngl_text):
 
 @dataclass(frozen=True)
 class ScanRequest:
-    """A parameter_scan reduced to the inputs the in-process driver needs."""
+    """A parameter_scan/bifurcate reduced to the in-process driver's inputs."""
 
+    action: str            # "parameter_scan" or "bifurcate"
     parameter: str
     par_min: float
     par_max: float
     n_scan_pts: int
     log_scale: bool
+    method: str            # "ode" or "ssa" (normalized; "cvode" -> "ode")
     t_start: float
     t_end: float
     n_steps: int
     suffix: str | None
     prefix: str | None
     reset_conc: bool
+    seed: int | None
     atol: float | None
     rtol: float | None
     print_cdat: bool
@@ -125,14 +147,15 @@ def detect_inprocess_scan(actions_items, bngl_text=None):
     """Classify whether a BNGL action list is an in-process-scan fast path.
 
     Returns a :class:`ScanRequest` when the action sequence is exactly a
-    ``generate_network`` plus a single trailing ``ode`` ``parameter_scan``
-    (an optional ``setParameter`` preamble is allowed), and the scan uses
-    only options this driver honors. Returns ``None`` for anything else —
-    the caller then uses the backend-hook route, which stays correct.
+    ``generate_network`` plus a single trailing ``parameter_scan`` or
+    ``bifurcate`` (an optional ``setParameter`` preamble is allowed), the
+    method is ``ode``/``cvode``/``ssa``, and the action uses only options
+    this driver honors. Returns ``None`` for anything else — the caller
+    then uses the backend-hook route, which stays correct.
 
-    When ``bngl_text`` (the raw BNGL source) is supplied, the scan action
-    text is also checked for parser ambiguity (a stray backslash); an
-    ambiguous action declines so BNG2.pl's reading governs.
+    When ``bngl_text`` (the raw BNGL source) is supplied, the action text
+    is also checked for parser ambiguity (a stray backslash); an ambiguous
+    action declines so BNG2.pl's reading governs.
     """
     if not actions_items:
         return None
@@ -144,16 +167,17 @@ def detect_inprocess_scan(actions_items, bngl_text=None):
     types = [getattr(a, "type", None) for a in actions_items]
     if any(t not in _SCAN_ALLOWED_ACTIONS for t in types):
         return None
-    if types.count("parameter_scan") != 1:
+    if sum(1 for t in types if t in _WORKFLOW_ACTIONS) != 1:
         return None
-    if types[-1] != "parameter_scan":
+    if types[-1] not in _WORKFLOW_ACTIONS:
         return None
     if "generate_network" not in types:
         return None
-    if types.index("generate_network") > types.index("parameter_scan"):
-        return None
+    # The workflow action is types[-1] (checked above), so a present
+    # generate_network necessarily precedes it.
 
-    scan_action = actions_items[types.index("parameter_scan")]
+    scan_action = actions_items[-1]
+    action_type = types[-1]
     args = {k: v for k, v in (getattr(scan_action, "args", None) or {}).items()}
 
     for key in args:
@@ -163,7 +187,7 @@ def detect_inprocess_scan(actions_items, bngl_text=None):
             return None
 
     try:
-        # Options that, when present and meaningful, are out of Phase 1 scope.
+        # Options that, when present and meaningful, are out of scope.
         if "par_scan_vals" in args:
             return None
         if "sample_times" in args:
@@ -176,16 +200,18 @@ def detect_inprocess_scan(actions_items, bngl_text=None):
             return None
 
         method = _unquote(args.get("method", "ode")).lower()
-        if method not in _ODE_METHODS:
+        if method not in _SUPPORTED_METHODS:
             return None
+        method = "ode" if method in _ODE_METHODS else "ssa"
 
-        reset_conc = True
-        if "reset_conc" in args:
-            reset_conc = _as_truthy(args["reset_conc"])
-        if not reset_conc:
-            # reset_conc=>0 chains each point from the prior end state
-            # (hysteresis-like); that is Phase 2 bifurcate territory.
-            return None
+        # bifurcate always carries each point from the prior end state;
+        # for parameter_scan reset_conc defaults to 1 and may be 0.
+        if action_type == "bifurcate":
+            reset_conc = False
+        else:
+            reset_conc = True
+            if "reset_conc" in args:
+                reset_conc = _as_truthy(args["reset_conc"])
 
         for required in ("parameter", "par_min", "par_max", "n_scan_pts",
                          "t_end", "n_steps"):
@@ -204,6 +230,7 @@ def detect_inprocess_scan(actions_items, bngl_text=None):
         n_steps = int(_as_float(args["n_steps"]))
         suffix = _unquote(args["suffix"]) if "suffix" in args else None
         prefix = _unquote(args["prefix"]) if "prefix" in args else None
+        seed = int(_as_float(args["seed"])) if "seed" in args else None
         atol = _as_float(args["atol"]) if "atol" in args else None
         rtol = _as_float(args["rtol"]) if "rtol" in args else None
         print_cdat = True
@@ -224,17 +251,20 @@ def detect_inprocess_scan(actions_items, bngl_text=None):
         return None
 
     return ScanRequest(
+        action=action_type,
         parameter=parameter,
         par_min=par_min,
         par_max=par_max,
         n_scan_pts=n_scan_pts,
         log_scale=log_scale,
+        method=method,
         t_start=t_start,
         t_end=t_end,
         n_steps=n_steps,
         suffix=suffix,
         prefix=prefix,
         reset_conc=reset_conc,
+        seed=seed,
         atol=atol,
         rtol=rtol,
         print_cdat=print_cdat,
@@ -242,7 +272,7 @@ def detect_inprocess_scan(actions_items, bngl_text=None):
 
 
 def scan_values(request):
-    """Compute the N scanned parameter values.
+    """Compute the N scanned parameter values (ascending par_min→par_max).
 
     Matches BNG2.pl's ``parameter_scan``: linear spacing, or geometric
     spacing (uniform in ``log``) when ``log_scale`` is set. Endpoints are
@@ -266,18 +296,18 @@ def _make_network_gen_bngl(bngl_path, model_name, work_dir):
     """Write a temp BNGL whose actions stop at ``generate_network``.
 
     BNGL comments are stripped (harmless for network generation) and the
-    trailing ``parameter_scan`` action is removed, leaving the model
-    definition plus its ``generate_network`` (and any ``setParameter``
-    preamble). The copy keeps the model basename so BNG2.pl emits
-    ``<model_name>.net``.
+    trailing ``parameter_scan``/``bifurcate`` action is removed, leaving
+    the model definition plus its ``generate_network`` (and any
+    ``setParameter`` preamble). The copy keeps the model basename so
+    BNG2.pl emits ``<model_name>.net``.
     """
     with open(bngl_path, "r", errors="replace") as fh:
         text = fh.read()
     text = _COMMENT_RE.sub("", text)
-    text, n_sub = _PARAMETER_SCAN_RE.subn("", text)
+    text, n_sub = _WORKFLOW_ACTION_RE.subn("", text)
     if n_sub != 1:
         raise ValueError(
-            f"expected exactly one parameter_scan action, found {n_sub}"
+            f"expected exactly one parameter_scan/bifurcate action, found {n_sub}"
         )
     gen_path = os.path.join(work_dir, f"{model_name}.bngl")
     with open(gen_path, "w") as fh:
@@ -339,6 +369,165 @@ def _write_scan_file(scan_path, parameter, observable_names, rows):
             fh.write(line + "\n")
 
 
+def _write_bifurcation_file(scan_path, parameter, obs_name, fwd_col, bwd_col):
+    """Write one BNG2.pl-format ``_bifurcation_<obs>.scan`` file.
+
+    Mirrors BNGAction.pm's ``bifurcate`` merge writer: a 3-column file
+    ``# <param> <obs>_fwd <obs>_bwd`` whose rows pair the forward column
+    with the backward column reversed onto the same ascending parameter
+    axis (``backward[N-1-i]``).
+    """
+    n = len(fwd_col)
+    with open(scan_path, "w") as fh:
+        fh.write(
+            "# " + f"{parameter:>14}"
+            + " " + f"{obs_name + '_fwd':>16}"
+            + " " + f"{obs_name + '_bwd':>16}" + "\n"
+        )
+        for i in range(n):
+            par_value, fwd = fwd_col[i]
+            bwd = bwd_col[n - 1 - i][1]
+            fh.write(
+                f"{par_value:16.8e} {fwd:16.8e} {bwd:16.8e}\n"
+            )
+
+
+def _build_model_and_metadata(net_path, request):
+    """Load the BNGsim model from ``.net`` and gather scan metadata.
+
+    Returns ``(model, species_names, observable_names, param_linked)``.
+    ``param_linked`` is the list of ``(species_name, init_param_token)``
+    pairs whose initial concentration is a parameter expression — BNGsim
+    freezes init concentrations as literals at load time and ``reset()``
+    does not re-derive them, so the driver must re-apply those per scan
+    point from the (updated) parameter value.
+    """
+    import bngsim
+
+    init_tokens = _parse_net_initial_concentrations(net_path)
+    model = bngsim.Model.from_net(net_path)
+    species_names = list(model.species_names)
+    if len(init_tokens) != len(species_names):
+        raise ValueError(
+            "species count mismatch between .net "
+            f"({len(init_tokens)}) and BNGsim model ({len(species_names)})"
+        )
+    param_linked = [
+        (species_names[i], token)
+        for i, (_pat, token) in enumerate(init_tokens)
+        if not _is_literal_number(token)
+    ]
+    if request.parameter not in model.param_names:
+        raise ValueError(
+            f"scanned parameter {request.parameter!r} is not a "
+            "model parameter in the generated network"
+        )
+    return model, species_names, list(model.observable_names), param_linked
+
+
+def _run_scan_loop(
+    model, sim, request, values, species_names, param_linked,
+    work_dir, basename, write_results,
+):
+    """Drive one in-process scan pass and return per-point ``.scan`` rows.
+
+    For each scanned ``value``: set the parameter; either reset to initial
+    concentrations and re-derive param-linked initial concentrations
+    (``reset_conc=>1``), or carry the prior point's end state
+    (``reset_conc=>0`` / ``bifurcate``); integrate; write the per-point
+    ``.gdat``/``.cdat``; collect each observable at ``t_end``.
+
+    ``write_results`` is :func:`bngsim_bridge._write_bngsim_results`,
+    passed in to avoid a circular import.
+    """
+    is_ssa = request.method == "ssa"
+    run_kwargs = {}
+    if request.method == "ode":
+        if request.atol is not None:
+            run_kwargs["atol"] = request.atol
+        if request.rtol is not None:
+            run_kwargs["rtol"] = request.rtol
+    if is_ssa and request.seed is not None:
+        run_kwargs["seed"] = request.seed
+
+    os.makedirs(work_dir, exist_ok=True)
+    scan_rows = []
+    for k, value in enumerate(values):
+        model.set_param(request.parameter, value)
+        if request.reset_conc:
+            model.reset()
+            for sp_name, token in param_linked:
+                conc = model.get_param(token)
+                if is_ssa:
+                    # BNG2.pl's run_network simulates integer molecule
+                    # counts; round so bngsim SSA gets the same input
+                    # (a fractional count rides the whole trajectory —
+                    # bngsim issue #43).
+                    conc = math.floor(conc + 0.5)
+                model.set_concentration(sp_name, conc)
+        # else: species hold the prior scan point's end state, which
+        # sim.run already left in the model; the explicit carry-over
+        # below keeps that contract robust against future API changes.
+        result = sim.run(
+            t_span=(request.t_start, request.t_end),
+            n_points=request.n_steps + 1,
+            **run_kwargs,
+        )
+        point_name = f"{basename}_{k + 1:05d}"
+        write_results(
+            result, work_dir, point_name, print_cdat=request.print_cdat,
+        )
+        if not request.reset_conc:
+            for i, sp_name in enumerate(species_names):
+                model.set_concentration(sp_name, result.species[-1, i])
+        scan_rows.append((value, list(result.observables[-1, :])))
+    return scan_rows
+
+
+def _generate_network(bngl_path, model_name, bngpath, gen_dir, run_subprocess,
+                       suppress, log_file, timeout, app):
+    """Run BNG2.pl once to emit ``<model_name>.net``; return its path."""
+    gen_bngl = _make_network_gen_bngl(bngl_path, model_name, gen_dir)
+    run_subprocess(
+        gen_bngl, gen_dir, bngpath,
+        suppress=suppress, log_file=log_file, timeout=timeout, app=app,
+    )
+    net_path = os.path.join(gen_dir, f"{model_name}.net")
+    if not os.path.isfile(net_path):
+        raise FileNotFoundError(
+            f"network generation produced no {model_name}.net"
+        )
+    return net_path
+
+
+def _new_simulator(model, request):
+    """Construct a BNGsim ``Simulator`` for the request's method."""
+    import bngsim
+
+    if request.method == "ssa":
+        return bngsim.Simulator(model, method="ssa")
+    return bngsim.Simulator(model)
+
+
+def run_inprocess_scan(
+    bngl_path, output_dir, bngpath, request, model_name,
+    suppress=False, log_file=None, timeout=None, app=None,
+):
+    """Dispatch an in-process ``parameter_scan`` or ``bifurcate`` run.
+
+    Raises on any failure so the caller can fall back to the backend hook.
+    """
+    if request.action == "bifurcate":
+        return run_bifurcate_with_bngsim(
+            bngl_path, output_dir, bngpath, request, model_name,
+            suppress=suppress, log_file=log_file, timeout=timeout, app=app,
+        )
+    return run_parameter_scan_with_bngsim(
+        bngl_path, output_dir, bngpath, request, model_name,
+        suppress=suppress, log_file=log_file, timeout=timeout, app=app,
+    )
+
+
 def run_parameter_scan_with_bngsim(
     bngl_path,
     output_dir,
@@ -350,7 +539,7 @@ def run_parameter_scan_with_bngsim(
     timeout=None,
     app=None,
 ):
-    """Run an ``ode`` ``parameter_scan`` in-process through BNGsim.
+    """Run a ``parameter_scan`` in-process through BNGsim.
 
     BNG2.pl generates the reaction network once; this driver then loops
     over the scan values in-process — building the BNGsim model once and
@@ -360,8 +549,6 @@ def run_parameter_scan_with_bngsim(
 
     Raises on any failure so the caller can fall back to the backend hook.
     """
-    import bngsim
-
     from bionetgen.core.tools.bngsim_bridge import (
         _run_bngl_subprocess,
         _write_bngsim_results,
@@ -378,74 +565,110 @@ def run_parameter_scan_with_bngsim(
 
     gen_dir = tempfile.mkdtemp(prefix="bngsim_scan_gen_")
     try:
-        gen_bngl = _make_network_gen_bngl(bngl_path, model_name, gen_dir)
-        _run_bngl_subprocess(
-            gen_bngl, gen_dir, bngpath,
-            suppress=suppress, log_file=log_file, timeout=timeout, app=app,
+        net_path = _generate_network(
+            bngl_path, model_name, bngpath, gen_dir, _run_bngl_subprocess,
+            suppress, log_file, timeout, app,
         )
-        net_path = os.path.join(gen_dir, f"{model_name}.net")
-        if not os.path.isfile(net_path):
-            raise FileNotFoundError(
-                f"network generation produced no {model_name}.net"
-            )
-
-        init_tokens = _parse_net_initial_concentrations(net_path)
-        model = bngsim.Model.from_net(net_path)
-        sim = bngsim.Simulator(model)
-
-        species_names = list(model.species_names)
-        if len(init_tokens) != len(species_names):
-            raise ValueError(
-                "species count mismatch between .net "
-                f"({len(init_tokens)}) and BNGsim model ({len(species_names)})"
-            )
-        # Species whose initial concentration is a parameter expression:
-        # BNGsim freezes init concentrations as literals at load time and
-        # reset() does not re-derive them, so the driver must re-apply
-        # them per scan point from the (now updated) parameter value.
-        param_linked = [
-            (species_names[i], token)
-            for i, (_pat, token) in enumerate(init_tokens)
-            if not _is_literal_number(token)
-        ]
-
-        if request.parameter not in model.param_names:
-            raise ValueError(
-                f"scanned parameter {request.parameter!r} is not a "
-                "model parameter in the generated network"
-            )
+        model, species_names, observable_names, param_linked = (
+            _build_model_and_metadata(net_path, request)
+        )
+        sim = _new_simulator(model, request)
 
         values = scan_values(request)
-        run_kwargs = {}
-        if request.atol is not None:
-            run_kwargs["atol"] = request.atol
-        if request.rtol is not None:
-            run_kwargs["rtol"] = request.rtol
-
-        os.makedirs(work_dir, exist_ok=True)
-        observable_names = list(model.observable_names)
-        scan_rows = []
-        for k, value in enumerate(values):
-            model.set_param(request.parameter, value)
-            model.reset()
-            for sp_name, token in param_linked:
-                model.set_concentration(sp_name, model.get_param(token))
-            result = sim.run(
-                t_span=(request.t_start, request.t_end),
-                n_points=request.n_steps + 1,
-                **run_kwargs,
-            )
-            point_name = f"{basename}_{k + 1:05d}"
-            _write_bngsim_results(
-                result, work_dir, point_name, print_cdat=request.print_cdat,
-            )
-            scan_rows.append((value, list(result.observables[-1, :])))
-
+        scan_rows = _run_scan_loop(
+            model, sim, request, values, species_names, param_linked,
+            work_dir, basename, _write_bngsim_results,
+        )
         _write_scan_file(scan_path, request.parameter, observable_names, scan_rows)
         logger.info(
-            "parameter_scan fast path: %d points for %r via in-process BNGsim",
-            len(values), request.parameter,
+            "parameter_scan fast path: %d points for %r via in-process "
+            "BNGsim (%s)", len(values), request.parameter, request.method,
         )
-        return _make_bng_result(output_dir, "ode")
+        return _make_bng_result(output_dir, request.method)
+    finally:
+        shutil.rmtree(gen_dir, ignore_errors=True)
+
+
+def run_bifurcate_with_bngsim(
+    bngl_path,
+    output_dir,
+    bngpath,
+    request,
+    model_name,
+    suppress=False,
+    log_file=None,
+    timeout=None,
+    app=None,
+):
+    """Run a ``bifurcate`` in-process through BNGsim.
+
+    A ``bifurcate`` is two ``parameter_scan`` passes (``reset_conc`` forced
+    to ``0``): a forward pass ``par_min→par_max`` then a backward pass
+    ``par_max→par_min``, both carrying state across every point *and*
+    across the forward→backward boundary (one continuous ``Simulator``).
+    The two passes are merged per observable into
+    ``<prefix>_bifurcation_<obs>.scan`` files; per-point ``.gdat``/``.cdat``
+    artifacts are written under ``<prefix>_forward/`` and
+    ``<prefix>_backward/`` (BNG2.pl keeps those, deleting only the
+    intermediate ``.scan`` files — which this driver simply never writes).
+
+    Raises on any failure so the caller can fall back to the backend hook.
+    """
+    from bionetgen.core.tools.bngsim_bridge import (
+        _run_bngl_subprocess,
+        _write_bngsim_results,
+        _make_bng_result,
+    )
+
+    output_dir = os.path.abspath(output_dir)
+    os.makedirs(output_dir, exist_ok=True)
+
+    prefix = (request.prefix or model_name)
+    if request.suffix:
+        prefix += "_" + request.suffix
+    fwd_base = prefix + "_forward"
+    bwd_base = prefix + "_backward"
+
+    gen_dir = tempfile.mkdtemp(prefix="bngsim_bifurcate_gen_")
+    try:
+        net_path = _generate_network(
+            bngl_path, model_name, bngpath, gen_dir, _run_bngl_subprocess,
+            suppress, log_file, timeout, app,
+        )
+        model, species_names, observable_names, param_linked = (
+            _build_model_and_metadata(net_path, request)
+        )
+        # One Simulator drives both passes so concentrations carry across
+        # every point and across the forward→backward boundary.
+        sim = _new_simulator(model, request)
+
+        fwd_values = scan_values(request)
+        bwd_values = list(reversed(fwd_values))
+
+        fwd_rows = _run_scan_loop(
+            model, sim, request, fwd_values, species_names, param_linked,
+            os.path.join(output_dir, fwd_base), fwd_base, _write_bngsim_results,
+        )
+        bwd_rows = _run_scan_loop(
+            model, sim, request, bwd_values, species_names, param_linked,
+            os.path.join(output_dir, bwd_base), bwd_base, _write_bngsim_results,
+        )
+
+        # Merge: one file per observable, backward column reversed onto
+        # the ascending parameter axis (BNGAction.pm sub bifurcate).
+        for j, obs_name in enumerate(observable_names):
+            fwd_col = [(par, obs[j]) for par, obs in fwd_rows]
+            bwd_col = [(par, obs[j]) for par, obs in bwd_rows]
+            out_path = os.path.join(
+                output_dir, f"{prefix}_bifurcation_{obs_name}.scan"
+            )
+            _write_bifurcation_file(
+                out_path, request.parameter, obs_name, fwd_col, bwd_col,
+            )
+        logger.info(
+            "bifurcate fast path: %d points for %r via in-process BNGsim "
+            "(%s)", len(fwd_values), request.parameter, request.method,
+        )
+        return _make_bng_result(output_dir, request.method)
     finally:
         shutil.rmtree(gen_dir, ignore_errors=True)
