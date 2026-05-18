@@ -15,7 +15,8 @@ Inherits the gotcha-fixes from seeded_sweep.py:
   * cwd=tempfile.gettempdir() so the venv install isn't shadowed by a
     PyBioNetGen source dir.
   * regex `\\g<1>` not `\\1` for backref-then-digits substitution.
-  * TEND_OVERRIDES for slow models.
+  * TEND_OVERRIDES (shorter t_end) and TIMEOUT_OVERRIDES (longer budget)
+    for slow models.
   * Spaces-in-filenames safe (Path-based, no bash globbing).
   * Doesn't depend on bionetgen.bngmodel() — uses regex over raw text so
     parser-rejecting BNGL like prion2_YTLedits.bngl can still be classified.
@@ -44,6 +45,18 @@ TEND_OVERRIDES = {
     # within the timeout. The cap is a sweep-side workaround for a
     # documented bngsim codegen limitation; not a model-correctness change.
     "scaling_example.bngl": 50,
+}
+
+# Per-model timeout overrides (seconds), keyed by .bngl filename. The default
+# --timeout is a parity budget tuned for fast models. A few models have a
+# large reaction network whose BNGsim simulation legitimately runs long:
+# BNG2.pl/subprocess finishes these end-to-end in ~10 s, but BNGsim takes
+# ~150 s solo and overruns the 180 s default under 6-way sweep contention
+# (seen as spurious ERRORs in the 2026-05-17 v3 sweep). Not a bug -- just
+# slow models; give them room rather than re-triaging the timeout each sweep.
+TIMEOUT_OVERRIDES = {
+    "harmonicOscillator.bngl": 600,
+    "ATG_update_mTORC1_assembly_more_complete_scheme.bngl": 600,
 }
 
 
@@ -118,6 +131,7 @@ def run_one(simulator, bngl_path, run_path, out_dir, timeout):
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     log_path = out_dir / "_run.log"
+    timeout = TIMEOUT_OVERRIDES.get(Path(bngl_path).name, timeout)
     inner = (
         "import sys, bionetgen\n"
         f"bionetgen.run({str(run_path)!r}, out={str(out_dir)!r}, "
@@ -362,6 +376,7 @@ def main():
         "simulator": args.simulator,
         "n_seeds": args.n_seeds,
         "tend_overrides": TEND_OVERRIDES,
+        "timeout_overrides": TIMEOUT_OVERRIDES,
         "n_deterministic_models": n_det,
         "n_stochastic_models": n_stoch,
         "n_units": len(units),
