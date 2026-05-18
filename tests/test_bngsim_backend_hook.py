@@ -655,6 +655,53 @@ def test_bng2_owned_workflows_delegate_atomic_jobs_and_write_final_artifacts(
     assert (out_dir / final_artifact).is_file()
 
 
+def test_nf_parameter_scan_clears_model_time_between_scan_points(
+    tmp_path, real_bng_backend_runtime,
+):
+    """The network-free hook must leave ``$model->Time`` cleared on exit, the
+    same as BNG2.pl's normal ``sub simulate_nf``: its trailing
+    ``$model->Time($t_end)`` runs OUTSIDE the inner ``if (defined n_steps)``
+    block, where ``$t_end`` is an unassigned (``undef``) outer declaration --
+    not the inner ``$t_end`` the hook builds. If the hook instead left Time
+    at this run's real ``t_end``, the next nf scan point would inherit it as
+    ``t_start`` and abort with "t_end must be greater than t_start" -- the
+    scaffold.bngl regression.
+
+    A preceding network ``simulate`` leaves model Time set, so scan point 1
+    legitimately inherits a nonzero ``t_start``; every later scan point must
+    fall back to ``t_start=0`` because the nf hook cleared Time. Without the
+    fix, scan point 2 inherits point 1's ``t_end`` and the run aborts.
+    """
+    action = (
+        "generate_network({overwrite=>1})\n"
+        'simulate({method=>"ode",t_start=>0,t_end=>60,n_steps=>6})\n'
+        "saveConcentrations()\n"
+        "resetConcentrations()\n"
+        'parameter_scan({suffix=>"suf",method=>"nf",t_end=>100,n_steps=>10,'
+        'parameter=>"k",par_min=>1,par_max=>5,n_scan_pts=>3})'
+    )
+    out_dir, _ = _run_real_hook(
+        tmp_path, real_bng_backend_runtime, "NFSCAN", action
+    )
+
+    jobs = _captured_jobs(real_bng_backend_runtime["capture"])
+    methods = [job["method"] for job in jobs]
+    assert methods == ["ode", "nf", "nf", "nf"]
+
+    nf_t_starts = [
+        float(job["simulation_options"]["t_start"])
+        for job in jobs
+        if job["method"] == "nf"
+    ]
+    # Scan point 1 inherits Time from the preceding network simulate (proving
+    # Time inheritance is live); points 2 and 3 must default to 0 because the
+    # nf hook cleared Time on exit. (The exact point-1 value depends on the
+    # fake helper's .cdat, so only its nonzero-ness is asserted.)
+    assert nf_t_starts[0] > 0.0
+    assert nf_t_starts[1:] == [0.0, 0.0]
+    assert (out_dir / "nfscan_suf.scan").is_file()
+
+
 def test_helper_failure_propagates_as_bng_run_error(
     tmp_path, real_bng_backend_runtime, monkeypatch,
 ):

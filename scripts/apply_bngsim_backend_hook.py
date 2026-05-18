@@ -204,7 +204,19 @@ _NF_BODY = r'''        # BNG2.pl has written the BNG XML and normalized the run.
                     ."get_final_state state writeback is skipped; downstream actions that "
                     ."depend on post-simulation state may differ.");
             }
-            $model->Time($t_end);
+            # Leave $model->Time exactly as BNG2.pl's normal simulate_nf
+            # exit does. That trailing $model->Time($t_end) (BNGAction.pm
+            # ~line 1165) runs OUTSIDE the inner `if (defined n_steps)`
+            # block, so its $t_end is the never-assigned OUTER declaration
+            # (undef) -- NOT the inner $t_end built and used by this hook.
+            # Network-free runs therefore clear model Time, so the next
+            # action (e.g. a parameter_scan scan point) defaults t_start to
+            # 0 instead of inheriting this run's t_end. Do NOT copy the
+            # network hook's $model->Time($t_end) here -- that would abort a
+            # multi-point nf parameter_scan with "t_end must be greater than
+            # t_start" once a scan point's stale t_end reaches the next
+            # scan point's t_end.
+            $model->Time(undef);
             return '';
         }
 '''
