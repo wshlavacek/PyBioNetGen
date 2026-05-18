@@ -1,9 +1,12 @@
+import logging
 from tempfile import TemporaryFile
 
 import xmltodict
 
 from bionetgen.core.exc import BNGFileError, BNGModelError, BNGParseError
 from bionetgen.core.utils.utils import ActionList
+
+logger = logging.getLogger("bionetgen.bngparser")
 
 from .blocks import ActionBlock, ProtocolBlock
 from .bngfile import BNGFile
@@ -35,10 +38,27 @@ def _strip_unquoted_backslashes(text: str) -> str:
     BNG2.pl uses ``\\`` solely as line-continuation in BNGL. After
     line-continuation collapse runs upstream, any surviving outside-quotes
     ``\\`` is residue from a typo (e.g. ``,\\log_scale=>1`` in
-    ode/dimer_phos2.bngl) and BNG2.pl tolerates it. The pyparsing-based
-    action_parser does not, so strip them here.
+    ode/dimer_phos2.bngl). The pyparsing-based action_parser cannot parse
+    such an action at all, so the ``\\`` is stripped here to keep parsing
+    alive — but BNG2.pl does NOT strip it: it keeps the ``\\`` as part of
+    the adjacent token, so ``,\\log_scale=>1`` becomes a key named
+    ``\\log_scale`` that BNG2.pl then does not recognize. Stripping it
+    therefore makes PyBioNetGen interpret the action differently from
+    BNG2.pl. We cannot cheaply reproduce BNG2.pl's exact handling of the
+    typo, so the honest fix is to keep parsing working but warn loudly so
+    the malformed BNGL gets fixed at the source.
     """
-    return _filter_outside_quotes(text, lambda ch: ch != "\\")
+    stripped = _filter_outside_quotes(text, lambda ch: ch != "\\")
+    if stripped != text:
+        logger.warning(
+            "BNGL action contains a stray '\\' outside a line continuation "
+            "(a misplaced continuation marker). PyBioNetGen drops it so the "
+            "action still parses, but BNG2.pl keeps it as part of the "
+            "adjacent token, so the two may interpret this action "
+            "differently. Please fix the BNGL. Action: %s",
+            text.strip(),
+        )
+    return stripped
 
 
 def _collapse_unquoted_double_commas(text: str) -> str:
