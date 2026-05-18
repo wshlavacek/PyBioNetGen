@@ -1,12 +1,15 @@
-"""Correctness sweep: run BNGL-Models/models through BNGsim path and diff vs reference.
+"""Correctness sweep: run BNGL-Models/models through one or more simulators and diff vs reference.
 
 Usage:
-    .venv312/bin/python scripts/bngl_models_sweep.py [--models-dir PATH] [--only NAME]
+    .venv312/bin/python scripts/bngl_models_sweep.py [--models-dir PATH] [--only NAME] [--simulator MODE]
 
-For each .bngl file discovered, runs it via bionetgen.run(simulator='bngsim'),
-locates the produced .gdat/.scan files, and compares them column-by-column
-against the committed reference/ data. Emits a markdown table to stdout and a
-JSON blob to ``dev/bngl_models_sweep_results.json``.
+For each .bngl file discovered, runs it via ``bionetgen.run()`` under one or
+more simulator modes, locates the produced .gdat/.scan files, and compares
+them column-by-column against the committed reference/ data. Emits a markdown
+table to stdout and a JSON blob to ``dev/bngl_models_sweep_results.json``.
+
+Use ``--simulator both`` to sweep the subprocess and in-process routes in one
+invocation.
 
 A model counts as OK only when every output file is within the abs/rel
 tolerances (default ``abs < 1.0``, ``rel < 1e-2``). Per-model overrides
@@ -236,6 +239,52 @@ def run_one(
     return result
 
 
+def normalize_simulators(simulator: str) -> list[str]:
+    """Expand a single CLI simulator value into one or more sweep modes."""
+    if simulator == "both":
+        return ["subprocess", "bngsim"]
+    if simulator == "auto":
+        return ["auto"]
+    return [simulator]
+
+
+def run_sweep(
+    bngls: list[Path],
+    simulators: list[str],
+    out_root: Path,
+    timeout: int,
+    abs_tol: float,
+    rel_tol: float,
+    tolerances: dict[str, dict[str, float]],
+) -> list[ModelResult]:
+    """Run the sweep for every model/simulator pair."""
+    results: list[ModelResult] = []
+    for simulator in simulators:
+        for bngl in bngls:
+            slug = f"{bngl.parent.name}__{bngl.stem}"
+            out_dir = out_root / simulator / slug
+            # Override key uses the same identifier shown in the table.
+            key = f"{bngl.parent.name}/{bngl.name}"
+            ov = tolerances.get(key, {})
+            per_model_abs_tol = ov.get("abs", abs_tol)
+            per_model_rel_tol = ov.get("rel", rel_tol)
+            print(f"[run:{simulator}] {slug} ...", flush=True)
+            result = run_one(
+                bngl,
+                simulator,
+                out_dir,
+                timeout,
+                per_model_abs_tol,
+                per_model_rel_tol,
+            )
+            results.append(result)
+            status = "OK" if result.ok else ("FAIL" if result.error else "DIFF")
+            print(
+                f"  -> {status} ({result.wall_seconds:.1f}s, {len(result.files)} output files)"
+            )
+    return results
+
+
 def format_row(r: ModelResult) -> str:
     if r.error and not r.files:
         return f"| {r.model}/{r.bngl} | {r.wall_seconds:.1f}s | ERROR | {r.error.splitlines()[0][:60]} |"
@@ -263,7 +312,12 @@ def main() -> int:
     p = argparse.ArgumentParser()
     p.add_argument("--models-dir", type=Path, default=DEFAULT_MODELS_DIR)
     p.add_argument("--only", help="substring filter on model directory name")
-    p.add_argument("--simulator", default="bngsim", choices=["bngsim", "subprocess", "auto"])
+    p.add_argument(
+        "--simulator",
+        default="bngsim",
+        choices=["bngsim", "subprocess", "auto", "both"],
+        help="single simulator mode or 'both' to run subprocess and bngsim",
+    )
     p.add_argument("--out-root", type=Path, default=Path("dev/bngl_models_sweep_out"))
     p.add_argument("--timeout", type=int, default=300, help="per-model timeout in seconds")
     p.add_argument(
@@ -288,25 +342,21 @@ def main() -> int:
         return 2
 
     args.out_root.mkdir(parents=True, exist_ok=True)
+    simulators = normalize_simulators(args.simulator)
 
     overrides = load_tolerances(args.tolerances)
     if overrides:
         print(f"[tolerances] {len(overrides)} per-model overrides from {args.tolerances}")
 
-    results: list[ModelResult] = []
-    for bngl in bngls:
-        slug = f"{bngl.parent.name}__{bngl.stem}"
-        out_dir = args.out_root / args.simulator / slug
-        # Override key uses the same identifier shown in the table.
-        key = f"{bngl.parent.name}/{bngl.name}"
-        ov = overrides.get(key, {})
-        abs_tol = ov.get("abs", args.abs_tol)
-        rel_tol = ov.get("rel", args.rel_tol)
-        print(f"[run] {slug} ...", flush=True)
-        r = run_one(bngl, args.simulator, out_dir, args.timeout, abs_tol, rel_tol)
-        results.append(r)
-        status = "OK" if r.ok else ("FAIL" if r.error else "DIFF")
-        print(f"  -> {status} ({r.wall_seconds:.1f}s, {len(r.files)} output files)")
+    results = run_sweep(
+        bngls,
+        simulators,
+        args.out_root,
+        args.timeout,
+        args.abs_tol,
+        args.rel_tol,
+        overrides,
+    )
 
     print()
     print(f"## Sweep results ({args.simulator})")
