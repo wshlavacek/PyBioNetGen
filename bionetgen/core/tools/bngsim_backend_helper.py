@@ -184,14 +184,28 @@ def direct_job_from_backend_job(job: BackendHelperJob) -> BngsimDirectJob:
         t_end = t_end - t_start
         t_start = 0.0
 
+    # Explicit output times. BNG2.pl's ``sub simulate`` honors a
+    # ``sample_times`` array; the backend hook forwards it. BNG2.pl emits
+    # the initial (t_start) state row followed by the explicit sample
+    # times, whereas BNGsim's ``sample_times`` yields exactly the listed
+    # times -- so prepend t_start for output parity. ``n_points`` is then
+    # the row count; BNGsim ignores it when ``sample_times`` is given.
+    sample_times = opts.pop("sample_times", None)
     n_points = _as_int(opts.pop("n_points", None))
-    if n_points is None:
-        n_steps = _as_int(opts.pop("n_steps", opts.pop("n_output_steps", None)), 100)
-        n_points = n_steps + 1
+    n_steps = _as_int(opts.pop("n_steps", opts.pop("n_output_steps", None)))
+    if sample_times:
+        sample_times = [float(t_start)] + [float(t) for t in sample_times]
+        opts["sample_times"] = sample_times
+        n_points = len(sample_times)
+    elif n_points is None:
+        n_points = (n_steps if n_steps is not None else 100) + 1
 
     result_options = {}
     if "print_functions" in opts:
         result_options["print_functions"] = bool(_as_int(opts.pop("print_functions"), 0))
+    # ``print_CDAT=>0`` keeps only the initial and final .cdat rows.
+    if "print_CDAT" in opts:
+        result_options["print_cdat"] = bool(_as_int(opts.pop("print_CDAT"), 1))
     # ``continue=>1`` segments append to the prior segment's output files
     # (skipping the duplicated t_start row) instead of overwriting them.
     if "continue" in opts:

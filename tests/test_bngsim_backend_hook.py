@@ -403,6 +403,63 @@ def test_helper_network_free_t_start_zero_is_noop():
     assert direct.t_span == (0.0, 1800.0)
 
 
+def test_helper_forwards_sample_times_prepending_t_start():
+    """An explicit sample_times array is forwarded to BNGsim with the
+    initial t_start row prepended: BNG2.pl emits the t_start state row
+    then the sample times, whereas BNGsim's sample_times yields exactly
+    the listed times."""
+    job = load_backend_job({
+        "artifact_path": "/tmp/model.net",
+        "artifact_format": "net",
+        "method": "ode",
+        "simulation_options": {
+            "t_start": "0",
+            "t_end": "36000",
+            "sample_times": [1800, 3600, 7200],
+        },
+        "output_prefix": "/tmp/out/model",
+    })
+    direct = direct_job_from_backend_job(job)
+
+    assert direct.bngsim_options["sample_times"] == [0.0, 1800.0, 3600.0, 7200.0]
+    assert direct.n_points == 4
+
+
+def test_helper_print_cdat_zero_sets_result_option():
+    """print_CDAT=>0 maps to result_options print_cdat=False so the
+    .cdat is reduced to its initial and final rows (BNG2.pl behavior)."""
+    job = load_backend_job({
+        "artifact_path": "/tmp/model.net",
+        "artifact_format": "net",
+        "method": "ssa",
+        "simulation_options": {
+            "t_start": "0", "t_end": "30", "n_steps": "30",
+            "print_CDAT": 0,
+        },
+        "output_prefix": "/tmp/out/model",
+    })
+    direct = direct_job_from_backend_job(job)
+
+    assert direct.result_options.get("print_cdat") is False
+
+
+def test_helper_print_cdat_one_keeps_full_cdat():
+    """print_CDAT=>1 (BNG2.pl's default) leaves print_cdat True."""
+    job = load_backend_job({
+        "artifact_path": "/tmp/model.net",
+        "artifact_format": "net",
+        "method": "ode",
+        "simulation_options": {
+            "t_start": "0", "t_end": "100", "n_steps": "100",
+            "print_CDAT": 1,
+        },
+        "output_prefix": "/tmp/out/model",
+    })
+    direct = direct_job_from_backend_job(job)
+
+    assert direct.result_options.get("print_cdat") is True
+
+
 def test_rewrite_rm_method_to_nf_preserves_basename(tmp_path):
     from bionetgen.core.tools.bngsim_bridge import _rewrite_rm_method_to_nf
 

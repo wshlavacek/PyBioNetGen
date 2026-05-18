@@ -701,3 +701,39 @@ class TestSbmlWithBioNetGenComment:
             assert _sniff_xml_format(path) == FORMAT_SBML
         finally:
             os.unlink(path)
+
+
+# ─── _truncate_cdat_to_endpoints (print_CDAT=>0) ─────────────────────
+
+
+class TestTruncateCdatToEndpoints:
+    def test_keeps_header_and_first_last_rows(self):
+        from bionetgen.core.tools.bngsim_bridge import _truncate_cdat_to_endpoints
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cdat = os.path.join(tmpdir, "m.cdat")
+            with open(cdat, "w") as fh:
+                fh.write("#          time                  S1\n")
+                for i in range(6):
+                    fh.write(f" {float(i):.6e}  {float(i * 10):.6e}\n")
+            _truncate_cdat_to_endpoints(cdat)
+            with open(cdat) as fh:
+                lines = [ln for ln in fh if ln.strip()]
+        header = [ln for ln in lines if ln.lstrip().startswith("#")]
+        data = [ln for ln in lines if not ln.lstrip().startswith("#")]
+        assert len(header) == 1
+        assert len(data) == 2
+        assert float(data[0].split()[0]) == 0.0
+        assert float(data[1].split()[0]) == 5.0
+
+    def test_short_cdat_left_unchanged(self):
+        from bionetgen.core.tools.bngsim_bridge import _truncate_cdat_to_endpoints
+
+        content = "#  time  S1\n 0.000000e+00  0.000000e+00\n 1.000000e+00  1.0e+01\n"
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cdat = os.path.join(tmpdir, "m.cdat")
+            with open(cdat, "w") as fh:
+                fh.write(content)
+            _truncate_cdat_to_endpoints(cdat)
+            with open(cdat) as fh:
+                assert fh.read() == content

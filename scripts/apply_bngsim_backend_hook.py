@@ -81,6 +81,13 @@ _NETWORK_BODY = r'''    # BNG2.pl has already normalized model state, artifact, 
         {
             $sim_options{poplevel} = $params->{poplevel};
         }
+        # An explicit sample_times array (BNG2.pl has already sorted it
+        # and, if t_end was given, appended t_end). When present, n_steps
+        # is undefined and these are the output times.
+        if (@sample_times)
+        {
+            $sim_options{sample_times} = \@sample_times;
+        }
 
         my %job = (
             artifact_path => File::Spec->rel2abs($netfile),

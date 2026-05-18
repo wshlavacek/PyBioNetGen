@@ -299,9 +299,27 @@ def _append_cdat_rows(cdat_path, result):
     _append_bng_dat_rows(cdat_path, time, species, skip_first=True)
 
 
+def _truncate_cdat_to_endpoints(cdat_path):
+    """Reduce a .cdat to its comment header plus first and last data rows.
+
+    Matches BNG2.pl's ``print_CDAT=>0`` behavior: BNG2.pl still emits a
+    .cdat (the final row carries the end-state used for concentration
+    write-back) but only the initial and final concentration rows, not
+    the full trajectory.
+    """
+    with open(cdat_path) as handle:
+        lines = handle.readlines()
+    header = [ln for ln in lines if ln.lstrip().startswith("#")]
+    data = [ln for ln in lines if ln.strip() and not ln.lstrip().startswith("#")]
+    if len(data) <= 2:
+        return
+    with open(cdat_path, "w") as handle:
+        handle.writelines(header + [data[0], data[-1]])
+
+
 def _write_bngsim_results(
     result, output_dir, model_name,
-    print_functions=False, append=False,
+    print_functions=False, append=False, print_cdat=True,
 ):
     """Write BNGsim Result to .gdat and .cdat files.
 
@@ -323,6 +341,10 @@ def _write_bngsim_results(
         segment's t_end). Used for ``continue=>1``. If the files do not
         yet exist, falls back to a fresh write so the first segment of
         a continuation chain still produces complete output.
+    print_cdat : bool
+        If False, the .cdat is reduced to its initial and final rows,
+        matching BNG2.pl's ``print_CDAT=>0`` behavior. Default True
+        (full trajectory), matching BNG2.pl's default.
     Function columns are written only when BNGsim supplies them in
     ``Result.expressions``. BNGL-owned function semantics are handled by
     BNG2.pl before invoking the backend helper.
@@ -365,10 +387,14 @@ def _write_bngsim_results(
         _append_cdat_rows(cdat_path, result)
         if result.n_observables > 0 or has_funcs:
             _append_bng_dat_rows(gdat_path, result.time, combined, skip_first=True)
+        if not print_cdat:
+            _truncate_cdat_to_endpoints(cdat_path)
         return
 
     # Fresh write (default and first-segment-of-continuation path)
     result.to_cdat(cdat_path)
+    if not print_cdat:
+        _truncate_cdat_to_endpoints(cdat_path)
     if result.n_observables > 0 or has_funcs:
         _write_bng_dat(gdat_path, result.time, combined, combined_names)
 
