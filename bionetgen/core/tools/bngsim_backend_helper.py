@@ -4,12 +4,25 @@ This module is the process boundary for the Stage 4 BNG2.pl simulator
 backend hook. BNG2.pl remains responsible for BNGL parsing, action
 semantics, state, scans, and output naming; it passes one already-normalized
 atomic simulation job here as JSON.
+
+Two invocation modes:
+
+  * **one-shot** -- ``python -m ...bngsim_backend_helper JOB.json`` runs a
+    single job and exits. Simple, but pays Python interpreter startup and
+    ``import bngsim`` on every call; a parameter_scan invokes it once per
+    scan point.
+  * **serve** -- ``python -m ...bngsim_backend_helper --serve --socket PATH``
+    runs a persistent Unix-domain-socket server: one process for a whole
+    BNG2.pl run, so the import cost is paid once. :class:`BNGCLI` spawns it
+    and advertises the socket; the BNG2.pl hook sends each job over it and
+    falls back to a one-shot ``system()`` spawn if the socket is absent.
 """
 
 from __future__ import annotations
 
 import json
 import os
+import socket
 import sys
 import traceback
 from dataclasses import dataclass
@@ -255,20 +268,85 @@ def execute_backend_payload(payload: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def main(argv: list[str] | None = None) -> int:
-    argv = list(sys.argv[1:] if argv is None else argv)
-    if len(argv) != 1:
-        print(
-            json.dumps({
-                "success": False,
-                "error": "usage: python -m bionetgen.core.tools.bngsim_backend_helper JOB.json",
-            }),
-            file=sys.stderr,
-        )
-        return 2
+# A request line on the serve socket equal to this string stops the server.
+SHUTDOWN_REQUEST = "__SHUTDOWN__"
+# Printed on stdout once the serve socket is bound and listening; BNGCLI
+# waits for this line before launching BNG2.pl.
+SERVE_READY_TOKEN = "READY"
 
+
+def _run_job_file(job_path: str) -> dict[str, Any]:
+    """Load a JSON job file and execute it, returning a status dict.
+
+    The job is run with the process cwd set to the job's output directory,
+    matching the one-shot ``system()`` helper (which inherited BNG2.pl's
+    cwd) so BNGsim writes artifacts in the same place either way.
+    """
+    with open(job_path, "r", encoding="utf-8") as handle:
+        payload = json.load(handle)
+    out_dir, _root = _output_dir_and_root(payload)
+    prev_cwd = os.getcwd()
     try:
-        with open(argv[0], "r", encoding="utf-8") as handle:
+        if out_dir and os.path.isdir(out_dir):
+            os.chdir(out_dir)
+        return execute_backend_payload(payload)
+    finally:
+        os.chdir(prev_cwd)
+
+
+def serve(socket_path: str) -> int:
+    """Run a persistent job server on a Unix-domain socket.
+
+    One newline-terminated request per connection: either a job-file path or
+    the literal :data:`SHUTDOWN_REQUEST`. The reply is a single line --
+    ``OK <json>`` if the job succeeded, ``ERR <json>`` otherwise. The loop
+    runs until a shutdown request, so a whole BNG2.pl run (e.g. every point
+    of a parameter_scan) is served by one process and ``import bngsim`` is
+    paid once. Each job is dispatched through the same code path as the
+    one-shot mode; a job that raises is reported, not fatal to the server.
+    """
+    if os.path.exists(socket_path):
+        os.unlink(socket_path)
+    srv = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    try:
+        srv.bind(socket_path)
+        srv.listen(1)
+        # Handshake: BNGCLI blocks on this line before launching BNG2.pl.
+        print(SERVE_READY_TOKEN, flush=True)
+        while True:
+            conn, _addr = srv.accept()
+            try:
+                request = conn.makefile("r", encoding="utf-8").readline().strip()
+                if request == SHUTDOWN_REQUEST:
+                    break
+                if not request:
+                    # Client connected without sending a request (e.g. a
+                    # readiness probe). Harmless -- never a shutdown signal.
+                    continue
+                try:
+                    status = _run_job_file(request)
+                    ok = bool(status.get("success"))
+                except Exception as exc:
+                    ok = False
+                    status = {
+                        "success": False,
+                        "error": str(exc),
+                        "traceback": traceback.format_exc(),
+                    }
+                reply = ("OK " if ok else "ERR ") + json.dumps(status, sort_keys=True)
+                conn.sendall((reply + "\n").encode("utf-8"))
+            finally:
+                conn.close()
+        return 0
+    finally:
+        srv.close()
+        if os.path.exists(socket_path):
+            os.unlink(socket_path)
+
+
+def _run_one_shot(job_path: str) -> int:
+    try:
+        with open(job_path, "r", encoding="utf-8") as handle:
             payload = json.load(handle)
         status = execute_backend_payload(payload)
         print(json.dumps(status, sort_keys=True))
@@ -281,6 +359,48 @@ def main(argv: list[str] | None = None) -> int:
         }
         print(json.dumps(status, sort_keys=True), file=sys.stderr)
         return 1
+
+
+def main(argv: list[str] | None = None) -> int:
+    argv = list(sys.argv[1:] if argv is None else argv)
+
+    if argv and argv[0] == "--serve":
+        rest = argv[1:]
+        socket_path = rest[1] if len(rest) == 2 and rest[0] == "--socket" else None
+        if not socket_path:
+            print(
+                json.dumps({
+                    "success": False,
+                    "error": "usage: python -m bionetgen.core.tools."
+                             "bngsim_backend_helper --serve --socket PATH",
+                }),
+                file=sys.stderr,
+            )
+            return 2
+        try:
+            return serve(socket_path)
+        except Exception as exc:
+            print(
+                json.dumps({
+                    "success": False,
+                    "error": str(exc),
+                    "traceback": traceback.format_exc(),
+                }),
+                file=sys.stderr,
+            )
+            return 1
+
+    if len(argv) != 1:
+        print(
+            json.dumps({
+                "success": False,
+                "error": "usage: python -m bionetgen.core.tools."
+                         "bngsim_backend_helper JOB.json",
+            }),
+            file=sys.stderr,
+        )
+        return 2
+    return _run_one_shot(argv[0])
 
 
 if __name__ == "__main__":

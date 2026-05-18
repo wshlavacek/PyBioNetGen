@@ -20,6 +20,12 @@ Both hooks are inert unless ``BIONETGEN_BNGSIM_BACKEND`` is set, so a normal
 BNG2.pl subprocess run is unaffected. ``pla`` has no BNGsim substitute and is
 never delegated.
 
+Each hook dispatches its job to the helper one of two ways: over the Unix
+socket in ``BIONETGEN_BNGSIM_BACKEND_HELPER_SOCKET`` if BNGCLI started a
+persistent helper (one process per BNG2.pl run -- avoids paying ``import
+bngsim`` once per atomic job, which dominates a parameter_scan), otherwise by
+spawning a one-shot helper process. The one-shot path is always the fallback.
+
 Each hook is wrapped in ``# >>> ... >>>`` / ``# <<< ... <<<`` bracket
 markers so this script is idempotent: re-running it strips the old blocks
 and re-inserts the current ones. Re-run after sync_bng_perl_from_source.py
@@ -106,12 +112,42 @@ _NETWORK_BODY = r'''    # BNG2.pl has already normalized model state, artifact, 
         print $job_fh encode_json(\%job);
         close($job_fh);
 
-        print "Running BNGsim backend helper: @helper_command $job_file\n";
-        my $rc = system(@helper_command, $job_file);
-        if ($rc != 0)
+        # Dispatch the job. Prefer the persistent helper reachable on the
+        # Unix socket advertised by BNGCLI -- one helper process per BNG2.pl
+        # run, so `import bngsim` is paid once instead of once per atomic
+        # job (decisive for parameter_scan: one job per scan point). Fall
+        # back to a one-shot helper process if the socket is absent or
+        # unreachable.
+        my $job_request = File::Spec->rel2abs($job_file);
+        my $helper_error;   # stays undef until the job has been dispatched
+        my $helper_socket = $ENV{'BIONETGEN_BNGSIM_BACKEND_HELPER_SOCKET'};
+        if ($helper_socket)
         {
-            return sprintf("BNGsim backend helper failed with status %s.", $rc);
+            require IO::Socket::UNIX;
+            if (my $sock = IO::Socket::UNIX->new(Peer => $helper_socket))
+            {
+                print "Dispatching BNGsim backend job to persistent helper: $job_request\n";
+                print $sock "$job_request\n";
+                my $response = <$sock>;
+                close($sock);
+                chomp $response if defined $response;
+                if (defined $response and $response =~ /^OK /)
+                {   $helper_error = '';   }
+                else
+                {   $helper_error = "BNGsim backend helper (persistent) failed: "
+                        . (defined $response ? $response : "no response");   }
+            }
+            # connect failed: leave $helper_error undef -> one-shot fallback.
         }
+        if (not defined $helper_error)
+        {
+            print "Running BNGsim backend helper: @helper_command $job_request\n";
+            my $rc = system(@helper_command, $job_request);
+            $helper_error = ($rc == 0)
+                ? '' : sprintf("BNGsim backend helper failed with status %s.", $rc);
+        }
+        if ($helper_error ne '')
+        {   return $helper_error;   }
 
         if ( $model->RxnList and -e "$prefix.cdat" )
         {
@@ -187,12 +223,42 @@ _NF_BODY = r'''        # BNG2.pl has written the BNG XML and normalized the run.
             print $job_fh encode_json(\%job);
             close($job_fh);
 
-            print "Running BNGsim backend helper: @helper_command $job_file\n";
-            my $rc = system(@helper_command, $job_file);
-            if ($rc != 0)
+            # Dispatch the job. Prefer the persistent helper reachable on
+            # the Unix socket advertised by BNGCLI -- one helper process per
+            # BNG2.pl run, so `import bngsim` is paid once instead of once
+            # per atomic job (decisive for parameter_scan: one job per scan
+            # point). Fall back to a one-shot helper process if the socket
+            # is absent or unreachable.
+            my $job_request = File::Spec->rel2abs($job_file);
+            my $helper_error;   # stays undef until the job has been dispatched
+            my $helper_socket = $ENV{'BIONETGEN_BNGSIM_BACKEND_HELPER_SOCKET'};
+            if ($helper_socket)
             {
-                return sprintf("BNGsim backend helper failed with status %s.", $rc);
+                require IO::Socket::UNIX;
+                if (my $sock = IO::Socket::UNIX->new(Peer => $helper_socket))
+                {
+                    print "Dispatching BNGsim backend job to persistent helper: $job_request\n";
+                    print $sock "$job_request\n";
+                    my $response = <$sock>;
+                    close($sock);
+                    chomp $response if defined $response;
+                    if (defined $response and $response =~ /^OK /)
+                    {   $helper_error = '';   }
+                    else
+                    {   $helper_error = "BNGsim backend helper (persistent) failed: "
+                            . (defined $response ? $response : "no response");   }
+                }
+                # connect failed: leave $helper_error undef -> one-shot fallback.
             }
+            if (not defined $helper_error)
+            {
+                print "Running BNGsim backend helper: @helper_command $job_request\n";
+                my $rc = system(@helper_command, $job_request);
+                $helper_error = ($rc == 0)
+                    ? '' : sprintf("BNGsim backend helper failed with status %s.", $rc);
+            }
+            if ($helper_error ne '')
+            {   return $helper_error;   }
 
             # Safeguard: the BNGsim network-free backend does not yet emit a
             # .species final-state file. Returning here skips BNG2.pl's

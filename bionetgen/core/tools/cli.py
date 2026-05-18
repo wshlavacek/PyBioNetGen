@@ -95,6 +95,10 @@ class BNGCLI:
         self.bngsim_backend_helper = bngsim_backend_helper
         self.bngsim_backend_method = bngsim_backend_method
         self._old_bngsim_backend_env = {}
+        # Persistent BNGsim backend helper (see _start_persistent_helper).
+        self._helper_proc = None
+        self._helper_socket = None
+        self._helper_dir = None
 
     def _install_bngsim_backend_env(self):
         """Expose the BNGsim backend helper contract to hook-capable BNG2.pl."""
@@ -103,6 +107,7 @@ class BNGCLI:
             "BIONETGEN_BNGSIM_BACKEND_HELPER",
             "BIONETGEN_BNGSIM_BACKEND_HELPER_PYTHON",
             "BIONETGEN_BNGSIM_BACKEND_HELPER_MODULE",
+            "BIONETGEN_BNGSIM_BACKEND_HELPER_SOCKET",
             "BIONETGEN_BNGSIM_BACKEND_METHOD",
         )
         self._old_bngsim_backend_env = {key: os.environ.get(key) for key in keys}
@@ -133,6 +138,130 @@ class BNGCLI:
             else:
                 os.environ[key] = value
 
+    def _start_persistent_helper(self):
+        """Spawn one long-lived BNGsim backend helper for this BNG2.pl run.
+
+        The backend hook otherwise spawns a fresh Python process per atomic
+        job, paying interpreter startup + ``import bngsim`` (~0.5 s) every
+        time -- which dominates a parameter_scan (one job per scan point).
+        A persistent helper amortizes that to once. The hook talks to it
+        over a Unix-domain socket advertised in
+        ``BIONETGEN_BNGSIM_BACKEND_HELPER_SOCKET``; if anything here fails
+        the env var is left unset and the hook falls back to its per-job
+        ``system()`` spawn, so this is a pure optimization.
+
+        Only used for the default module helper (``bngsim_backend_helper``
+        is None) on POSIX -- a caller-supplied helper or Windows keeps the
+        per-job path.
+        """
+        if not self.bngsim_backend or self.bngsim_backend_helper is not None:
+            return
+        if os.name != "posix" or self.bng_exec is None:
+            return
+
+        import subprocess
+        import tempfile
+
+        try:
+            base = "/tmp" if os.path.isdir("/tmp") else None
+            # Unix socket paths are length-limited (~104 chars); keep short.
+            self._helper_dir = tempfile.mkdtemp(prefix="bngsh-", dir=base)
+            socket_path = os.path.join(self._helper_dir, "h.sock")
+            if len(socket_path) >= 100:
+                raise OSError(f"socket path too long: {socket_path}")
+            proc = subprocess.Popen(
+                [
+                    sys.executable,
+                    "-m",
+                    "bionetgen.core.tools.bngsim_backend_helper",
+                    "--serve",
+                    "--socket",
+                    socket_path,
+                ],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+            ready = self._await_helper_ready(proc, timeout=120)
+            if not ready:
+                raise RuntimeError("persistent helper did not become ready")
+        except Exception as exc:
+            self.logger.warning(
+                f"Could not start persistent BNGsim helper ({exc}); "
+                "falling back to a per-job helper process.",
+                loc=f"{__file__} : BNGCLI._start_persistent_helper()",
+            )
+            self._stop_persistent_helper()
+            return
+
+        self._helper_proc = proc
+        self._helper_socket = socket_path
+        os.environ["BIONETGEN_BNGSIM_BACKEND_HELPER_SOCKET"] = socket_path
+
+    @staticmethod
+    def _await_helper_ready(proc, timeout):
+        """Block until the serve process prints its READY token, or fail."""
+        import select
+
+        from bionetgen.core.tools.bngsim_backend_helper import SERVE_READY_TOKEN
+
+        import time as _time
+
+        deadline = _time.monotonic() + timeout
+        while _time.monotonic() < deadline:
+            if proc.poll() is not None:
+                return False
+            rlist, _, _ = select.select([proc.stdout], [], [], 0.5)
+            if not rlist:
+                continue
+            line = proc.stdout.readline()
+            if line == "":
+                return False
+            if line.strip() == SERVE_READY_TOKEN:
+                return True
+        return False
+
+    def _stop_persistent_helper(self):
+        """Shut down the persistent helper and remove its socket. Idempotent."""
+        import shutil
+
+        proc = self._helper_proc
+        if proc is not None and proc.poll() is None:
+            try:
+                import socket as _socket
+
+                with _socket.socket(_socket.AF_UNIX, _socket.SOCK_STREAM) as sock:
+                    sock.settimeout(5)
+                    sock.connect(self._helper_socket)
+                    from bionetgen.core.tools.bngsim_backend_helper import (
+                        SHUTDOWN_REQUEST,
+                    )
+
+                    sock.sendall((SHUTDOWN_REQUEST + "\n").encode("utf-8"))
+            except Exception:
+                pass
+            try:
+                proc.wait(timeout=10)
+            except Exception:
+                proc.terminate()
+                try:
+                    proc.wait(timeout=5)
+                except Exception:
+                    proc.kill()
+        if proc is not None:
+            for stream in (proc.stdout, proc.stderr):
+                try:
+                    if stream is not None:
+                        stream.close()
+                except Exception:
+                    pass
+        if self._helper_dir is not None:
+            shutil.rmtree(self._helper_dir, ignore_errors=True)
+        os.environ.pop("BIONETGEN_BNGSIM_BACKEND_HELPER_SOCKET", None)
+        self._helper_proc = None
+        self._helper_socket = None
+        self._helper_dir = None
+
     def _set_output(self, output):
         self.logger.debug(
             "Setting up output path", loc=f"{__file__} : BNGCLI._set_output()"
@@ -145,6 +274,13 @@ class BNGCLI:
     def run(self):
         self.logger.debug("Running", loc=f"{__file__} : BNGCLI.run()")
         self._install_bngsim_backend_env()
+        try:
+            self._start_persistent_helper()
+            self._run_impl()
+        finally:
+            self._stop_persistent_helper()
+
+    def _run_impl(self):
         # If BNG2.pl is not available, fall back to an empty result so that
         # library users can still instantiate and inspect models without a
         # full BioNetGen install.
