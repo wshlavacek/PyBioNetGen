@@ -48,16 +48,13 @@ TEND_OVERRIDES = {
 }
 
 # Per-model timeout overrides (seconds), keyed by .bngl filename. The default
-# --timeout is a parity budget tuned for fast models. A few models have a
-# large reaction network whose BNGsim simulation legitimately runs long:
-# BNG2.pl/subprocess finishes these end-to-end in ~10 s, but BNGsim takes
-# ~150 s solo and overruns the 180 s default under 6-way sweep contention
-# (seen as spurious ERRORs in the 2026-05-17 v3 sweep). Not a bug -- just
-# slow models; give them room rather than re-triaging the timeout each sweep.
-TIMEOUT_OVERRIDES = {
-    "harmonicOscillator.bngl": 600,
-    "ATG_update_mTORC1_assembly_more_complete_scheme.bngl": 600,
-}
+# --timeout is a parity budget tuned for fast models. This dict previously
+# carried 600 s entries for two 200-point parameter_scans
+# (harmonicOscillator, ATG_update_mTORC1_assembly_more_complete_scheme): the
+# backend-hook route delegated each scan point as a separate atomic job, so
+# 200 points overran the budget. The in-process parameter_scan driver now
+# runs both in ~2-3 s, so the overrides are no longer needed.
+TIMEOUT_OVERRIDES = {}
 
 
 def parse_simulate_methods(text):

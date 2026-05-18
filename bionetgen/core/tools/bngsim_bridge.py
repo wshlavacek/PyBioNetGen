@@ -1546,6 +1546,45 @@ def run_bngl_with_bngsim(
             "on the backend-hook route."
         )
 
+    # Fast path: a generate_network + single ode parameter_scan can be
+    # driven in-process by BNGsim (build the model once, vary the scanned
+    # parameter, re-integrate), avoiding the N process/socket/JSON boundary
+    # crossings the backend-hook route pays per scan point. This is a pure
+    # optimization — any decline or failure falls back to the backend hook.
+    from bionetgen.core.tools.bngsim_parameter_scan import (
+        detect_inprocess_scan,
+        run_parameter_scan_with_bngsim,
+    )
+
+    try:
+        with open(bngl_path, "r", errors="replace") as _fh:
+            _bngl_text = _fh.read()
+    except OSError:
+        _bngl_text = None
+    scan_request = detect_inprocess_scan(
+        _load_bngl_actions_for_routing(bngl_path), bngl_text=_bngl_text,
+    )
+    if scan_request is not None:
+        model_name = os.path.splitext(os.path.basename(bngl_path))[0]
+        try:
+            return run_parameter_scan_with_bngsim(
+                bngl_path,
+                output_dir,
+                bngpath,
+                scan_request,
+                model_name,
+                suppress=suppress,
+                log_file=log_file,
+                timeout=timeout,
+                app=app,
+            )
+        except Exception as exc:
+            logger.warning(
+                "parameter_scan in-process fast path failed (%s); falling back "
+                "to the BNG2.pl backend-hook route.",
+                exc,
+            )
+
     # ``rm`` (RuleMonkey) has no BNG2.pl method. Rewrite ``method=>"rm"`` to
     # ``"nf"`` on a temp copy so the simulate_nf hook fires, and tell the
     # helper the real method out of band.

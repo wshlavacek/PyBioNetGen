@@ -158,10 +158,12 @@ KNOWN_DETERMINISTIC_ARTIFACTS = {
 }
 
 # Comparable extensions for both regimes.
-# We focus numerical comparison on .gdat (and .cdat where present).
+# We focus numerical comparison on .gdat (and .cdat where present), plus
+# .scan for parameter_scan models -- a .scan is a 2D table (parameter
+# value + each observable at t_end) and diffs cell-by-cell like a .gdat.
 # .net / .xml differ in cosmetic formatting between simulators and aren't
 # the right things to numeric-diff.
-NUM_EXTENSIONS = {".gdat", ".cdat"}
+NUM_EXTENSIONS = {".gdat", ".cdat", ".scan"}
 SCAN_EXT = ".scan"
 
 NOT_SUPPORTED_PATTERNS = [
