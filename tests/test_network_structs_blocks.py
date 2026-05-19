@@ -450,7 +450,7 @@ class TestNetworkParameterBlock:
         mock_logger.warning.assert_called_once()
         warning_args, warning_kwargs = mock_logger.warning.call_args
         assert "Unable to set parameter 'k1'" in warning_args[0]
-        assert "keeping existing parameter" in warning_args[0]
+        assert "keeping existing value" in warning_args[0]
         assert "NetworkParameterBlock.__setattr__()" in warning_kwargs["loc"]
         assert pb["k1"]["value"] == "0.5"
         assert len(pb._changes) == 0
@@ -518,7 +518,7 @@ class TestNetworkCompartmentBlock:
         mock_logger.warning.assert_called_once()
         warning_args, warning_kwargs = mock_logger.warning.call_args
         assert "Unable to set compartment 'cytoplasm'" in warning_args[0]
-        assert "keeping existing compartment" in warning_args[0]
+        assert "keeping existing size" in warning_args[0]
         assert "NetworkCompartmentBlock.__setattr__()" in warning_kwargs["loc"]
         assert cb["cytoplasm"]["size"] == "1.0"
         assert len(cb._changes) == 0

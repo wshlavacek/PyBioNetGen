@@ -336,7 +336,7 @@ class TestCompartmentBlock:
         mock_logger.warning.assert_called_once()
         warning_args, warning_kwargs = mock_logger.warning.call_args
         assert "Unable to set compartment 'EC'" in warning_args[0]
-        assert "keeping existing compartment" in warning_args[0]
+        assert "keeping existing size" in warning_args[0]
         assert "CompartmentBlock.__setattr__()" in warning_kwargs["loc"]
         assert cb.items["EC"]["size"] == 1.0
         assert len(cb._changes) == 0

@@ -1200,7 +1200,7 @@ class TestBngmodel:
         mock_logger.warning.assert_called_once()
         warning_args, warning_kwargs = mock_logger.warning.call_args
         assert "Unable to set parameter 'k1'" in warning_args[0]
-        assert "keeping existing parameter" in warning_args[0]
+        assert "keeping existing value" in warning_args[0]
         assert "ParameterBlock.__setattr__()" in warning_kwargs["loc"]
         assert block.items["k1"]["value"] == 0.5
         assert len(block._changes) == 0
