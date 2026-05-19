@@ -1,4 +1,6 @@
+import os
 import textwrap
+import time
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -517,3 +519,89 @@ def test_library_subprocess_route_uses_bngcli(tmp_path):
 
     assert result is sentinel
     mock_cli.run.assert_called_once()
+
+
+class TestRoutingActionCache:
+    """The route-classification action parse is memoized per file identity.
+
+    Routing re-asks for a BNGL's action list ~4 times per ``bionetgen.run``
+    (the classifier from ``runner.run`` and again inside
+    ``run_bngl_with_bngsim``, the in-process-scan detector, the
+    network-free-method probe). Each uncached parse builds a ``bngmodel``
+    that shells out to BNG2.pl — serial timing measured ~1.9 s of redundant
+    pre-flight per run before this cache existed, which made the BNGsim
+    route slower than plain subprocess on every model.
+    """
+
+    def test_repeated_routing_queries_parse_the_file_once(self, tmp_path):
+        from bionetgen.core.tools import bngsim_bridge as bridge
+
+        bridge._clear_routing_actions_cache()
+        bngl = tmp_path / "memo.bngl"
+        bngl.write_text("generate_network({overwrite=>1})\n", encoding="utf-8")
+        fake_model = MagicMock()
+        fake_model.actions.items = [_action("generate_network")]
+
+        with patch(
+            "bionetgen.modelapi.model.bngmodel", return_value=fake_model
+        ) as bngmodel:
+            first = bridge._load_bngl_actions_for_routing(str(bngl))
+            second = bridge._load_bngl_actions_for_routing(str(bngl))
+            third = bridge._load_bngl_actions_for_routing(str(bngl))
+
+        assert bngmodel.call_count == 1
+        assert first is second is third
+        assert [a.type for a in first] == ["generate_network"]
+
+    def test_cache_reparses_after_the_file_changes(self, tmp_path):
+        from bionetgen.core.tools import bngsim_bridge as bridge
+
+        bridge._clear_routing_actions_cache()
+        bngl = tmp_path / "memo.bngl"
+        bngl.write_text("generate_network({overwrite=>1})\n", encoding="utf-8")
+        fake_model = MagicMock()
+        fake_model.actions.items = [_action("generate_network")]
+
+        with patch(
+            "bionetgen.modelapi.model.bngmodel", return_value=fake_model
+        ) as bngmodel:
+            bridge._load_bngl_actions_for_routing(str(bngl))
+            # Edit the file: different size, and a strictly later mtime so
+            # the change is caught even on coarse-resolution clocks.
+            bngl.write_text(
+                'generate_network({overwrite=>1})\nsimulate({method=>"ode"})\n',
+                encoding="utf-8",
+            )
+            future = time.time() + 10
+            os.utime(bngl, (future, future))
+            bridge._load_bngl_actions_for_routing(str(bngl))
+
+        assert bngmodel.call_count == 2
+
+    def test_parse_failure_is_cached_not_retried(self, tmp_path):
+        from bionetgen.core.tools import bngsim_bridge as bridge
+
+        bridge._clear_routing_actions_cache()
+        bngl = tmp_path / "broken.bngl"
+        bngl.write_text("not valid bngl\n", encoding="utf-8")
+
+        with patch(
+            "bionetgen.modelapi.model.bngmodel", side_effect=RuntimeError("boom")
+        ) as bngmodel:
+            first = bridge._load_bngl_actions_for_routing(str(bngl))
+            second = bridge._load_bngl_actions_for_routing(str(bngl))
+
+        assert first is None and second is None
+        assert bngmodel.call_count == 1
+
+    def test_unstattable_path_parses_without_caching(self):
+        from bionetgen.core.tools import bngsim_bridge as bridge
+
+        bridge._clear_routing_actions_cache()
+        with patch(
+            f"{BRIDGE}._parse_bngl_actions_for_routing", return_value=None
+        ) as parse:
+            bridge._load_bngl_actions_for_routing("/no/such/file.bngl")
+            bridge._load_bngl_actions_for_routing("/no/such/file.bngl")
+
+        assert parse.call_count == 2

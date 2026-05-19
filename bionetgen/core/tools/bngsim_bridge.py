@@ -1055,10 +1055,62 @@ def _bngl_has_protocol_block(bngl_path):
     return False
 
 
-def _load_bngl_actions_for_routing(bngl_path):
-    """Parse BNGL actions for routing only.
+# Routing re-asks for a BNGL's action list several times per
+# ``bionetgen.run`` — the route classifier (twice: once from
+# ``runner.run`` and once inside ``run_bngl_with_bngsim``), the
+# in-process-scan detector, and the network-free-method probe. Each parse
+# builds a throwaway ``bngmodel`` that shells out to BNG2.pl for XML
+# generation; serial timing measured ~1.9 s of redundant pre-flight per
+# run from this alone, making the BNGsim route slower than plain
+# subprocess on every model. The action list is a pure function of the
+# file, so memoize it on ``(abspath, mtime_ns, size)``: repeated routing
+# queries within one run reuse the parse, while an edited file re-parses
+# on its next run (matters for long-lived consumers like the VS Code
+# extension).
+_CACHE_MISS = object()
+_ROUTING_ACTIONS_CACHE = {}
+_ROUTING_ACTIONS_CACHE_MAX = 128
 
-    Parse failures fall back to BNG2.pl rather than blocking the legacy path.
+
+def _clear_routing_actions_cache():
+    """Drop the routing action-list cache. Test-only; production code
+
+    never needs this because the cache key invalidates on file change.
+    """
+    _ROUTING_ACTIONS_CACHE.clear()
+
+
+def _load_bngl_actions_for_routing(bngl_path):
+    """Parse BNGL actions for routing only — memoized per file identity.
+
+    Returns the parsed action items (treat the list as read-only — routing
+    callers never mutate it) or ``None`` when the file cannot be parsed.
+    Parse failures fall back to BNG2.pl rather than blocking the legacy
+    path, and the ``None`` is cached too so a failing parse is not retried
+    several times per run.
+    """
+    try:
+        st = os.stat(bngl_path)
+        key = (os.path.abspath(bngl_path), st.st_mtime_ns, st.st_size)
+    except OSError:
+        # Can't establish a stable identity — parse without caching.
+        return _parse_bngl_actions_for_routing(bngl_path)
+    cached = _ROUTING_ACTIONS_CACHE.get(key, _CACHE_MISS)
+    if cached is not _CACHE_MISS:
+        return cached
+    actions = _parse_bngl_actions_for_routing(bngl_path)
+    if len(_ROUTING_ACTIONS_CACHE) >= _ROUTING_ACTIONS_CACHE_MAX:
+        # FIFO eviction — drop the oldest entry (dicts keep insertion order).
+        _ROUTING_ACTIONS_CACHE.pop(next(iter(_ROUTING_ACTIONS_CACHE)), None)
+    _ROUTING_ACTIONS_CACHE[key] = actions
+    return actions
+
+
+def _parse_bngl_actions_for_routing(bngl_path):
+    """Parse a BNGL file's action items via a throwaway ``bngmodel``.
+
+    Uncached — :func:`_load_bngl_actions_for_routing` is the memoized
+    entry point callers should use.
     """
     try:
         import bionetgen.modelapi.model as mdl
