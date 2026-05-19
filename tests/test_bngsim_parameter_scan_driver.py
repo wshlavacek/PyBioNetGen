@@ -34,7 +34,7 @@ def _make_request(**overrides):
         action="parameter_scan", parameter="k", par_min=0.0, par_max=100.0,
         n_scan_pts=5, log_scale=False, method="ode", t_start=0.0, t_end=1.0,
         n_steps=1, suffix=None, prefix=None, reset_conc=True, seed=None,
-        atol=None, rtol=None, print_cdat=True,
+        atol=None, rtol=None, print_cdat=True, print_functions=False,
     )
     fields.update(overrides)
     return ScanRequest(**fields)
@@ -250,9 +250,17 @@ def test_detect_accepts_reset_conc_zero():
     ).reset_conc is True
 
 
-def test_detect_declines_print_functions():
-    assert detect_inprocess_scan(_valid_sequence(print_functions="1")) is None
-    assert detect_inprocess_scan(_valid_sequence(print_functions="0")) is not None
+def test_detect_parses_print_functions():
+    # print_functions is honored in-process — BNGL functions go into the
+    # .gdat/.scan from Result.expressions, as the backend hook already does.
+    assert detect_inprocess_scan(
+        _valid_sequence(print_functions="1")
+    ).print_functions is True
+    assert detect_inprocess_scan(
+        _valid_sequence(print_functions="0")
+    ).print_functions is False
+    # absent => default off, matching BNG2.pl.
+    assert detect_inprocess_scan(_valid_sequence()).print_functions is False
 
 
 def test_detect_declines_unknown_option():
@@ -437,6 +445,53 @@ _FALLBACK_SCAN_ACTION = (
 )
 
 
+# A model with a functions block, scanned with print_functions=>1: the
+# .gdat/.scan must carry the two BNGL function columns after the two
+# observables.
+_FUNC_SCAN_MODEL = """\
+begin model
+begin parameters
+  k1 0.5
+  A0_scale 10
+  A0 A0_scale*100
+  kdeg 0.1
+end parameters
+begin molecule types
+  A()
+  B()
+end molecule types
+begin seed species
+  A() A0
+  B() 0
+end seed species
+begin observables
+  Molecules A_tot A()
+  Molecules B_tot B()
+end observables
+begin functions
+  frac_B() B_tot/(A_tot+B_tot+1)
+  total_AB() A_tot+B_tot
+end functions
+begin reaction rules
+  A() -> B() k1
+  B() -> 0 kdeg
+end reaction rules
+end model
+
+generate_network({overwrite=>1})
+parameter_scan({parameter=>"A0_scale",par_min=>1,par_max=>100,\
+n_scan_pts=>5,log_scale=>1,method=>"ode",t_start=>0,t_end=>20,\
+n_steps=>10,print_functions=>1})
+"""
+
+
+def _scan_header(path):
+    for ln in open(path):
+        if ln.startswith("#"):
+            return ln.lstrip("#").split()
+    return []
+
+
 def _load_scan(path):
     import numpy as np
 
@@ -474,6 +529,46 @@ def test_fast_path_runs_in_process_and_matches_subprocess(tmp_path, caplog):
     work = fast_out / "tiny_A0_scale"
     gdats = sorted(p.name for p in work.iterdir() if p.suffix == ".gdat")
     assert len(gdats) == 5
+
+
+@pytest.mark.skipif(not BNGSIM_AVAILABLE, reason="BNGsim not installed")
+def test_print_functions_scan_includes_function_columns(tmp_path, caplog):
+    import bionetgen
+
+    model = tmp_path / "funcs.bngl"
+    model.write_text(_FUNC_SCAN_MODEL)
+
+    fast_out = tmp_path / "fast"
+    ref_out = tmp_path / "ref"
+    with caplog.at_level(logging.INFO, logger="bionetgen.bngsim_bridge"):
+        bionetgen.run(str(model), out=str(fast_out))
+    bionetgen.run(str(model), out=str(ref_out), simulator="subprocess")
+
+    # print_functions no longer declines the fast path.
+    assert any("fast path" in rec.message for rec in caplog.records)
+
+    scan_name = "funcs_A0_scale.scan"
+    # the .scan carries both observables and both BNGL functions, in the
+    # same order and with the same column names as BNG2.pl.
+    fast_header = _scan_header(fast_out / scan_name)
+    assert fast_header == _scan_header(ref_out / scan_name)
+    assert fast_header == [
+        "A0_scale", "A_tot", "B_tot", "frac_B", "total_AB",
+    ]
+
+    fast = _load_scan(fast_out / scan_name)
+    ref = _load_scan(ref_out / scan_name)
+    assert fast.shape == ref.shape == (5, 5)
+    denom = (abs(fast) + abs(ref)).clip(min=1e-12)
+    assert (abs(fast - ref) / denom).max() < 1e-4
+
+    # the per-point .gdat carries the function columns too
+    # (time + 2 observables + 2 functions).
+    work = fast_out / "funcs_A0_scale"
+    gdat = sorted(p for p in work.iterdir() if p.suffix == ".gdat")[0]
+    assert _scan_header(gdat) == [
+        "time", "A_tot", "B_tot", "frac_B", "total_AB",
+    ]
 
 
 @pytest.mark.skipif(not BNGSIM_AVAILABLE, reason="BNGsim not installed")

@@ -23,11 +23,17 @@ Scope:
   descending, ``reset_conc`` forced to ``0``) merged per-observable into
   ``<prefix>_bifurcation_<obs>.scan`` files.
 
+``print_functions=>1`` is honored: BNGL functions (BNGsim "expressions")
+are appended after the observable columns in both the per-point
+``.gdat`` and the merged ``.scan``, exactly as BNG2.pl does — and using
+the same ``Result.expressions`` the backend-hook route already trusts
+for network jobs.
+
 The action sequence must be trivial: ``generate_network`` plus a single
 trailing ``parameter_scan``/``bifurcate``, optionally preceded by
 ``setParameter``. ``nf``/``rm``/``pla`` methods, ``par_scan_vals``,
-``sample_times``, ``steady_state``, ``print_functions`` and non-trivial
-sequences all fall back.
+``sample_times``, ``steady_state`` and non-trivial sequences all fall
+back.
 
 For ``ssa`` the driver rounds param-linked initial concentrations to the
 nearest integer (matching BNG2.pl's ``run_network``, which simulates
@@ -48,13 +54,12 @@ logger = logging.getLogger("bionetgen.bngsim_bridge")
 _SCAN_SUPPORTED_KEYS = frozenset({
     "parameter", "par_min", "par_max", "n_scan_pts", "log_scale",
     "method", "t_start", "t_end", "n_steps", "suffix", "prefix",
-    "reset_conc", "atol", "rtol", "print_CDAT", "seed",
+    "reset_conc", "atol", "rtol", "print_CDAT", "print_functions", "seed",
 })
 # Keys that are recognized but not handled in-process: their presence
 # (when meaningful) forces a fallback rather than a silent wrong answer.
 _SCAN_FALLBACK_KEYS = frozenset({
     "par_scan_vals", "sample_times", "steady_state", "continue",
-    "print_functions",
 })
 # Keys that are recognized and safe to ignore (output is unaffected).
 _SCAN_IGNORED_KEYS = frozenset({
@@ -123,6 +128,7 @@ class ScanRequest:
     atol: float | None
     rtol: float | None
     print_cdat: bool
+    print_functions: bool
 
 
 def _unquote(value):
@@ -196,8 +202,6 @@ def detect_inprocess_scan(actions_items, bngl_text=None):
             return None
         if "steady_state" in args and _as_truthy(args["steady_state"]):
             return None
-        if "print_functions" in args and _as_truthy(args["print_functions"]):
-            return None
 
         method = _unquote(args.get("method", "ode")).lower()
         if method not in _SUPPORTED_METHODS:
@@ -236,6 +240,9 @@ def detect_inprocess_scan(actions_items, bngl_text=None):
         print_cdat = True
         if "print_CDAT" in args:
             print_cdat = _as_truthy(args["print_CDAT"])
+        print_functions = False
+        if "print_functions" in args:
+            print_functions = _as_truthy(args["print_functions"])
     except (ValueError, TypeError) as exc:
         logger.debug("scan fast path declined: unparseable option (%s)", exc)
         return None
@@ -268,6 +275,7 @@ def detect_inprocess_scan(actions_items, bngl_text=None):
         atol=atol,
         rtol=rtol,
         print_cdat=print_cdat,
+        print_functions=print_functions,
     )
 
 
@@ -350,39 +358,42 @@ def _is_literal_number(token):
         return False
 
 
-def _write_scan_file(scan_path, parameter, observable_names, rows):
+def _write_scan_file(scan_path, parameter, column_names, rows):
     """Write a BNG2.pl-format ``.scan`` file.
 
-    Mirrors BNGAction.pm's ``parameter_scan`` writer: a ``# <param> <obs>
+    Mirrors BNGAction.pm's ``parameter_scan`` writer: a ``# <param> <col>
     ...`` header followed by one ``%16.8e``-formatted row per scan point
-    (the parameter value, then each observable at ``t_end``).
+    (the parameter value, then each column at ``t_end``). ``column_names``
+    is the observables, plus the BNGL functions when ``print_functions``
+    is set — matching the per-point ``.gdat`` column set.
     """
     with open(scan_path, "w") as fh:
         header = "# " + f"{parameter:>14}"
-        for name in observable_names:
+        for name in column_names:
             header += " " + f"{name:>16}"
         fh.write(header + "\n")
-        for par_value, obs in rows:
+        for par_value, cols in rows:
             line = f"{par_value:16.8e}"
-            for x in obs:
+            for x in cols:
                 line += " " + f"{x:16.8e}"
             fh.write(line + "\n")
 
 
-def _write_bifurcation_file(scan_path, parameter, obs_name, fwd_col, bwd_col):
-    """Write one BNG2.pl-format ``_bifurcation_<obs>.scan`` file.
+def _write_bifurcation_file(scan_path, parameter, col_name, fwd_col, bwd_col):
+    """Write one BNG2.pl-format ``_bifurcation_<col>.scan`` file.
 
     Mirrors BNGAction.pm's ``bifurcate`` merge writer: a 3-column file
-    ``# <param> <obs>_fwd <obs>_bwd`` whose rows pair the forward column
+    ``# <param> <col>_fwd <col>_bwd`` whose rows pair the forward column
     with the backward column reversed onto the same ascending parameter
-    axis (``backward[N-1-i]``).
+    axis (``backward[N-1-i]``). ``col_name`` is an observable, or a BNGL
+    function when ``print_functions`` is set.
     """
     n = len(fwd_col)
     with open(scan_path, "w") as fh:
         fh.write(
             "# " + f"{parameter:>14}"
-            + " " + f"{obs_name + '_fwd':>16}"
-            + " " + f"{obs_name + '_bwd':>16}" + "\n"
+            + " " + f"{col_name + '_fwd':>16}"
+            + " " + f"{col_name + '_bwd':>16}" + "\n"
         )
         for i in range(n):
             par_value, fwd = fwd_col[i]
@@ -429,13 +440,19 @@ def _run_scan_loop(
     model, sim, request, values, species_names, param_linked,
     work_dir, basename, write_results,
 ):
-    """Drive one in-process scan pass and return per-point ``.scan`` rows.
+    """Drive one in-process scan pass.
 
     For each scanned ``value``: set the parameter; either reset to initial
     concentrations and re-derive param-linked initial concentrations
     (``reset_conc=>1``), or carry the prior point's end state
     (``reset_conc=>0`` / ``bifurcate``); integrate; write the per-point
-    ``.gdat``/``.cdat``; collect each observable at ``t_end``.
+    ``.gdat``/``.cdat``; collect each output column at ``t_end``.
+
+    Returns ``(scan_rows, expression_names)``. Each ``scan_rows`` entry is
+    ``(parameter_value, columns)`` where ``columns`` is the observables at
+    ``t_end``, followed by the BNGL functions when ``print_functions`` is
+    set. ``expression_names`` is the matching function-column name list
+    (empty unless ``print_functions`` and the model has functions).
 
     ``write_results`` is :func:`bngsim_bridge._write_bngsim_results`,
     passed in to avoid a circular import.
@@ -452,6 +469,7 @@ def _run_scan_loop(
 
     os.makedirs(work_dir, exist_ok=True)
     scan_rows = []
+    expression_names = []
     for k, value in enumerate(values):
         model.set_param(request.parameter, value)
         if request.reset_conc:
@@ -475,13 +493,23 @@ def _run_scan_loop(
         )
         point_name = f"{basename}_{k + 1:05d}"
         write_results(
-            result, work_dir, point_name, print_cdat=request.print_cdat,
+            result, work_dir, point_name,
+            print_functions=request.print_functions,
+            print_cdat=request.print_cdat,
         )
         if not request.reset_conc:
             for i, sp_name in enumerate(species_names):
                 model.set_concentration(sp_name, result.species[-1, i])
-        scan_rows.append((value, list(result.observables[-1, :])))
-    return scan_rows
+        # The .scan columns mirror the per-point .gdat: observables at
+        # t_end, then the BNGL functions when print_functions is set. The
+        # function set is fixed across scan points — capture it once.
+        if k == 0 and request.print_functions:
+            expression_names = list(result.expression_names)
+        columns = list(result.observables[-1, :])
+        if expression_names:
+            columns += list(result.expressions[-1, :])
+        scan_rows.append((value, columns))
+    return scan_rows, expression_names
 
 
 def _generate_network(bngl_path, model_name, bngpath, gen_dir, run_subprocess,
@@ -575,11 +603,12 @@ def run_parameter_scan_with_bngsim(
         sim = _new_simulator(model, request)
 
         values = scan_values(request)
-        scan_rows = _run_scan_loop(
+        scan_rows, expression_names = _run_scan_loop(
             model, sim, request, values, species_names, param_linked,
             work_dir, basename, _write_bngsim_results,
         )
-        _write_scan_file(scan_path, request.parameter, observable_names, scan_rows)
+        column_names = observable_names + expression_names
+        _write_scan_file(scan_path, request.parameter, column_names, scan_rows)
         logger.info(
             "parameter_scan fast path: %d points for %r via in-process "
             "BNGsim (%s)", len(values), request.parameter, request.method,
@@ -645,25 +674,27 @@ def run_bifurcate_with_bngsim(
         fwd_values = scan_values(request)
         bwd_values = list(reversed(fwd_values))
 
-        fwd_rows = _run_scan_loop(
+        fwd_rows, expression_names = _run_scan_loop(
             model, sim, request, fwd_values, species_names, param_linked,
             os.path.join(output_dir, fwd_base), fwd_base, _write_bngsim_results,
         )
-        bwd_rows = _run_scan_loop(
+        bwd_rows, _ = _run_scan_loop(
             model, sim, request, bwd_values, species_names, param_linked,
             os.path.join(output_dir, bwd_base), bwd_base, _write_bngsim_results,
         )
 
-        # Merge: one file per observable, backward column reversed onto
-        # the ascending parameter axis (BNGAction.pm sub bifurcate).
-        for j, obs_name in enumerate(observable_names):
-            fwd_col = [(par, obs[j]) for par, obs in fwd_rows]
-            bwd_col = [(par, obs[j]) for par, obs in bwd_rows]
+        # Merge: one file per output column (observables, then BNGL
+        # functions when print_functions is set), backward column reversed
+        # onto the ascending parameter axis (BNGAction.pm sub bifurcate).
+        column_names = observable_names + expression_names
+        for j, col_name in enumerate(column_names):
+            fwd_col = [(par, cols[j]) for par, cols in fwd_rows]
+            bwd_col = [(par, cols[j]) for par, cols in bwd_rows]
             out_path = os.path.join(
-                output_dir, f"{prefix}_bifurcation_{obs_name}.scan"
+                output_dir, f"{prefix}_bifurcation_{col_name}.scan"
             )
             _write_bifurcation_file(
-                out_path, request.parameter, obs_name, fwd_col, bwd_col,
+                out_path, request.parameter, col_name, fwd_col, bwd_col,
             )
         logger.info(
             "bifurcate fast path: %d points for %r via in-process BNGsim "
