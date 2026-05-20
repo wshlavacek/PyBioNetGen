@@ -6,14 +6,19 @@ For each model:
 * Deterministic models (only ode/cvode actions): per-cell combined
   absolute+relative diff of every common .gdat/.cdat — the standard
   ODE-solver error model. A cell passes iff
-      |a - b| <= ABS_TOL * col_peak + REL_TOL * max(|a|, |b|)
-  where ``col_peak`` is that column's peak magnitude across both runs.
-  The relative term governs the bulk of the trajectory; the absolute
-  term governs the tail of a quantity decaying toward zero, where
-  ``|a-b| / max(|a|, |b|)`` is undefined — a trailing-digit difference
-  over an exponentially tiny value reads as a relative diff of ~2.0
-  (a sign flip). A genuine divergence is a meaningful fraction of the
-  column scale and clears both terms by many decades.
+      |a - b| <= ABS_TOL_FILE * file_scale
+                 + ABS_TOL_COL * col_peak
+                 + REL_TOL * max(|a|, |b|)
+  where ``col_peak`` is that column's peak magnitude across both runs
+  and ``file_scale`` is the maximum magnitude over the whole file.
+  The relative term governs the bulk of the trajectory; the column-
+  relative absolute term governs the tail of a quantity decaying toward
+  zero (a trailing-digit difference over an exponentially tiny value
+  reads as rel ~2.0); the file-relative absolute term forgives sub-scale
+  columns where the column peak is itself many decades below the model
+  scale (otherwise the column-relative term holds those to atto-precision).
+  A genuine divergence is a meaningful fraction of model scale and clears
+  all three terms by many decades.
   As a backstop, a cell where *both* sides sit below
   ``zero_floor = max(1e-12, scale * NEAR_ZERO_FLOOR_REL)`` (``scale`` =
   file peak) is forgiven outright — sub-scale underflow noise in a
@@ -75,24 +80,48 @@ import numpy as np
 # noise as a divergence. Genuine divergences in this corpus are rel
 # >= 0.1 — well clear of 1e-4.
 REL_TOL = 1e-4
-# Absolute tolerance, as a fraction of each column's own peak magnitude.
-# The deterministic test is a combined abs+rel bar — the standard
-# ODE-solver error model |a-b| <= atol + rtol*|y|. The relative term
-# (REL_TOL) governs the bulk of the trajectory; this absolute term
-# governs the tail of a quantity decaying toward zero, where the
-# relative diff is undefined (a trailing-digit difference over an
-# exponentially tiny value reads as rel ~2.0). 1e-6 of column peak is 4
-# decades below REL_TOL and 5+ below any genuine divergence (those run
-# >=0.1 of model scale), so it forgives decay-tail roundoff without
-# loosening detection of a real discrepancy.
-ABS_TOL = 1e-6
+# Absolute tolerances. The deterministic per-cell bar is the standard
+# ODE-solver error model |a-b| <= atol + rtol*|y|, with the absolute
+# term split into two scale-relative pieces:
+#
+#   ABS_TOL_COL * col_peak — column-relative, the original ABS_TOL.
+#     Forgives the tail of a quantity decaying toward zero within its
+#     own column (where |a-b|/max(|a|,|b|) is undefined and rel reads
+#     ~2.0 on a sign flip).
+#   ABS_TOL_FILE * file_scale — file-relative, NEW. Forgives sub-scale
+#     columns: a species that lives at 1e-8 of model scale contributes
+#     a col_peak of 1e-8, so the column-relative term alone holds it to
+#     1e-14 — tighter than any integrator's intrinsic precision.
+#     The file-scale term keeps "the diff is insignificant on the model
+#     scale" available as a backstop. 1e-9 is 8 decades below any real
+#     divergence (>=0.1 of model scale) and 3 decades below the
+#     column-relative term, so it acts only on tiny-column noise.
+#
+# Either term clearing alone is enough; the bar is their sum.
+ABS_TOL_COL = 1e-6
+ABS_TOL_FILE = 1e-9
 # Closeness bar used only by `_discontinuity_shift_mask` to confirm a
 # value equals an adjacent-row value on the other side. Kept tight and
 # independent of REL_TOL: step-function branch values are bit-identical
 # literals between the two sides, so a loose bar here would only risk a
 # genuine divergence coincidentally matching a neighbour.
 SHIFT_MATCH_TOL = 1e-6
-TIME_TOL = 0.0  # time column must match exactly
+# Maximum sample-offset the step/phase shift mask will search. The
+# original mask handled only single-sample step discontinuities (k=1);
+# k=3 also forgives stiff relaxation oscillators whose phase wanders a
+# few samples over many cycles, and multi-bucket staircase functions
+# sampled at their discontinuities. The two cell-match constraints (a
+# matches the other side's r-dr row AND b matches the r+dr row) keep
+# the bar tight: a real divergence does not coincidentally match a
+# neighbour to 1ppm.
+SHIFT_MASK_K = 3
+# Time-column tolerance is *scale-relative* — see `_time_tol`. Independently
+# writing the same float on two integrators won't yield bit equality;
+# demanding it is wrong. Floor (TIME_TOL_FLOOR) protects sub-second models;
+# relative term (TIME_TOL_REL) scales with t_max so the bar stays meaningful
+# on long trajectories.
+TIME_TOL_FLOOR = 1e-9
+TIME_TOL_REL = 1e-12
 # Deterministic near-zero floor: a cell where both sides are below
 # scale * NEAR_ZERO_FLOOR_REL (scale = file peak magnitude) is below
 # the integrator's resolvable range — the quantity is numerically zero
@@ -249,23 +278,53 @@ def safe_load(path):
         return None, f"{type(e).__name__}: {e}"
 
 
-def _discontinuity_shift_mask(sub_data, bng_data, fail_mask):
-    """Mark failing cells that are single-sample step-discontinuity shifts.
+def _time_tol(times):
+    """Per-file time-column tolerance, scale-relative.
 
-    A step-function column (e.g. ``if(t<N, a, b)``) switches branches at a
-    threshold. When the threshold sits exactly on an output grid point the
-    two ODE integrators land on opposite sides of the ``<`` comparison: the
-    clock observable they feed into the function disagrees by ~1e-13 of
-    integrator roundoff at the grid point, so the column transitions one
-    sample early on one side. That is a numerical artifact of comparing two
-    integrators, not a parity failure — the columns are otherwise identical.
+    Two independent integrators emit float-formatted output times whose
+    last bits differ; exact equality is not a meaningful property of two
+    ODE solutions. We accept ``|t_sub - t_bng| <= max(1e-9, 1e-12 * t_max)``
+    — at least 1 ns absolute, plus 1 ppT of the simulation length so the
+    bar stays meaningful for both sub-second and Gyr-scale trajectories.
+    Any real divergence (engine bug producing wrong output times) is
+    orders of magnitude larger than this floor.
+    """
+    if times is None or len(times) == 0:
+        return TIME_TOL_FLOOR
+    t_abs = np.abs(times)
+    if not np.any(np.isfinite(t_abs)):
+        return TIME_TOL_FLOOR
+    t_max = float(np.nanmax(t_abs[np.isfinite(t_abs)]))
+    return max(TIME_TOL_FLOOR, TIME_TOL_REL * t_max)
 
-    A failing cell ``(r, c)`` is forgiven only when the two columns are
-    bit-equal except a <=1-sample horizontal offset at this single
-    transition: each side's value at row ``r`` must equal the other side's
-    value at an adjacent row. A genuine divergence will not coincide with a
-    neighbour, and an off-by-two-or-more shift (a real ~0.1+ time-unit lag,
-    not roundoff) leaves a non-matching neighbour and stays flagged.
+
+def _discontinuity_shift_mask(sub_data, bng_data, fail_mask, k=SHIFT_MASK_K):
+    """Mark failing cells that are <=k-sample horizontal shifts.
+
+    Two phenomena hit the same structural artifact: column values that are
+    correct on both sides but sampled at slightly different times.
+
+    (1) Step-function columns (``if(t<N, a, b)``) at a threshold on an output
+        grid point — the two integrators' clock observables disagree by ~1e-13
+        and land on opposite sides of ``<``, so the column transitions one
+        sample early on one side. k=1 handles this.
+
+    (2) Stiff relaxation oscillators with sharp switches — sub-step timing
+        differs between integrators, so phase wanders a few samples over many
+        cycles. Two periodic trajectories with matching period/amplitude/cycle
+        count read as enormous per-cell diffs on the steep edges (rel ~2 on a
+        sign flip). k>1 (default 3) handles this.
+
+    (3) Multi-bucket staircase functions sampled at their discontinuities.
+
+    A failing cell ``(r, c)`` is forgiven when there is some offset
+    ``dr in [-k, +k] \\ {0}`` such that the value on the sub side equals the
+    bng side's value at row ``r - dr``, and the bng side at row ``r`` equals
+    the sub side at row ``r + dr`` — i.e. the column is consistent with bng
+    leading sub by ``dr`` samples (or vice versa). Closeness is held to
+    1ppm; a real divergence does not match a neighbour to 1ppm by accident
+    in a smooth trajectory. Boundary rows fall back to a one-sided check
+    against both adjacent rows on the same side.
     """
     R = sub_data.shape[0]
     forgiven = np.zeros_like(fail_mask)
@@ -277,28 +336,40 @@ def _discontinuity_shift_mask(sub_data, bng_data, fail_mask):
     rows, cols = np.nonzero(fail_mask)
     for r, c in zip(rows.tolist(), cols.tolist()):
         s, b = sub_data[r, c], bng_data[r, c]
-        sp = sub_data[r - 1, c] if r > 0 else None
-        sn = sub_data[r + 1, c] if r + 1 < R else None
-        bp = bng_data[r - 1, c] if r > 0 else None
-        bn = bng_data[r + 1, c] if r + 1 < R else None
         ok = False
-        # interior row: one side's transition leads the other by one sample
-        if bp is not None and sn is not None and close(s, bp) and close(b, sn):
-            ok = True  # bngsim transitions one sample earlier
-        elif bn is not None and sp is not None and close(s, bn) and close(b, sp):
-            ok = True  # subprocess transitions one sample earlier
-        # boundary row: one side steps at the final/first sample and the
-        # other has no room to follow. Require agreement just before/after.
-        elif r == R - 1 and sp is not None and bp is not None:
-            if close(s, bp) and close(s, sp) and not close(b, bp):
-                ok = True  # bngsim stepped at the final sample
-            elif close(b, sp) and close(b, bp) and not close(s, sp):
-                ok = True  # subprocess stepped at the final sample
-        elif r == 0 and sn is not None and bn is not None:
-            if close(s, bn) and close(s, sn) and not close(b, bn):
-                ok = True  # bngsim stepped at the first sample
-            elif close(b, sn) and close(b, bn) and not close(s, sn):
-                ok = True  # subprocess stepped at the first sample
+        for dr in range(1, k + 1):
+            # bng leads sub by dr samples: bng[r-dr] == sub[r] AND
+            # bng[r] == sub[r+dr].
+            if r - dr >= 0 and r + dr < R:
+                if close(s, bng_data[r - dr, c]) and close(b, sub_data[r + dr, c]):
+                    ok = True
+                    break
+                # sub leads bng by dr samples.
+                if close(s, bng_data[r + dr, c]) and close(b, sub_data[r - dr, c]):
+                    ok = True
+                    break
+            # final-row boundary: one side stepped at the final sample, the
+            # other has no room to follow. Require the stepped side to
+            # agree with itself just before, and the other side to disagree.
+            elif r == R - 1 and r - dr >= 0:
+                sp = sub_data[r - dr, c]
+                bp = bng_data[r - dr, c]
+                if close(s, bp) and close(s, sp) and not close(b, bp):
+                    ok = True  # bngsim stepped at the final sample
+                    break
+                if close(b, sp) and close(b, bp) and not close(s, sp):
+                    ok = True  # subprocess stepped at the final sample
+                    break
+            # first-row boundary, symmetric.
+            elif r == 0 and r + dr < R:
+                sn = sub_data[r + dr, c]
+                bn = bng_data[r + dr, c]
+                if close(s, bn) and close(s, sn) and not close(b, bn):
+                    ok = True  # bngsim stepped at the first sample
+                    break
+                if close(b, sn) and close(b, bn) and not close(s, sn):
+                    ok = True  # subprocess stepped at the first sample
+                    break
         if ok:
             forgiven[r, c] = True
     return forgiven
@@ -364,13 +435,15 @@ def deterministic_compare(sub_dir, bng_dir):
             if sub.shape[1] > 1:
                 # If they happen to align beyond time column, compare too.
                 data_diff = float(np.max(np.abs(sub[:, 1:] - bng[:, 1:])))
+            t_tol = _time_tol(np.concatenate([sub[:, 0], bng[:, 0]]))
             per_file[f"{stem}{sp.suffix}<->{stem}{bp.suffix}"] = {
                 "note": "cross-ext name match (likely empty observables NF)",
                 "shape": list(sub.shape),
                 "time_diff": time_diff,
+                "time_tol": t_tol,
                 "data_diff": data_diff,
             }
-            if time_diff > TIME_TOL:
+            if time_diff > t_tol:
                 overall_pass = False
         return ("pass" if overall_pass else "diff"), {
             "only_sub": only_sub,
@@ -394,8 +467,9 @@ def deterministic_compare(sub_dir, bng_dir):
                               "shape_bng": list(bng.shape)}
             overall_pass = False
             continue
-        # Time column (col 0) must match exactly.
+        # Time column (col 0): scale-relative tolerance, see `_time_tol`.
         time_diff = float(np.max(np.abs(sub[:, 0] - bng[:, 0])))
+        time_tol = _time_tol(np.concatenate([sub[:, 0], bng[:, 0]]))
         # NaN==NaN: treat both-NaN cells as zero diff.
         sub_data = sub[:, 1:]
         bng_data = bng[:, 1:]
@@ -422,9 +496,13 @@ def deterministic_compare(sub_dir, bng_dir):
         denom = np.maximum(colmag, zero_floor)
         reld_clean = np.where(np.isnan(absd), np.inf, absd / denom)
         # Combined absolute + relative tolerance, per cell — the ODE
-        # solver error model |a-b| <= atol + rtol*|y|. The absolute term
-        # uses each column's own peak; see module docstring / ABS_TOL.
-        cell_tol = ABS_TOL * col_peak[np.newaxis, :] + REL_TOL * colmag
+        # solver error model |a-b| <= atol + rtol*|y|. Absolute term has
+        # both a column-relative piece (forgives decay tails) and a
+        # file-relative piece (forgives sub-scale columns); see the
+        # ABS_TOL_COL / ABS_TOL_FILE constants.
+        cell_tol = (ABS_TOL_FILE * scale
+                    + ABS_TOL_COL * col_peak[np.newaxis, :]
+                    + REL_TOL * colmag)
         fail_mask = absd_clean > cell_tol
         n_fail = int(np.sum(fail_mask))
         # Forgive single-sample step-discontinuity shifts: roundoff in a
@@ -454,6 +532,7 @@ def deterministic_compare(sub_dir, bng_dir):
         per_file[name] = {
             "shape": list(sub.shape),
             "time_diff": time_diff,
+            "time_tol": time_tol,
             "max_abs": max_abs if np.isfinite(max_abs) else "inf",
             "max_rel": max_rel if np.isfinite(max_rel) else "inf",
         }
@@ -468,7 +547,7 @@ def deterministic_compare(sub_dir, bng_dir):
                 max_abs_raw if np.isfinite(max_abs_raw) else "inf")
         overall_max_abs = max(overall_max_abs, max_abs if np.isfinite(max_abs) else float("inf"))
         overall_max_rel = max(overall_max_rel, max_rel if np.isfinite(max_rel) else float("inf"))
-        if time_diff > TIME_TOL:
+        if time_diff > time_tol:
             per_file[name]["fail"] = "time"
             overall_pass = False
         if n_effective:
@@ -556,13 +635,16 @@ def stochastic_compare(sub_seed_dirs, bng_seed_dirs):
                 overall_pass = False; continue
             sub_stack = np.stack(sub_arrs)
             bng_stack = np.stack(bng_arrs)
-            time_diff = float(np.max(np.abs(np.mean(sub_stack[:, :, 0], axis=0) -
-                                              np.mean(bng_stack[:, :, 0], axis=0))))
+            sub_t_mean = np.mean(sub_stack[:, :, 0], axis=0)
+            bng_t_mean = np.mean(bng_stack[:, :, 0], axis=0)
+            time_diff = float(np.max(np.abs(sub_t_mean - bng_t_mean)))
+            t_tol = _time_tol(np.concatenate([sub_t_mean, bng_t_mean]))
             per_file[stem] = {"note": "cross-ext name match (NF empty observables)",
                               "shape_seeds": [sub_stack.shape[0],
                                               *list(sub_stack.shape[1:])],
-                              "time_diff": time_diff}
-            if time_diff > TIME_TOL:
+                              "time_diff": time_diff,
+                              "time_tol": t_tol}
+            if time_diff > t_tol:
                 overall_pass = False
         return ("pass" if overall_pass else "diff"), {
             "only_sub": only_sub,
@@ -620,8 +702,10 @@ def stochastic_compare(sub_seed_dirs, bng_seed_dirs):
         # should match exactly between sides. Don't test variance on time.
         sub_time = sub_stack[:, :, 0]
         bng_time = bng_stack[:, :, 0]
-        time_diff = float(np.max(np.abs(np.mean(sub_time, axis=0) -
-                                         np.mean(bng_time, axis=0))))
+        sub_time_mean = np.mean(sub_time, axis=0)
+        bng_time_mean = np.mean(bng_time, axis=0)
+        time_diff = float(np.max(np.abs(sub_time_mean - bng_time_mean)))
+        time_tol = _time_tol(np.concatenate([sub_time_mean, bng_time_mean]))
         # Observable columns: ensemble means, stds; ddof=1 for sample std
         sub_obs = sub_stack[:, :, 1:]
         bng_obs = bng_stack[:, :, 1:]
@@ -670,12 +754,13 @@ def stochastic_compare(sub_seed_dirs, bng_seed_dirs):
         per_file[name] = {
             "shape_seeds": [N_sub, *list(s_shape)],
             "time_diff": time_diff,
+            "time_tol": time_tol,
             "n_cells": n_total,
             "n_pass": n_pass,
             "frac_pass": frac_pass,
             "max_abs_mean_diff": float(np.nanmax(diff)) if diff.size else 0.0,
         }
-        if time_diff > TIME_TOL:
+        if time_diff > time_tol:
             per_file[name]["fail"] = "time"
             overall_pass = False
         if frac_pass < ENSEMBLE_PASS_FRAC:
@@ -901,7 +986,8 @@ def main():
     lines.append(f"  - simulator={sub_summary.get('simulator')}, n_seeds={sub_summary.get('n_seeds')}")
     lines.append(f"- bngsim sweep:     `{args.bngsim}` (n={bng_summary.get('n_units')}, by_status={bng_summary.get('by_status')})")
     lines.append(f"  - simulator={bng_summary.get('simulator')}, n_seeds={bng_summary.get('n_seeds')}")
-    lines.append(f"- tolerance: deterministic rel={REL_TOL}, time={TIME_TOL}; "
+    lines.append(f"- tolerance: deterministic rel={REL_TOL}, "
+                 f"time=max({TIME_TOL_FLOOR},{TIME_TOL_REL}*t_max); "
                  f"stochastic K={ENSEMBLE_K} sigma over N={sub_summary.get('n_seeds')}, "
                  f"pass>={ENSEMBLE_PASS_FRAC}")
     if escalated:
