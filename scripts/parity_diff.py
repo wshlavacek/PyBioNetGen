@@ -5,12 +5,20 @@ For each model:
 
 * Deterministic models (only ode/cvode actions): per-cell combined
   absolute+relative diff of every common .gdat/.cdat — the standard
-  ODE-solver error model. A cell passes iff
+  ODE-solver error model with a small fail-fraction budget.
+  A cell passes the per-cell bar iff
       |a - b| <= ABS_TOL_FILE * file_scale
                  + ABS_TOL_COL * col_peak
                  + REL_TOL * max(|a|, |b|)
   where ``col_peak`` is that column's peak magnitude across both runs
   and ``file_scale`` is the maximum magnitude over the whole file.
+  A file passes iff (1) no cell exceeds the hard ceilings
+  ``HARD_REL_CEILING`` (per-cell relative) or
+  ``HARD_ABS_CEILING_FILE * file_scale`` (file-scale absolute), AND
+  (2) at most ``FAIL_FRAC_BUDGET`` of cells fail the per-cell bar
+  (after the shift / near-zero forgiveness rules below) — the budget
+  forgives a handful of isolated stiff-transient cells while the hard
+  ceilings catch any concentrated divergence.
   The relative term governs the bulk of the trajectory; the column-
   relative absolute term governs the tail of a quantity decaying toward
   zero (a trailing-digit difference over an exponentially tiny value
@@ -132,6 +140,27 @@ NEAR_ZERO_FLOOR_REL = 1e-12
 ENSEMBLE_K = 3.0
 ENSEMBLE_PASS_FRAC = 0.99
 NEAR_ZERO_REL = 1e-9
+
+# Deterministic cell-fraction budget. Two independent stiff-ODE integrators
+# at the same atol/rtol can disagree above the soft per-cell bar on a few
+# isolated cells (a sharp transient, a single stiff sub-step) while the
+# trajectory as a whole is the same dynamical solution. Allow up to
+# FAIL_FRAC_BUDGET of cells to fail the soft tolerance ONLY if no cell
+# blows past the hard ceilings — the budget catches "the simulations agree
+# overall but one row has integrator noise", the ceilings guard against
+# "a tiny region of the trajectory has a real engine bug".
+#
+# Sizing: corpus-real engine bugs (e.g. bngsim #41 compartmental clamp:
+# 1.66% of cells in Motivating_example_cBNGL_2, 55% in catalysis) fail at
+# >=1.5% of cells, so 0.5% is a 3-10x safety margin under the minimum
+# observed real-bug fail rate. The smallest real bug we expect would be
+# one wrong species column on a 20-column model (1/20 = 5% of cells),
+# well above the budget. Hard ceilings: 5% per-cell relative and 1% of
+# file-peak absolute are 50-100x the soft per-cell tol but still 10-20x
+# smaller than the magnitude of any real engine bug we've filed.
+FAIL_FRAC_BUDGET = 5e-3
+HARD_REL_CEILING = 0.05
+HARD_ABS_CEILING_FILE = 1e-2
 
 # Models whose DIFF has been investigated and confirmed to be a
 # comparison artifact, not a simulator discrepancy. They stay in the
@@ -520,15 +549,34 @@ def deterministic_compare(sub_dir, bng_dir):
         n_near_zero = int(np.sum(near_zero_mask))
         forgive_mask = shift_mask | near_zero_mask
         effective_fail = fail_mask & ~forgive_mask
-        n_effective = int(np.sum(effective_fail))
+        # Option C — cell-fraction budget. A cell that exceeds either
+        # hard ceiling is never forgiven (catches a real engine bug
+        # concentrated in a small region). The rest of `effective_fail`
+        # is "soft": cells past the per-cell tol but within the hard
+        # ceilings, plausibly stiff-transient integrator noise. Forgive
+        # the soft group iff their fraction is within FAIL_FRAC_BUDGET.
+        hard_rel_fail = reld_clean > HARD_REL_CEILING
+        hard_abs_fail = absd_clean > HARD_ABS_CEILING_FILE * scale
+        hard_fail = effective_fail & (hard_rel_fail | hard_abs_fail)
+        soft_fail = effective_fail & ~hard_fail
+        n_hard_fail = int(np.sum(hard_fail))
+        n_soft_fail = int(np.sum(soft_fail))
+        total_cells = int(effective_fail.size)
+        frac_soft_fail = (n_soft_fail / total_cells) if total_cells else 0.0
+        budget_ok = frac_soft_fail <= FAIL_FRAC_BUDGET
+        # Final fail set after budget: hard fails always; soft fails
+        # only when they break the budget.
+        remaining_fail = hard_fail if budget_ok else effective_fail
+        n_remaining = int(np.sum(remaining_fail))
+        n_budget_forgiven = n_soft_fail if budget_ok else 0
         # Reported figures: max over genuinely-failing cells (0 if the
         # file passes); raw figures over all cells kept for visibility.
         max_abs_raw = float(np.max(absd_clean)) if absd_clean.size else 0.0
         max_rel_raw = float(np.max(reld_clean)) if reld_clean.size else 0.0
-        max_abs = (float(np.max(absd_clean[effective_fail]))
-                   if n_effective else 0.0)
-        max_rel = (float(np.max(reld_clean[effective_fail]))
-                   if n_effective else 0.0)
+        max_abs = (float(np.max(absd_clean[remaining_fail]))
+                   if n_remaining else 0.0)
+        max_rel = (float(np.max(reld_clean[remaining_fail]))
+                   if n_remaining else 0.0)
         per_file[name] = {
             "shape": list(sub.shape),
             "time_diff": time_diff,
@@ -540,7 +588,10 @@ def deterministic_compare(sub_dir, bng_dir):
             per_file[name]["discontinuity_shifts"] = n_shift
         if n_near_zero:
             per_file[name]["near_zero_forgiven"] = n_near_zero
-        if n_shift or n_near_zero:
+        if n_budget_forgiven:
+            per_file[name]["budget_forgiven"] = n_budget_forgiven
+            per_file[name]["frac_soft_fail"] = frac_soft_fail
+        if n_shift or n_near_zero or n_budget_forgiven:
             per_file[name]["max_rel_raw"] = (
                 max_rel_raw if np.isfinite(max_rel_raw) else "inf")
             per_file[name]["max_abs_raw"] = (
@@ -550,7 +601,7 @@ def deterministic_compare(sub_dir, bng_dir):
         if time_diff > time_tol:
             per_file[name]["fail"] = "time"
             overall_pass = False
-        if n_effective:
+        if n_remaining:
             per_file[name]["fail"] = per_file[name].get("fail", "") + "value"
             overall_pass = False
     return ("pass" if overall_pass else "diff"), {
@@ -987,7 +1038,9 @@ def main():
     lines.append(f"- bngsim sweep:     `{args.bngsim}` (n={bng_summary.get('n_units')}, by_status={bng_summary.get('by_status')})")
     lines.append(f"  - simulator={bng_summary.get('simulator')}, n_seeds={bng_summary.get('n_seeds')}")
     lines.append(f"- tolerance: deterministic rel={REL_TOL}, "
-                 f"time=max({TIME_TOL_FLOOR},{TIME_TOL_REL}*t_max); "
+                 f"time=max({TIME_TOL_FLOOR},{TIME_TOL_REL}*t_max), "
+                 f"fail-frac budget<={FAIL_FRAC_BUDGET} (ceilings "
+                 f"rel<={HARD_REL_CEILING}, abs<={HARD_ABS_CEILING_FILE}*file_scale); "
                  f"stochastic K={ENSEMBLE_K} sigma over N={sub_summary.get('n_seeds')}, "
                  f"pass>={ENSEMBLE_PASS_FRAC}")
     if escalated:

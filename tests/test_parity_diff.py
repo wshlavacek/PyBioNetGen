@@ -253,6 +253,87 @@ class TestDeterministicCompare:
         status, _ = pd.deterministic_compare(sub_dir, bng_dir)
         assert status == "diff"
 
+    def test_isolated_transient_cell_forgiven_by_budget(self, tmp_pair):
+        """A model with one cell failing the per-cell bar but below the
+        hard ceilings and below FAIL_FRAC_BUDGET passes — the McMillen_2002
+        / test2 case. Two stiff integrators disagree on one row.
+        """
+        sub_dir, bng_dir = tmp_pair
+        t = np.linspace(0, 10, 401)
+        # Monotone non-zero signal, 4 obs columns at file_scale ~ 1200.
+        signal = 1200 * np.exp(-t / 50)  # decays from 1200 to ~980
+        cols = [signal, 0.5 * signal, 2.0 * signal, 0.1 * signal]
+        sub_arr = np.column_stack([t] + cols)
+        bng_arr = sub_arr.copy()
+        # One cell off by ~0.1% (relative ~1e-3, above REL_TOL=1e-4 but
+        # way below HARD_REL_CEILING=5e-2); 1/1604 = 0.062% << 0.5% budget.
+        bng_arr[200, 2] += 0.001 * bng_arr[200, 2]
+        _write_gdat(sub_dir / "m.gdat", sub_arr, 4)
+        _write_gdat(bng_dir / "m.gdat", bng_arr, 4)
+        status, details = pd.deterministic_compare(sub_dir, bng_dir)
+        assert status == "pass", details
+
+    def test_concentrated_divergence_caught_by_hard_rel_ceiling(self, tmp_pair):
+        """A single cell with a large per-cell relative diff is caught
+        even though only one cell fails (budget alone would forgive it).
+        """
+        sub_dir, bng_dir = tmp_pair
+        t = np.linspace(0, 10, 401)
+        # Constant non-zero signal so the relative bump is well-defined.
+        signal = np.full_like(t, 10.0)
+        sub_arr = np.column_stack([t, signal, signal])
+        bng_arr = sub_arr.copy()
+        # 50% relative divergence on one cell — way above 5% rel ceiling.
+        bng_arr[200, 1] *= 1.5
+        _write_gdat(sub_dir / "m.gdat", sub_arr, 2)
+        _write_gdat(bng_dir / "m.gdat", bng_arr, 2)
+        status, _ = pd.deterministic_compare(sub_dir, bng_dir)
+        assert status == "diff"
+
+    def test_concentrated_divergence_caught_by_hard_abs_ceiling(self, tmp_pair):
+        """A single cell with an absolute diff above 1% of file scale
+        is caught even though it's only one cell — and the per-cell
+        relative is below the rel ceiling.
+        """
+        sub_dir, bng_dir = tmp_pair
+        t = np.linspace(0, 10, 401)
+        # Constant 1000 (file_scale=1000); bump one cell by 50 (5% of scale).
+        # Per-cell rel = 50/1050 ~ 0.048, below the 5% ceiling, so only
+        # the abs ceiling can catch it.
+        signal = np.full_like(t, 1000.0)
+        sub_arr = np.column_stack([t, signal])
+        bng_arr = sub_arr.copy()
+        bng_arr[200, 1] += 50.0
+        _write_gdat(sub_dir / "m.gdat", sub_arr, 1)
+        _write_gdat(bng_dir / "m.gdat", bng_arr, 1)
+        status, _ = pd.deterministic_compare(sub_dir, bng_dir)
+        assert status == "diff"
+
+    def test_many_soft_failing_cells_caught_by_budget(self, tmp_pair):
+        """A model with 5% of cells failing the per-cell bar (each cell
+        below hard ceilings) is still caught — above the 0.5% budget.
+        The catalysis / Motivating_example_cBNGL_2 case.
+        """
+        sub_dir, bng_dir = tmp_pair
+        rng = np.random.default_rng(7)
+        t = np.linspace(0, 10, 401)
+        signal = np.exp(-t / 5) * np.sin(2 * np.pi * t)
+        sub_arr = np.column_stack([t, signal, signal, signal, signal])
+        bng_arr = sub_arr.copy()
+        # Perturb 5% of obs cells by ~3% relative (above per-cell tol,
+        # below hard ceilings).
+        n_obs = 4
+        rows = sub_arr.shape[0]
+        n_perturb = int(0.05 * rows * n_obs)
+        flat = rng.choice(rows * n_obs, n_perturb, replace=False)
+        for fi in flat:
+            r, c = divmod(fi, n_obs)
+            bng_arr[r, c + 1] *= 1.03  # 3% relative bump
+        _write_gdat(sub_dir / "m.gdat", sub_arr, n_obs)
+        _write_gdat(bng_dir / "m.gdat", bng_arr, n_obs)
+        status, _ = pd.deterministic_compare(sub_dir, bng_dir)
+        assert status == "diff"
+
     def test_phase_wander_oscillator_mostly_forgiven(self):
         """A periodic trajectory whose two integrations land 2 samples
         out of phase has nearly every interior cell forgiven by the
