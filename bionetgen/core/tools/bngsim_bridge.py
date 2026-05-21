@@ -19,6 +19,35 @@ from bionetgen.core.exc import BNGFormatError, BNGSimError
 logger = logging.getLogger("bionetgen.bngsim_bridge")
 
 # ─── Availability detection ────────────────────────────────────────
+#
+# BNGsim is an *optional* dependency by design: if it's not installed,
+# PyBioNetGen routes every simulation through subprocess BNG2.pl /
+# run_network / NFsim (the documented fallback). When BNGsim *is*
+# installed, however, PyBioNetGen depends on specific behaviour that
+# only the modern releases provide — most recently 0.6.0's NFsim
+# global-function support (closes bngsim #40), without which the
+# network-free corpus produces incomplete output. So the contract is
+# "optional, but if present must be recent."
+#
+# Implementation:
+#   * Not installed → BNGSIM_AVAILABLE=False, reason "not installed",
+#     no warning (this is the documented optional path).
+#   * Installed but __version__ < MINIMUM_BNGSIM_VERSION →
+#     BNGSIM_AVAILABLE=False with a "too old" reason that the explicit
+#     --simulator bngsim error path surfaces. A one-time WARNING fires
+#     for the auto-route fall-through so the silent "we couldn't use
+#     bngsim" outcome is at least visible.
+#   * Installed and recent → BNGSIM_AVAILABLE=True; the same code paths
+#     as before.
+#
+# The single `BNGSIM_AVAILABLE` boolean is the canonical gate — by
+# downgrading it to False for "too old", every existing
+# `if not BNGSIM_AVAILABLE` site (≈8 places) naturally falls back without
+# needing per-site version checks.
+
+MINIMUM_BNGSIM_VERSION = "0.6.0"
+BNGSIM_UNAVAILABLE_REASON: str | None = None
+_VERSION_FALLBACK_WARNED = False
 
 try:
     if os.environ.get("BIONETGEN_NO_BNGSIM"):
@@ -26,9 +55,66 @@ try:
     import bngsim
 
     BNGSIM_AVAILABLE = True
-except ImportError:
+except ImportError as _bngsim_import_err:
     bngsim = None
     BNGSIM_AVAILABLE = False
+    BNGSIM_UNAVAILABLE_REASON = (
+        "bngsim is not installed"
+        if "BIONETGEN_NO_BNGSIM" not in str(_bngsim_import_err)
+        else "BIONETGEN_NO_BNGSIM is set"
+    )
+
+BNGSIM_VERSION: str | None = None
+if BNGSIM_AVAILABLE:
+    BNGSIM_VERSION = getattr(bngsim, "__version__", "unknown")
+    try:
+        from packaging.version import Version
+
+        if Version(BNGSIM_VERSION) < Version(MINIMUM_BNGSIM_VERSION):
+            BNGSIM_AVAILABLE = False
+            BNGSIM_UNAVAILABLE_REASON = (
+                f"bngsim {BNGSIM_VERSION} is older than the required "
+                f"{MINIMUM_BNGSIM_VERSION}; upgrade with "
+                f"`pip install -U bngsim` or rebuild the editable install"
+            )
+    except Exception:
+        # If `packaging` isn't available or __version__ is unparseable,
+        # err on the side of "available" — the worst that happens is the
+        # user gets a downstream BNGsim-API error with concrete cause,
+        # which is better than silently disabling a possibly-fine install.
+        pass
+
+
+def is_bngsim_available() -> bool:
+    """Public predicate: is bngsim importable AND >= MINIMUM_BNGSIM_VERSION?"""
+    return BNGSIM_AVAILABLE
+
+
+def get_bngsim_unavailable_reason() -> str | None:
+    """Why bngsim isn't usable, or None if it is. Suitable for embedding
+    in CLI error messages."""
+    return BNGSIM_UNAVAILABLE_REASON
+
+
+def _warn_version_fallback_once() -> None:
+    """Emit a one-time WARNING when auto-route falls back due to too-old
+    bngsim. Silent for "not installed" (documented optional path)."""
+    global _VERSION_FALLBACK_WARNED
+    if _VERSION_FALLBACK_WARNED:
+        return
+    if BNGSIM_VERSION is None:
+        return  # not installed — silent fallback per the optional contract
+    if BNGSIM_AVAILABLE:
+        return  # nothing to warn about
+    logger.warning(
+        "bngsim %s is older than required %s; falling back to subprocess "
+        "BNG2.pl. Upgrade bngsim to use the in-process engine. (%s)",
+        BNGSIM_VERSION,
+        MINIMUM_BNGSIM_VERSION,
+        BNGSIM_UNAVAILABLE_REASON,
+    )
+    _VERSION_FALLBACK_WARNED = True
+
 
 BNGSIM_HAS_NFSIM = False
 if BNGSIM_AVAILABLE:
@@ -47,10 +133,6 @@ if BNGSIM_AVAILABLE:
         BNGSIM_HAS_RULEMONKEY = bool(HAS_RULEMONKEY)
     except (ImportError, AttributeError):
         BNGSIM_HAS_RULEMONKEY = bool(getattr(bngsim, "RuleMonkeySession", None))
-
-BNGSIM_VERSION = None
-if BNGSIM_AVAILABLE:
-    BNGSIM_VERSION = getattr(bngsim, "__version__", "unknown")
 
 
 # ─── Format constants ──────────────────────────────────────────────
@@ -639,8 +721,8 @@ def execute_bngsim_direct_job(job):
     """
     if not BNGSIM_AVAILABLE:
         raise BNGSimError(
-            f"BNGsim is required for format '{job.input_format}' but is not installed. "
-            "Install with: pip install bngsim"
+            f"BNGsim is required for format '{job.input_format}' but is not "
+            f"usable: {BNGSIM_UNAVAILABLE_REASON or 'unknown reason'}."
         )
 
     input_path = os.path.abspath(job.input_path)
@@ -767,7 +849,10 @@ def run_nfsim(
     BNGResult
     """
     if not BNGSIM_AVAILABLE:
-        raise BNGSimError("BNGsim is required for NFsim but is not installed.")
+        raise BNGSimError(
+            f"BNGsim is required for NFsim but is not usable: "
+            f"{BNGSIM_UNAVAILABLE_REASON or 'unknown reason'}."
+        )
     if not BNGSIM_HAS_NFSIM:
         raise BNGSimError(
             "BNGsim NFsim support is not available in this build. "
@@ -859,8 +944,8 @@ def run_with_bngsim(
     """
     if not BNGSIM_AVAILABLE:
         raise BNGSimError(
-            f"BNGsim is required for format '{fmt}' but is not installed. "
-            "Install with: pip install bngsim"
+            f"BNGsim is required for format '{fmt}' but is not usable: "
+            f"{BNGSIM_UNAVAILABLE_REASON or 'unknown reason'}."
         )
 
     input_path = os.path.abspath(input_path)
@@ -1297,8 +1382,8 @@ def classify_bngsim_route(
     if simulator == "bngsim" and not bngsim_available:
         return BngsimRouteDecision(
             ROUTE_ERROR,
-            "simulator='bngsim' was requested but BNGsim is not installed. "
-            "Install with: pip install bngsim",
+            f"simulator='bngsim' was requested but BNGsim is not usable: "
+            f"{BNGSIM_UNAVAILABLE_REASON or 'unknown reason'}.",
         )
 
     if simulator == "subprocess":
@@ -1317,9 +1402,12 @@ def classify_bngsim_route(
         if fmt in BNGSIM_REQUIRED_FORMATS:
             return BngsimRouteDecision(
                 ROUTE_ERROR,
-                f"Format '{fmt}' requires BNGsim but it is not available. "
-                "Install with: pip install bngsim",
+                f"Format '{fmt}' requires BNGsim but it is not available: "
+                f"{BNGSIM_UNAVAILABLE_REASON or 'unknown reason'}.",
             )
+        # auto-mode fallback: warn once if the cause is "too old version"
+        # (silent for the documented "not installed" path).
+        _warn_version_fallback_once()
         return BngsimRouteDecision(
             ROUTE_SUBPROCESS,
             "BNGsim is unavailable; using legacy subprocess route",
@@ -1567,7 +1655,10 @@ def run_bngl_with_bngsim(
     Python. Unsupported BNGL requests keep the legacy subprocess route.
     """
     if not BNGSIM_AVAILABLE:
-        raise BNGSimError("BNGsim is not available.")
+        raise BNGSimError(
+            f"BNGsim is not usable: "
+            f"{BNGSIM_UNAVAILABLE_REASON or 'unknown reason'}."
+        )
 
     output_dir = os.path.abspath(output_dir)
     os.makedirs(output_dir, exist_ok=True)

@@ -230,7 +230,7 @@ class TestRunNfsim:
         from bionetgen.core.tools.bngsim_bridge import run_nfsim
 
         with patch(f"{BRIDGE}.BNGSIM_AVAILABLE", False):
-            with pytest.raises(BNGSimError, match="not installed"):
+            with pytest.raises(BNGSimError, match="not usable"):
                 run_nfsim("/dummy.xml", "/output")
 
     def test_raises_when_nfsim_unavailable(self):
@@ -515,7 +515,7 @@ class TestRunWithBngsim:
         from bionetgen.core.tools.bngsim_bridge import run_with_bngsim
 
         with patch(f"{BRIDGE}.BNGSIM_AVAILABLE", False):
-            with pytest.raises(BNGSimError, match="not installed"):
+            with pytest.raises(BNGSimError, match="not usable"):
                 run_with_bngsim("/dummy.net", "/output", fmt="net")
 
     def test_bng_xml_routes_to_run_nfsim(self):

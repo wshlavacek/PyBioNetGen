@@ -30,7 +30,7 @@ PyBioNetGen comes with a command line interface (CLI), based on [cement framewor
 
 The library side provides a simple BNGL model runner as well as a model object that can be manipulated and used to get libRoadRunner simulators for the model. 
 
-**BNGsim integration:** When [BNGsim](https://github.com/lanl/bngsim) is installed in the same environment (`pip install bngsim`), PyBioNetGen automatically uses it for high-performance in-process simulation, replacing the subprocess-based `run_network` and `NFsim` backends. BNGsim also enables direct simulation of SBML (`.xml`) and Antimony (`.ant`) files in addition to BNGL. BNGsim is optional — without it, PyBioNetGen works exactly as before.
+**BNGsim integration:** When [BNGsim](https://github.com/lanl/bngsim) is installed in the same environment (`pip install bngsim`), PyBioNetGen automatically uses it for high-performance in-process simulation, replacing the subprocess-based `run_network` and `NFsim` backends. BNGsim also enables direct simulation of SBML (`.xml`) and Antimony (`.ant`) files in addition to BNGL. BNGsim is optional — without it, PyBioNetGen works exactly as before. When BNGsim *is* installed, however, PyBioNetGen requires version **0.6.0 or newer** (older releases lack NFsim global-function output and `NfsimSession.save_species`/`relative_time` APIs); a runtime guard reports a precise reason and falls back to subprocess if an older BNGsim is detected.
 
 **Supported input formats:**
 - `.bngl` — BioNetGen Language (always processed by BNG2.pl, then simulated via BNGsim or `run_network`)
