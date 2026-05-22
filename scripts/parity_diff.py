@@ -224,6 +224,75 @@ KNOWN_DETERMINISTIC_ARTIFACTS = {
     },
 }
 
+# Models where the *subprocess* reference is the wrong oracle for the
+# network-free (nf) segment: BNG2.pl bundles NFsim v1.14.3, which lacks
+# `block_same_complex_binding` (-bscb) support and wrongly applies a
+# two-product dissociation rule to a bond *inside a connected/cyclic
+# complex* whose removal doesn't actually dissociate it. bngsim defaults
+# bscb=True (and RuleMonkey agrees), so bngsim's NF matches the ODE
+# network result — the network generator drops that same molecularity-
+# violating reaction. So a bngsim-vs-subprocess nf DIFF here means
+# bngsim is the *correct* engine, not a regression (PyBNF-Private#54).
+#
+# For these models there is no genuine ODE-vs-NF physics gap, so we
+# revalidate bngsim's nf ensemble against the trusted ODE oracle (the
+# subprocess run_network result, which both engines reproduce exactly)
+# instead of against the buggy subprocess nf. Passing means "bngsim's nf
+# tracks ODE", which is positive evidence of correctness and still
+# catches a future bngsim regression (it would no longer track ODE).
+# Each entry names the model's ODE-segment and nf-segment suffixes.
+SUBPROCESS_NF_UNRELIABLE = {
+    "ode_vs_nf_discrepancy": {
+        "ode_suffix": "A_ODE", "nf_suffix": "B_NFsim",
+        "issue": "PyBNF-Private#54",
+        "reason": "subprocess NFsim v1.14.3 lacks -bscb; applies a "
+                  "2-product dissociation to a bond inside a 5-molecule "
+                  "ring that doesn't dissociate. bngsim (bscb on) + "
+                  "RuleMonkey + ODE all agree; subprocess nf is the "
+                  "outlier. Validated against the ODE oracle.",
+    },
+    "debug": {
+        "ode_suffix": "A_ODE", "nf_suffix": "B_NFsim",
+        "issue": "PyBNF-Private#54",
+        "reason": "same -bscb root cause as ode_vs_nf_discrepancy "
+                  "(MTOR/RPTOR pre-assembled complex). bngsim nf tracks "
+                  "ODE; subprocess nf is the outlier.",
+    },
+    "debug_v3": {
+        "ode_suffix": "A_ODE", "nf_suffix": "B_NFsim",
+        "issue": "PyBNF-Private#54",
+        "reason": "same -bscb root cause as ode_vs_nf_discrepancy "
+                  "(simplified MTOR/RPTOR complex). bngsim nf tracks "
+                  "ODE; subprocess nf is the outlier.",
+    },
+    "overlap_rules2": {
+        "ode_suffix": "BNG", "nf_suffix": "NFS",
+        "issue": "PyBNF-Private#54 (filed #55, corrected)",
+        "reason": "same -bscb root cause: a 2-product dissociation on a "
+                  "bond inside a size-2 ring. ODE keeps the rings (the "
+                  "ring-opening reaction violates molecularity and is "
+                  "dropped); bngsim nf agrees, subprocess nf wrongly "
+                  "breaks them.",
+    },
+    "testrings_wsh": {
+        "ode_suffix": "ode", "nf_suffix": "nf",
+        "issue": "PyBNF-Private#54",
+        "reason": "same -bscb root cause (ring complex). bngsim nf "
+                  "tracks ODE; subprocess nf is the outlier.",
+    },
+}
+
+# Relative tolerance for the ODE-oracle revalidation. Looser than the
+# deterministic REL_TOL because an nf ensemble mean differs from the ODE
+# (infinite-size) limit by a finite-size systematic offset on top of
+# sampling scatter — observed up to ~25% on small-count observables for
+# these models. The primary gate is still the per-cell sigma test against
+# the nf mean's standard error; this rel term is a backstop for cells
+# whose standard error has shrunk at high seed counts. The subprocess
+# bscb divergence is 50-100x, so any value here far below 1.0 separates
+# correct-bngsim from buggy-subprocess and still flags a real regression.
+ODE_ORACLE_REL = 0.30
+
 # Comparable extensions for both regimes.
 # We focus numerical comparison on .gdat (and .cdat where present), plus
 # .scan for parameter_scan models -- a .scan is a 2D table (parameter
@@ -835,6 +904,98 @@ def stochastic_compare(sub_seed_dirs, bng_seed_dirs):
     }
 
 
+def revalidate_nf_against_ode(sub_dirs, bng_dirs, model_stem, entry):
+    """Validate a bngsim nf ensemble against the ODE network oracle.
+
+    Used only for models in SUBPROCESS_NF_UNRELIABLE, where the subprocess
+    nf reference is known-buggy (NFsim v1.14.3, no -bscb). The oracle is
+    the subprocess run_network ODE result (canonical; bngsim reproduces it
+    exactly, so this is non-circular). We compare the bngsim nf ensemble
+    mean to that ODE trajectory with the same sigma test the ensemble path
+    uses, plus a looser relative backstop (ODE_ORACLE_REL) for finite-size
+    offsets. Returns ('pass'|'diff', details).
+    """
+    ode_suffix = entry["ode_suffix"]
+    nf_suffix = entry["nf_suffix"]
+
+    # ODE oracle: deterministic, identical across seeds — first one found.
+    ode_arr = None
+    for d in sub_dirs:
+        p = Path(d) / f"{model_stem}_{ode_suffix}.gdat"
+        if p.is_file():
+            ode_arr, e = safe_load(p)
+            if e is None and ode_arr is not None:
+                break
+            ode_arr = None
+    if ode_arr is None:
+        return "diff", {"oracle": "ode", "reason": f"ODE oracle "
+                        f"{model_stem}_{ode_suffix}.gdat not found in subprocess"}
+
+    # bngsim nf ensemble across seeds.
+    nf_arrs = []
+    for d in bng_dirs:
+        p = Path(d) / f"{model_stem}_{nf_suffix}.gdat"
+        if p.is_file():
+            a, e = safe_load(p)
+            if e is None and a is not None:
+                nf_arrs.append(a)
+    if not nf_arrs:
+        return "diff", {"oracle": "ode", "reason": f"no bngsim nf outputs "
+                        f"{model_stem}_{nf_suffix}.gdat"}
+    if len({a.shape for a in nf_arrs}) != 1:
+        return "diff", {"oracle": "ode",
+                        "reason": "bngsim nf seed shapes inconsistent"}
+
+    nf_stack = np.stack(nf_arrs)
+    # Compare the leading common columns (time + observables + any shared
+    # user functions). bngsim may append extra trailing function columns
+    # (#53); the observable block aligns positionally with the ODE file.
+    ncol = min(ode_arr.shape[1], nf_stack.shape[2])
+    nrow = min(ode_arr.shape[0], nf_stack.shape[1])
+    ode = ode_arr[:nrow, :ncol]
+    nf_stack = nf_stack[:, :nrow, :ncol]
+
+    nf_time = np.mean(nf_stack[:, :, 0], axis=0)
+    time_diff = float(np.max(np.abs(nf_time - ode[:, 0])))
+    time_tol = _time_tol(np.concatenate([nf_time, ode[:, 0]]))
+
+    ode_obs = ode[:, 1:]
+    nf_obs = nf_stack[:, :, 1:]
+    N = nf_obs.shape[0]
+    mu = np.mean(nf_obs, axis=0)
+    sd = np.std(nf_obs, axis=0, ddof=1) if N > 1 else np.zeros_like(mu)
+    se = sd / np.sqrt(N)
+    scale = max(float(np.nanmax(np.abs(ode_obs))) if ode_obs.size else 0.0,
+                float(np.nanmax(np.abs(mu))) if mu.size else 0.0, 1e-12)
+    diff = np.abs(mu - ode_obs)
+    floor = 1e-12 * scale
+    threshold = ENSEMBLE_K * np.maximum(se, floor)
+    rel_floor = np.maximum(np.maximum(np.abs(ode_obs), np.abs(mu)),
+                           scale * NEAR_ZERO_FLOOR_REL)
+    rel_ok = diff <= ODE_ORACLE_REL * rel_floor
+    near_zero = np.maximum(np.abs(ode_obs), np.abs(mu)) < NEAR_ZERO_REL * scale
+    cell_pass = (diff <= threshold) | rel_ok | near_zero
+    n_total = int(cell_pass.size)
+    n_pass = int(np.sum(cell_pass))
+    frac_pass = n_pass / n_total if n_total else 1.0
+
+    details = {
+        "oracle": "ode",
+        "ode_suffix": ode_suffix,
+        "nf_suffix": nf_suffix,
+        "n_seeds": N,
+        "time_diff": time_diff,
+        "n_cells": n_total,
+        "n_pass": n_pass,
+        "frac_pass": frac_pass,
+        "max_abs_nf_vs_ode": float(np.nanmax(diff)) if diff.size else 0.0,
+        "issue": entry.get("issue"),
+        "reason": entry.get("reason"),
+    }
+    ok = (frac_pass >= ENSEMBLE_PASS_FRAC) and (time_diff <= time_tol)
+    return ("pass" if ok else "diff"), details
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--subprocess", required=True, help="subprocess sweep --out")
@@ -895,7 +1056,7 @@ def main():
     all_models = sorted(set(sub_det) | set(sub_stoch) |
                         set(bng_det) | set(bng_stoch))
 
-    buckets = {"PASS": [], "DIFF": [], "KNOWN_ARTIFACT": [],
+    buckets = {"PASS": [], "PASS_REF_BUG": [], "DIFF": [], "KNOWN_ARTIFACT": [],
                "NOT_SUPPORTED": [], "ERROR": []}
     per_model = {}
 
@@ -1030,9 +1191,31 @@ def main():
                                    "reason": "no common artifacts to diff",
                                    "details": details}
             else:
-                buckets["DIFF"].append(bngl)
-                per_model[bngl] = {"bucket": "DIFF", "regime": "stochastic",
-                                   "details": details}
+                # A model whose subprocess nf reference is known-buggy
+                # (NFsim v1.14.3, no -bscb) is revalidated against the ODE
+                # oracle: if bngsim's nf tracks ODE, bngsim is the correct
+                # engine and the subprocess-comparison DIFF is reclassified
+                # PASS_REF_BUG. Otherwise it stays DIFF.
+                ref_bug = SUBPROCESS_NF_UNRELIABLE.get(Path(bngl).stem)
+                ode_status, ode_details = (None, None)
+                if ref_bug is not None:
+                    ode_status, ode_details = revalidate_nf_against_ode(
+                        sub_dirs, bng_dirs, Path(bngl).stem, ref_bug)
+                if ref_bug is not None and ode_status == "pass":
+                    buckets["PASS_REF_BUG"].append(bngl)
+                    per_model[bngl] = {
+                        "bucket": "PASS_REF_BUG", "regime": "stochastic",
+                        "reason": ref_bug["reason"],
+                        "issue": ref_bug.get("issue"),
+                        "details": details,
+                        "ode_oracle": ode_details,
+                    }
+                else:
+                    per_model[bngl] = {"bucket": "DIFF", "regime": "stochastic",
+                                       "details": details}
+                    if ode_details is not None:
+                        per_model[bngl]["ode_oracle"] = ode_details
+                    buckets["DIFF"].append(bngl)
 
     # Tag models re-judged at an escalated seed count (overlay merge).
     for bngl, seeds in escalated.items():
@@ -1064,7 +1247,8 @@ def main():
     lines.append("")
     lines.append(f"| Bucket | Count |")
     lines.append(f"|---|---:|")
-    for b in ("PASS", "DIFF", "KNOWN_ARTIFACT", "NOT_SUPPORTED", "ERROR"):
+    for b in ("PASS", "PASS_REF_BUG", "DIFF", "KNOWN_ARTIFACT",
+              "NOT_SUPPORTED", "ERROR"):
         lines.append(f"| {b} | {len(buckets[b])} |")
     lines.append(f"| **TOTAL** | **{len(all_models)}** |")
     lines.append("")
@@ -1083,7 +1267,7 @@ def main():
             lines.append(f"| `{Path(bngl).name}` | {escalated[bngl]} | "
                          f"{info.get('bucket', '?')} |")
         lines.append("")
-    for b in ("DIFF", "KNOWN_ARTIFACT", "NOT_SUPPORTED", "ERROR"):
+    for b in ("PASS_REF_BUG", "DIFF", "KNOWN_ARTIFACT", "NOT_SUPPORTED", "ERROR"):
         if not buckets[b]:
             continue
         lines.append(f"## {b}  ({len(buckets[b])})")
@@ -1098,6 +1282,15 @@ def main():
                              f"{info['escalated_seeds']} seeds")
             if "reason" in info:
                 lines.append(f"- reason: {info['reason']}")
+            if "issue" in info and info["issue"]:
+                lines.append(f"- issue: {info['issue']}")
+            if "ode_oracle" in info and info["ode_oracle"]:
+                oo = info["ode_oracle"]
+                lines.append(f"- ODE-oracle revalidation: "
+                             f"frac_pass={oo.get('frac_pass')}, "
+                             f"n_pass={oo.get('n_pass')}/{oo.get('n_cells')}, "
+                             f"max_abs_nf_vs_ode={oo.get('max_abs_nf_vs_ode')}, "
+                             f"n_seeds={oo.get('n_seeds')}")
             for k in ("sub_status", "bng_status", "sub_error", "bng_error",
                       "n_bng_failed", "n_sub_failed"):
                 if k in info and info[k] not in ("", 0):

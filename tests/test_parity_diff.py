@@ -366,3 +366,102 @@ class TestDeterministicCompare:
         unforg_rows = np.where(~forg.flatten())[0]
         R = sub.shape[0]
         assert all(r < 3 or r >= R - 3 for r in unforg_rows)
+
+
+# ---------------------------------------------------------------------------
+# ODE-oracle revalidation (PASS_REF_BUG) — for models where subprocess
+# NFsim is the buggy reference and bngsim is correct.
+# ---------------------------------------------------------------------------
+
+def _write_seg_gdat(seed_dir, stem, suffix, arr, n_obs):
+    """Write <stem>_<suffix>.gdat into a seed dir."""
+    seed_dir.mkdir(parents=True, exist_ok=True)
+    _write_gdat(seed_dir / f"{stem}_{suffix}.gdat", arr, n_obs)
+
+
+class TestOdeOracleRevalidation:
+    ENTRY = {"ode_suffix": "A_ODE", "nf_suffix": "B_NFsim",
+             "issue": "TEST#1", "reason": "test"}
+
+    def _setup(self, tmp_path, ode_obs, nf_seed_obs):
+        """ode_obs: (T,K) ODE oracle observable block.
+        nf_seed_obs: list of (T,K) per-seed NF observable blocks."""
+        t = np.linspace(0, 10, ode_obs.shape[0])
+        sub_dir = tmp_path / "sub" / "seed1"
+        _write_seg_gdat(sub_dir, "m", "A_ODE",
+                        np.column_stack([t, ode_obs]), ode_obs.shape[1])
+        bng_dirs = []
+        for i, obs in enumerate(nf_seed_obs, 1):
+            d = tmp_path / "bng" / f"seed{i}"
+            _write_seg_gdat(d, "m", "B_NFsim",
+                            np.column_stack([t, obs]), obs.shape[1])
+            bng_dirs.append(str(d))
+        return [str(sub_dir)], bng_dirs
+
+    def test_nf_tracking_ode_passes(self, tmp_path):
+        rng = np.random.default_rng(0)
+        T, K, N = 50, 2, 10
+        base = np.column_stack([100 * np.exp(-np.linspace(0, 3, T)),
+                                50 + np.linspace(0, 10, T)])
+        ode = base.copy()
+        # NF ensemble = ODE + small per-seed noise -> mean tracks ODE.
+        nf = [base + rng.normal(0, 1.0, base.shape) for _ in range(N)]
+        sub_dirs, bng_dirs = self._setup(tmp_path, ode, nf)
+        status, details = pd.revalidate_nf_against_ode(
+            sub_dirs, bng_dirs, "m", self.ENTRY)
+        assert status == "pass", details
+        assert details["frac_pass"] >= pd.ENSEMBLE_PASS_FRAC
+
+    def test_nf_50x_off_ode_fails(self, tmp_path):
+        # The buggy-subprocess scenario: NF mean is ~50x the ODE value on
+        # one observable. A divergence this large must never pass.
+        T, K, N = 50, 2, 10
+        ode = np.column_stack([np.full(T, 1.0), np.full(T, 5.0)])
+        nf = [np.column_stack([np.full(T, 50.0), np.full(T, 5.0)])
+              for _ in range(N)]
+        sub_dirs, bng_dirs = self._setup(tmp_path, ode, nf)
+        status, details = pd.revalidate_nf_against_ode(
+            sub_dirs, bng_dirs, "m", self.ENTRY)
+        assert status == "diff", details
+
+    def test_missing_ode_oracle_fails(self, tmp_path):
+        # bng has NF output but sub has no ODE oracle file.
+        T = 50
+        t = np.linspace(0, 10, T)
+        bng_dir = tmp_path / "bng" / "seed1"
+        _write_seg_gdat(bng_dir, "m", "B_NFsim",
+                        np.column_stack([t, np.ones((T, 2))]), 2)
+        empty_sub = tmp_path / "sub" / "seed1"
+        empty_sub.mkdir(parents=True)
+        status, details = pd.revalidate_nf_against_ode(
+            [str(empty_sub)], [str(bng_dir)], "m", self.ENTRY)
+        assert status == "diff"
+        assert "not found" in details.get("reason", "")
+
+    def test_small_count_finite_size_offset_passes(self, tmp_path):
+        # ode_vs_nf_discrepancy-like: a small-count observable where the NF
+        # ensemble mean (~0.5) sits below the ODE value (0.67) by a finite-
+        # size systematic offset (~25%) — within ODE_ORACLE_REL and nowhere
+        # near the 50x subprocess divergence. Low per-seed scatter (the
+        # escalated 50-seed regime) so the offset, not sampling, is tested.
+        rng = np.random.default_rng(3)
+        T, N = 30, 50
+        ode = np.column_stack([np.full(T, 0.67), np.full(T, 5.4)])
+        nf = [np.column_stack([0.5 + rng.normal(0, 0.02, T),
+                               5.4 + rng.normal(0, 0.05, T)]) for _ in range(N)]
+        sub_dirs, bng_dirs = self._setup(tmp_path, ode, nf)
+        status, details = pd.revalidate_nf_against_ode(
+            sub_dirs, bng_dirs, "m", self.ENTRY)
+        assert status == "pass", details
+        # The 0.67-vs-0.5 offset (~0.17) is forgiven by ODE_ORACLE_REL,
+        # not by the sigma test (scatter is tiny here).
+        assert 0.17 <= pd.ODE_ORACLE_REL * 0.67
+
+
+class TestSubprocessNfUnreliableRegistry:
+    def test_entries_well_formed(self):
+        assert pd.SUBPROCESS_NF_UNRELIABLE
+        for stem, entry in pd.SUBPROCESS_NF_UNRELIABLE.items():
+            for key in ("ode_suffix", "nf_suffix", "issue", "reason"):
+                assert key in entry, f"{stem} missing {key}"
+                assert isinstance(entry[key], str) and entry[key]
