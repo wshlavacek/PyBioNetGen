@@ -124,12 +124,21 @@ SHIFT_MATCH_TOL = 1e-6
 # neighbour to 1ppm.
 SHIFT_MASK_K = 3
 # Time-column tolerance is *scale-relative* — see `_time_tol`. Independently
-# writing the same float on two integrators won't yield bit equality;
-# demanding it is wrong. Floor (TIME_TOL_FLOOR) protects sub-second models;
-# relative term (TIME_TOL_REL) scales with t_max so the bar stays meaningful
-# on long trajectories.
+# writing the same float on two engines won't yield bit equality; demanding
+# it is wrong. Floor (TIME_TOL_FLOOR) protects sub-second models; relative
+# term (TIME_TOL_REL) scales with t_max so the bar stays meaningful on long
+# trajectories.
+#
+# TIME_TOL_REL is 1 ppb of t_max. Two CVODE runs agree on output times to
+# ~1e-13 relative, but bngsim's NfsimSession and BNG2.pl's NFsim build their
+# sample-time grids with different float arithmetic and drift up to ~1 ppb of
+# the trajectory length (observed deterministically, same across all seeds,
+# on `scaling_example`: ~49 ns over a 50-unit span). 1 ppb still sits 5-6
+# decades below any real time-axis misalignment — an off-by-one-sample bug is
+# a whole sample step, i.e. ~1/n_steps of t_max (e.g. ~1.4e-3 of t_max for a
+# 730-step run), millions of ppb. Tracked upstream (NFsim sample-time grid).
 TIME_TOL_FLOOR = 1e-9
-TIME_TOL_REL = 1e-12
+TIME_TOL_REL = 1e-9
 # Deterministic near-zero floor: a cell where both sides are below
 # scale * NEAR_ZERO_FLOOR_REL (scale = file peak magnitude) is below
 # the integrator's resolvable range — the quantity is numerically zero
@@ -310,13 +319,14 @@ def safe_load(path):
 def _time_tol(times):
     """Per-file time-column tolerance, scale-relative.
 
-    Two independent integrators emit float-formatted output times whose
-    last bits differ; exact equality is not a meaningful property of two
-    ODE solutions. We accept ``|t_sub - t_bng| <= max(1e-9, 1e-12 * t_max)``
-    — at least 1 ns absolute, plus 1 ppT of the simulation length so the
-    bar stays meaningful for both sub-second and Gyr-scale trajectories.
-    Any real divergence (engine bug producing wrong output times) is
-    orders of magnitude larger than this floor.
+    Two independent engines emit float-formatted output times whose last
+    bits differ; exact equality is not a meaningful property of two
+    simulations. We accept ``|t_sub - t_bng| <= max(TIME_TOL_FLOOR,
+    TIME_TOL_REL * t_max)`` — at least 1 ns absolute, plus 1 ppb of the
+    simulation length so the bar stays meaningful for both sub-second and
+    Gyr-scale trajectories. Any real divergence (an engine bug producing
+    wrong output times, i.e. a fraction of a sample step) is many decades
+    larger than this floor.
     """
     if times is None or len(times) == 0:
         return TIME_TOL_FLOOR

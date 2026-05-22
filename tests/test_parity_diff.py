@@ -29,13 +29,25 @@ import parity_diff as pd  # noqa: E402
 # ---------------------------------------------------------------------------
 
 class TestTimeTol:
-    def test_floor_for_short_trajectory(self):
-        assert pd._time_tol(np.linspace(0, 10, 11)) == pd.TIME_TOL_FLOOR
+    def test_floor_for_subunit_trajectory(self):
+        # t_max < 1 => TIME_TOL_REL * t_max < floor, so floor wins.
+        assert pd._time_tol(np.linspace(0, 0.5, 11)) == pd.TIME_TOL_FLOOR
 
     def test_scales_with_long_trajectory(self):
-        # t_max=1e6: tolerance = 1e-12 * 1e6 = 1e-6, well above the floor.
+        # t_max=1e6: tolerance = TIME_TOL_REL * 1e6 = 1e-3, above the floor.
         t = np.linspace(0, 1e6, 1001)
-        assert pd._time_tol(t) == pytest.approx(1e-6, rel=1e-9)
+        assert pd._time_tol(t) == pytest.approx(1e-3, rel=1e-9)
+
+    def test_nfsim_time_grid_drift_forgiven(self):
+        # Real scaling_example case: bngsim's NfsimSession and BNG2.pl's
+        # NFsim build their sample-time grids with different float
+        # arithmetic and drift ~1 ppb of t_max. On a 50-unit span the
+        # observed max drift is ~4.93e-8; the bar is 1e-9 * 50 = 5e-8,
+        # so it just clears. A 6e-8 drift (above the bar) must still fail.
+        t = np.linspace(0, 50, 731)
+        assert pd._time_tol(t) == pytest.approx(5e-8, rel=1e-9)
+        assert 4.93e-8 < pd._time_tol(t)
+        assert 6e-8 > pd._time_tol(t)
 
     def test_empty_returns_floor(self):
         assert pd._time_tol(np.array([])) == pd.TIME_TOL_FLOOR
@@ -46,8 +58,9 @@ class TestTimeTol:
 
     def test_uses_max_not_mean(self):
         # mostly zeros plus one large t: scale uses the max.
+        # TIME_TOL_REL * 1e9 = 1e-9 * 1e9 = 1.0.
         t = np.array([0.0, 0.0, 0.0, 1e9])
-        assert pd._time_tol(t) == pytest.approx(1e-3, rel=1e-9)
+        assert pd._time_tol(t) == pytest.approx(1.0, rel=1e-9)
 
 
 # ---------------------------------------------------------------------------
