@@ -636,21 +636,43 @@ _SIMULATOR_RUN_OPTIONS = frozenset({
 })
 
 
+def _ss_truthy(value):
+    """Interpret a BNGL action value (str/int/bool) as a boolean flag."""
+    if isinstance(value, str):
+        text = value.strip().strip('"').strip("'").lower()
+        if text in ("", "0", "false", "no", "off"):
+            return False
+        try:
+            return float(text) != 0.0
+        except ValueError:
+            return text in ("1", "true", "yes", "on")
+    return bool(value)
+
+
 def _partition_simulator_options(sim_options):
     """Split direct-job options into Simulator __init__ vs run kwargs.
 
-    Returns ``(init_kwargs, run_kwargs)``. Options BNGsim's network
-    Simulator does not accept are dropped: ``print_CDAT`` is an output
-    flag (the .cdat is always written for network models), and ``sparse``
-    / ``steady_state`` are not part of the BNGsim Simulator API — a
-    ``steady_state`` request is surfaced as a warning since it would
-    otherwise silently run as a plain time course.
+    Returns ``(init_kwargs, run_kwargs)``. ``print_CDAT`` is an output flag
+    (the .cdat is always written for network models) and ``sparse`` is not
+    part of the BNGsim API, so those are dropped.
+
+    ``steady_state=>1`` is forwarded to ``run(steady_state=True)`` — the
+    BNG2.pl ``simulate({steady_state=>1})`` / ``run_network -c`` early-stop
+    (integrate until ``||f||_2/n_species`` falls below the tolerance, which
+    defaults to ``atol``). ``steady_state_tol`` overrides that tolerance.
+    ``ss_method`` selects the steady-state solver for parameter *scans*; a
+    direct ``simulate`` writes a single trajectory and therefore always uses
+    the parity integrator, so a Newton/kinsol request here is logged and the
+    parity path is used.
     """
     init_kwargs = {}
     run_kwargs = {}
     dropped = []
+    handled = {"steady_state", "steady_state_tol", "ss_method"}
     for key, value in sim_options.items():
         if value is None:
+            continue
+        if key in handled:
             continue
         if key in _SIMULATOR_INIT_OPTIONS:
             init_kwargs[key] = value
@@ -658,13 +680,34 @@ def _partition_simulator_options(sim_options):
             run_kwargs[key] = value
         else:
             dropped.append(key)
+
+    ss_method = sim_options.get("ss_method")
+    if _ss_truthy(sim_options.get("steady_state")):
+        run_kwargs["steady_state"] = True
+        tol = sim_options.get("steady_state_tol")
+        if tol is not None:
+            try:
+                run_kwargs["steady_state_tol"] = float(tol)
+            except (TypeError, ValueError):
+                logger.warning(
+                    "Direct BNGsim job: ignoring non-numeric steady_state_tol=%r", tol
+                )
+        if ss_method is not None:
+            normalized = str(ss_method).strip().strip('"').strip("'").lower()
+            if normalized in ("newton", "kinsol"):
+                logger.info(
+                    "Direct BNGsim simulate({steady_state=>1}) integrates to the "
+                    "parity steady state (run_network -c); ss_method=>%r (the "
+                    "Newton accelerator) applies to parameter scans, not a single "
+                    "time course, so the parity integrator is used here.",
+                    ss_method,
+                )
+    elif ss_method is not None:
+        # ss_method without steady_state=>1 has nothing to act on.
+        dropped.append("ss_method")
+
     if dropped:
         logger.debug("Direct BNGsim job: ignoring non-Simulator options %s", sorted(dropped))
-    if sim_options.get("steady_state"):
-        logger.warning(
-            "Direct BNGsim route does not support steady_state; "
-            "running a plain time course instead."
-        )
     return init_kwargs, run_kwargs
 
 

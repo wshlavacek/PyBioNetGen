@@ -737,3 +737,46 @@ class TestTruncateCdatToEndpoints:
             _truncate_cdat_to_endpoints(cdat)
             with open(cdat) as fh:
                 assert fh.read() == content
+
+
+# ─── _partition_simulator_options: steady_state / ss_method forwarding ──────────
+
+
+class TestPartitionSimulatorOptions:
+    """steady_state=>1 forwards to run(steady_state=True) instead of warn-drop."""
+
+    @staticmethod
+    def _partition(opts):
+        from bionetgen.core.tools.bngsim_bridge import _partition_simulator_options
+        return _partition_simulator_options(opts)
+
+    def test_steady_state_forwarded_to_run(self):
+        init_kwargs, run_kwargs = self._partition({"steady_state": "1", "atol": 1e-8})
+        assert run_kwargs.get("steady_state") is True
+        assert run_kwargs.get("atol") == 1e-8
+        assert "steady_state" not in init_kwargs
+
+    def test_steady_state_tol_forwarded_as_float(self):
+        _, run_kwargs = self._partition({"steady_state": "1", "steady_state_tol": "1e-9"})
+        assert run_kwargs["steady_state"] is True
+        assert run_kwargs["steady_state_tol"] == pytest.approx(1e-9)
+
+    def test_steady_state_zero_not_forwarded(self):
+        _, run_kwargs = self._partition({"steady_state": "0"})
+        assert "steady_state" not in run_kwargs
+
+    def test_ss_method_newton_logged_not_forwarded(self, caplog):
+        # ss_method is not a run() kwarg; the direct route uses the parity
+        # integrator and logs (does not forward) a Newton request.
+        with caplog.at_level("INFO"):
+            _, run_kwargs = self._partition(
+                {"steady_state": "1", "ss_method": "newton"}
+            )
+        assert "ss_method" not in run_kwargs
+        assert run_kwargs["steady_state"] is True
+        assert any("ss_method" in r.message for r in caplog.records)
+
+    def test_ss_method_without_steady_state_ignored(self):
+        _, run_kwargs = self._partition({"ss_method": "newton"})
+        assert "steady_state" not in run_kwargs
+        assert "ss_method" not in run_kwargs
