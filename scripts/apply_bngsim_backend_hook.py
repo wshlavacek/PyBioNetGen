@@ -205,6 +205,7 @@ _NF_BODY = r'''        # BNG2.pl has written the BNG XML and normalized the run.
                 n_steps => $n_steps,
                 seed => $params->{seed},
                 print_functions => $params->{print_functions},
+                get_final_state => $params->{get_final_state},
             );
             my %job = (
                 artifact_path => File::Spec->rel2abs("${prefix}.xml"),
@@ -260,15 +261,27 @@ _NF_BODY = r'''        # BNG2.pl has written the BNG XML and normalized the run.
             if ($helper_error ne '')
             {   return $helper_error;   }
 
-            # Safeguard: the BNGsim network-free backend does not yet emit a
-            # .species final-state file. Returning here skips BNG2.pl's
-            # readNFspecies() so a missing .species cannot fail the run.
+            # get_final_state writeback: the helper wrote ${prefix}.species via
+            # BNGsim's save_species (NFsim -ss .species format) when
+            # get_final_state was set. Read it back into the model so
+            # saveConcentrations/resetConcentrations continue the trajectory
+            # across simulate segments -- mirroring stock simulate_nf's
+            # readNFspecies (BNGAction.pm). RuleMonkey exposes no save_species,
+            # so the file may be absent; warn rather than fail in that case.
             if ($params->{get_final_state})
             {
-                send_warning("simulate_nf(): BNGsim network-free backend does not yet write "
-                    ."a '.species' final-state file (tracking: RuleMonkey#9, PyBNF-Private#38). "
-                    ."get_final_state state writeback is skipped; downstream actions that "
-                    ."depend on post-simulation state may differ.");
+                if (-e "${prefix}.species")
+                {
+                    if (my $err = $model->readNFspecies("${prefix}.species"))
+                    {   return $err;   }
+                }
+                else
+                {
+                    send_warning("simulate_nf(): BNGsim backend wrote no '.species' "
+                        ."final-state file (e.g. RuleMonkey, which has no save_species); "
+                        ."get_final_state writeback skipped; downstream actions that depend "
+                        ."on post-simulation state may differ.");
+                }
             }
             # Leave $model->Time exactly as BNG2.pl's normal simulate_nf
             # exit does. That trailing $model->Time($t_end) (BNGAction.pm

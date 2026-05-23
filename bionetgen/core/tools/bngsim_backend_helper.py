@@ -213,6 +213,11 @@ def direct_job_from_backend_job(job: BackendHelperJob) -> BngsimDirectJob:
     elif n_points is None:
         n_points = (n_steps if n_steps is not None else 100) + 1
 
+    # get_final_state=>1 (default for simulate_nf) drives a .species
+    # final-state writeback so BNG2.pl's readNFspecies can continue the
+    # trajectory across saveConcentrations/resetConcentrations segments.
+    get_final_state = bool(_as_int(opts.pop("get_final_state", 0), 0))
+
     result_options = {}
     if "print_functions" in opts:
         result_options["print_functions"] = bool(_as_int(opts.pop("print_functions"), 0))
@@ -250,6 +255,7 @@ def direct_job_from_backend_job(job: BackendHelperJob) -> BngsimDirectJob:
         output_root=job.output_root,
         bngsim_options=bngsim_options,
         result_options=result_options,
+        get_final_state=get_final_state,
     )
 
 

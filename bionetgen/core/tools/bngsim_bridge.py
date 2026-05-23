@@ -179,6 +179,7 @@ class BngsimDirectJob:
     output_root: str
     bngsim_options: dict | None = None
     result_options: dict | None = None
+    get_final_state: bool = False
 
 
 # ─── Format detection ──────────────────────────────────────────────
@@ -455,20 +456,28 @@ def _write_bngsim_results(
     has_funcs = False
     if print_functions:
         bare_names = list(result.expression_names)
-        # gdat_expression_names drops BNG2.pl's auto _rateLawN columns and
-        # carries the () header convention; map each kept label back to its
-        # source data column so names and data stay aligned even if the
-        # bare list / data array still carry rate-law columns.
-        gdat_names = list(result.gdat_expression_names)
-        kept = {g[:-2] for g in gdat_names}
-        keep = [i for i, n in enumerate(bare_names) if n in kept]
         bngsim_func_array = np.asarray(result.expressions)
+        if network_free:
+            # NFsim/RuleMonkey: BNG2.pl drops the synthetic _rateLawN columns
+            # and uses the () header convention. gdat_expression_names carries
+            # both; map each kept label back to its source data column (strip
+            # the () suffix) so names and data stay aligned.
+            gdat_names = list(result.gdat_expression_names)
+            kept = {g[:-2] for g in gdat_names}
+            keep = [i for i, n in enumerate(bare_names) if n in kept]
+            sel_names = gdat_names
+        else:
+            # run_network (ode/ssa/psa): BNG2.pl writes every function column
+            # bare, INCLUDING synthetic _rateLawN. Emit whatever bngsim exposes
+            # as-is — never filter here (that is the network-free convention).
+            keep = list(range(len(bare_names)))
+            sel_names = bare_names
         if (
             keep
             and bngsim_func_array.ndim == 2
             and bngsim_func_array.shape[1] == len(bare_names)
         ):
-            func_names = gdat_names if network_free else [bare_names[i] for i in keep]
+            func_names = sel_names
             func_array = bngsim_func_array[:, keep]
             has_funcs = True
 
@@ -493,6 +502,34 @@ def _write_bngsim_results(
         _truncate_cdat_to_endpoints(cdat_path)
     if result.n_observables > 0 or has_funcs:
         _write_bng_dat(gdat_path, result.time, combined, combined_names)
+
+
+def _write_nf_final_state_species(session, output_dir, output_root):
+    """Write the network-free final particle state to ``<root>.species``.
+
+    Mirrors NFsim's ``-ss <prefix>.species`` output so BNG2.pl's
+    ``readNFspecies`` can read the equilibrated state back into the model
+    for ``get_final_state=>1`` trajectory continuation (the
+    saveConcentrations/resetConcentrations carry-over across simulate
+    segments). RuleMonkey sessions expose no ``save_species``; in that
+    case the writeback is skipped and the Perl hook warns (no file). The
+    full complex state — not just molecule-type counts — flows this way.
+    """
+    save = getattr(session, "save_species", None)
+    if not callable(save):
+        logger.warning(
+            "get_final_state requested but this BNGsim session has no "
+            "save_species; final-state writeback skipped."
+        )
+        return
+    species_path = os.path.join(output_dir, f"{output_root}.species")
+    try:
+        save(species_path)
+    except Exception as exc:
+        logger.warning(
+            "get_final_state: save_species failed (%s); final-state "
+            "writeback skipped.", exc
+        )
 
 
 def _make_bng_result(output_dir, method):
@@ -831,6 +868,8 @@ def execute_bngsim_direct_job(job):
                 conc_deltas=conc_deltas,
             )
             result = nfsim.simulate(job.t_span[0], job.t_span[1], job.n_points)
+            if job.get_final_state:
+                _write_nf_final_state_species(nfsim, output_dir, job.output_root)
 
         _write_bngsim_results(
             result, output_dir, job.output_root,
