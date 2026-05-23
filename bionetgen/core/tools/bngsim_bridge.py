@@ -402,6 +402,7 @@ def _truncate_cdat_to_endpoints(cdat_path):
 def _write_bngsim_results(
     result, output_dir, model_name,
     print_functions=False, append=False, print_cdat=True,
+    network_free=False,
 ):
     """Write BNGsim Result to .gdat and .cdat files.
 
@@ -417,6 +418,12 @@ def _write_bngsim_results(
         If True, include BNGL functions (BNGsim "expressions") in .gdat
         output. Matches BNG2.pl's ``print_functions=>1`` behavior.
         Default False, matching BNG2.pl's default.
+    network_free : bool
+        If True, label function columns with BNG2.pl's ``()`` header
+        convention (``kf_BSA()``) via ``Result.gdat_expression_names`` —
+        the form NFsim/RuleMonkey output uses. If False (network methods:
+        ode/ssa/psa), ``run_network`` writes function columns bare, so the
+        plain ``expression_names`` are used. Default False.
     append : bool
         If True and the target files already exist, append rows from
         *result* (skipping its first row, which duplicates the prior
@@ -447,15 +454,22 @@ def _write_bngsim_results(
     func_array = np.empty((result.n_times, 0))
     has_funcs = False
     if print_functions:
-        bngsim_func_names = list(result.expression_names)
+        bare_names = list(result.expression_names)
+        # gdat_expression_names drops BNG2.pl's auto _rateLawN columns and
+        # carries the () header convention; map each kept label back to its
+        # source data column so names and data stay aligned even if the
+        # bare list / data array still carry rate-law columns.
+        gdat_names = list(result.gdat_expression_names)
+        kept = {g[:-2] for g in gdat_names}
+        keep = [i for i, n in enumerate(bare_names) if n in kept]
         bngsim_func_array = np.asarray(result.expressions)
         if (
-            len(bngsim_func_names) > 0
+            keep
             and bngsim_func_array.ndim == 2
-            and bngsim_func_array.shape[1] > 0
+            and bngsim_func_array.shape[1] == len(bare_names)
         ):
-            func_names = bngsim_func_names
-            func_array = bngsim_func_array
+            func_names = gdat_names if network_free else [bare_names[i] for i in keep]
+            func_array = bngsim_func_array[:, keep]
             has_funcs = True
 
     if has_funcs:
@@ -751,7 +765,9 @@ def _run_rulemonkey_job(job, input_path, output_dir, sim_options, result_options
         rm_session.initialize(seed)
         result = rm_session.simulate(job.t_span[0], job.t_span[1], job.n_points)
 
-    _write_bngsim_results(result, output_dir, job.output_root, **result_options)
+    _write_bngsim_results(
+        result, output_dir, job.output_root, network_free=True, **result_options
+    )
     return _make_bng_result(output_dir, method=job.method)
 
 
@@ -818,6 +834,7 @@ def execute_bngsim_direct_job(job):
 
         _write_bngsim_results(
             result, output_dir, job.output_root,
+            network_free=True,
             **result_options,
         )
         return _make_bng_result(output_dir, method=job.method)

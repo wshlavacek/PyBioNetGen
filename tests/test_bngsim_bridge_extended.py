@@ -36,9 +36,12 @@ def _make_mock_result(obs_names=None, obs_data=None, species_names=None,
     if func_data is None:
         func_data = np.empty((n_times, 0))
 
+    gdat_func_names = [f"{n}()" for n in func_names]
+
     core = MagicMock()
     core.expression_names = func_names
     core.expression_data = func_data
+    core.gdat_expression_names = gdat_func_names
 
     result = MagicMock()
     result.observable_names = obs_names
@@ -47,6 +50,7 @@ def _make_mock_result(obs_names=None, obs_data=None, species_names=None,
     result.n_times = n_times
     result.time = time
     result.expression_names = func_names
+    result.gdat_expression_names = gdat_func_names
     result.expressions = func_data
     result.species_names = species_names
     result.concentrations = concentrations
@@ -149,6 +153,26 @@ class TestWriteBngsimResults:
                 header = f.readline()
             assert "f1" in header
             assert "f2" in header
+            # network methods (run_network) write function columns bare
+            assert "f1()" not in header
+            assert "f2()" not in header
+
+    def test_print_functions_network_free_uses_paren_convention(self):
+        # NFsim/RuleMonkey output carries BNG2.pl's () header convention on
+        # function columns; the network-free write path must reproduce it.
+        from bionetgen.core.tools.bngsim_bridge import _write_bngsim_results
+
+        func_data = np.random.rand(10, 2)
+        result = _make_mock_result(func_names=["kf_BSA", "kr_BSA"], func_data=func_data)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            _write_bngsim_results(
+                result, tmpdir, "nf_model",
+                print_functions=True, network_free=True,
+            )
+            with open(os.path.join(tmpdir, "nf_model.gdat")) as f:
+                header = f.readline()
+            assert "kf_BSA()" in header
+            assert "kr_BSA()" in header
 
     def test_no_observables_no_funcs_skips_gdat(self):
         from bionetgen.core.tools.bngsim_bridge import _write_bngsim_results
