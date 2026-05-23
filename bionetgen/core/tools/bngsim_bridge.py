@@ -498,9 +498,10 @@ def _write_nf_final_state_species(session, output_dir, output_root):
     ``readNFspecies`` can read the equilibrated state back into the model
     for ``get_final_state=>1`` trajectory continuation (the
     saveConcentrations/resetConcentrations carry-over across simulate
-    segments). RuleMonkey sessions expose no ``save_species``; in that
-    case the writeback is skipped and the Perl hook warns (no file). The
-    full complex state — not just molecule-type counts — flows this way.
+    segments). Both NfsimSession and RuleMonkeySession (bngsim >= 0.9.2)
+    expose ``save_species``; if a session somehow lacks it, the writeback
+    is skipped and the Perl hook warns (no file). The full complex state —
+    not just molecule-type counts — flows this way.
     """
     save = getattr(session, "save_species", None)
     if not callable(save):
@@ -768,14 +769,17 @@ def _run_rulemonkey_job(job, input_path, output_dir, sim_options, result_options
         seed = 42
     gml = sim_options.pop("gml", None)
     param_overrides = sim_options.pop("param_overrides", None)
-    # conc overrides/deltas come from setConcentration in multi-segment
-    # workflows; the simulate_nf hook does not forward them and
-    # RuleMonkeySession exposes no equivalent — warn if ever present.
-    for key in ("conc_overrides", "conc_deltas", "nf_params"):
-        if sim_options.pop(key, None):
-            logger.warning(
-                "RuleMonkey job: '%s' is not supported and was ignored", key
-            )
+    # setConcentration/addConcentration replay from multi-segment workflows.
+    # RuleMonkeySession (bngsim >= 0.9.2) exposes set_species_count /
+    # add_species / remove_species, so these are applied by the same
+    # engine-agnostic helper used for NFsim (no longer dropped).
+    conc_overrides = sim_options.pop("conc_overrides", None)
+    conc_deltas = sim_options.pop("conc_deltas", None)
+    # NFsim CLI-only flags have no RuleMonkeySession analogue.
+    if sim_options.pop("nf_params", None):
+        logger.debug(
+            "RuleMonkey job: 'nf_params' has no RuleMonkey analogue; ignored"
+        )
 
     with bngsim.RuleMonkeySession(input_path, molecule_limit=gml) as rm_session:
         if param_overrides:
@@ -787,7 +791,18 @@ def _run_rulemonkey_job(job, input_path, output_dir, sim_options, result_options
                         "RuleMonkey: set_param(%s, %s) skipped: %s", pname, pval, exc
                     )
         rm_session.initialize(seed)
+        _apply_nfsim_concentration_changes(
+            rm_session,
+            conc_overrides=conc_overrides,
+            conc_deltas=conc_deltas,
+        )
         result = rm_session.simulate(job.t_span[0], job.t_span[1], job.n_points)
+        # get_final_state=>1 writeback: RuleMonkeySession.save_species (bngsim
+        # >= 0.9.2) writes a BNG .species file that BNG2.pl's readNFspecies
+        # reads to continue the trajectory across saveConcentrations /
+        # resetConcentrations segments — the same path the NFsim job uses.
+        if job.get_final_state:
+            _write_nf_final_state_species(rm_session, output_dir, job.output_root)
 
     _write_bngsim_results(
         result, output_dir, job.output_root, **result_options

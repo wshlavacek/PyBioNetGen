@@ -158,6 +158,59 @@ def test_bng_xml_job_uses_nfsim_session_for_nf_method_only():
     mock_bngsim.NfsimSession.assert_not_called()
 
 
+def test_bng_xml_rm_job_writes_final_state_and_replays_conc():
+    """rm multi-segment continuation regression.
+
+    ``method=>"rm"`` with ``get_final_state=>1`` must call the
+    RuleMonkeySession's ``save_species`` so BNG2.pl's ``readNFspecies``
+    can continue across segments, and setConcentration/addConcentration
+    must replay via ``set_species_count`` / ``add_species`` — both rely on
+    the bngsim >= 0.9.2 RuleMonkeySession surface and were previously
+    dropped by ``_run_rulemonkey_job``.
+    """
+    mock_bngsim = MagicMock()
+    session = MagicMock()
+    session.simulate.return_value = _mock_result()
+    mock_bngsim.RuleMonkeySession.return_value.__enter__.return_value = session
+
+    job = BngsimDirectJob(
+        input_path="/model.xml",
+        input_format=FORMAT_BNG_XML,
+        method="rm",
+        t_span=(0.0, 10.0),
+        n_points=11,
+        output_dir="/tmp/out",
+        output_root="model",
+        bngsim_options={
+            "seed": 7,
+            "gml": 1000,
+            "conc_overrides": {"A()": 5},
+            "conc_deltas": {"B()": 3},
+        },
+        get_final_state=True,
+    )
+
+    with patch(f"{BRIDGE}.BNGSIM_AVAILABLE", True), \
+         patch(f"{BRIDGE}.BNGSIM_HAS_RULEMONKEY", True), \
+         patch(f"{BRIDGE}.bngsim", mock_bngsim), \
+         patch(f"{BRIDGE}._write_bngsim_results"), \
+         patch(f"{BRIDGE}._make_bng_result", return_value=MagicMock()):
+        execute_bngsim_direct_job(job)
+
+    mock_bngsim.RuleMonkeySession.assert_called_once_with(
+        "/model.xml", molecule_limit=1000
+    )
+    session.initialize.assert_called_once_with(7)
+    session.simulate.assert_called_once_with(0.0, 10.0, 11)
+    # get_final_state writeback -> <root>.species (was missing for rm)
+    assert session.save_species.call_count == 1
+    assert session.save_species.call_args[0][0].endswith("model.species")
+    # concentration replay (was dropped for rm)
+    session.set_species_count.assert_any_call("A()", 5)
+    session.add_species.assert_any_call("B()", 3)
+    mock_bngsim.NfsimSession.assert_not_called()
+
+
 def test_direct_job_writer_creates_gdat_and_cdat_files():
     mock_bngsim = MagicMock()
     mock_bngsim.Model.from_net.return_value = MagicMock()
