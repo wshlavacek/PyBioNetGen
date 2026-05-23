@@ -439,8 +439,13 @@ def _normalize_columns(data, names):
     """
     if names is None or len(names) != data.shape[1]:
         return data, None
-    keep = [i for i, n in enumerate(names) if not _RATELAW_RE.match(n)]
-    return data[:, keep], [_canon(names[i]) for i in keep]
+    # Canonicalize (strip a trailing ``()``) BEFORE testing the rate-law
+    # pattern: BNG2.pl's NFsim path writes every function column with the
+    # ``()`` suffix, including synthetic intermediates (``_rateLaw1()``), so
+    # matching the raw token against ``^_rateLaw\d+$`` would miss them.
+    canon = [_canon(n) for n in names]
+    keep = [i for i, n in enumerate(canon) if not _RATELAW_RE.match(n)]
+    return data[:, keep], [canon[i] for i in keep]
 
 
 def load_normalized(path):

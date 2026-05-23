@@ -502,6 +502,16 @@ class TestColumnNormalizationUnits:
         # columns 0,1,3 kept (the two _rateLaw* dropped)
         np.testing.assert_array_equal(out, data[:, [0, 1, 3]])
 
+    def test_normalize_drops_ratelaw_with_paren_suffix(self):
+        # BNG2.pl's NFsim path ()-suffixes every function column, including
+        # synthetic intermediates: _rateLaw1() must still be dropped. (The
+        # lone v8 straggler, "AD 3 State FREE Expanding nfs".)
+        names = ["time", "A", "kf()", "_rateLaw1()"]
+        data = np.arange(8).reshape(2, 4).astype(float)
+        out, out_names = pd._normalize_columns(data, names)
+        assert out_names == ["time", "A", "kf"]
+        np.testing.assert_array_equal(out, data[:, [0, 1, 2]])
+
     def test_normalize_keeps_userfunc_not_matching_ratelaw(self):
         # _rateLaw without trailing digits, or a user obs, is NOT dropped.
         names = ["time", "_rateLaw", "rateLaw3", "myLaw2"]
