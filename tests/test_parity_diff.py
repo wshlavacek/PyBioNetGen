@@ -572,3 +572,40 @@ class TestDeterministicCosmeticNormalization:
                           np.column_stack([t, np.sin(t), np.cos(t)]))
         status, _ = pd.deterministic_compare(sub_dir, bng_dir)
         assert status == "diff"
+
+
+class TestScanCosmeticNormalization:
+    """`.scan` files flow through the same deterministic loop as `.gdat`
+    (NUM_EXTENSIONS), so the ()/_rateLaw normalization must cover them too.
+    A `.scan` is a 2D table: column 0 is the swept *parameter* (not time),
+    remaining columns are each observable/function at t_end. Verifies the
+    param column stays put under name-based alignment.
+    """
+
+    def test_scan_bare_vs_parens_and_ratelaw_passes(self, tmp_pair):
+        sub_dir, bng_dir = tmp_pair
+        kf = np.linspace(0.1, 1.0, 25)          # swept parameter (col 0)
+        a, b, func = np.sqrt(kf), kf ** 2, 3 * kf
+        # bngsim: bare headers, no _rateLaw, param col first.
+        _write_gdat_named(sub_dir / "m.scan",
+                          ["kf", "A", "B", "func"],
+                          np.column_stack([kf, a, b, func]))
+        # BNG2.pl: ()-function header + interspersed _rateLaw cols.
+        _write_gdat_named(bng_dir / "m.scan",
+                          ["kf", "A", "_rateLaw2", "B", "func()"],
+                          np.column_stack([kf, a, 42 * kf, b, func]))
+        status, details = pd.deterministic_compare(sub_dir, bng_dir)
+        assert status == "pass", details
+
+    def test_scan_real_param_divergence_still_fails(self, tmp_pair):
+        # A genuine difference in the swept-parameter column 0 must flag,
+        # not be absorbed by normalization.
+        sub_dir, bng_dir = tmp_pair
+        kf = np.linspace(0.1, 1.0, 25)
+        _write_gdat_named(sub_dir / "m.scan", ["kf", "A", "func"],
+                          np.column_stack([kf, np.sqrt(kf), 3 * kf]))
+        _write_gdat_named(bng_dir / "m.scan",
+                          ["kf", "A", "func()", "_rateLaw2"],
+                          np.column_stack([1.5 * kf, np.sqrt(kf), 3 * kf, kf]))
+        status, _ = pd.deterministic_compare(sub_dir, bng_dir)
+        assert status == "diff"
