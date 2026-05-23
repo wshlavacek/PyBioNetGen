@@ -403,7 +403,6 @@ def _truncate_cdat_to_endpoints(cdat_path):
 def _write_bngsim_results(
     result, output_dir, model_name,
     print_functions=False, append=False, print_cdat=True,
-    network_free=False,
 ):
     """Write BNGsim Result to .gdat and .cdat files.
 
@@ -418,13 +417,11 @@ def _write_bngsim_results(
     print_functions : bool
         If True, include BNGL functions (BNGsim "expressions") in .gdat
         output. Matches BNG2.pl's ``print_functions=>1`` behavior.
-        Default False, matching BNG2.pl's default.
-    network_free : bool
-        If True, label function columns with BNG2.pl's ``()`` header
-        convention (``kf_BSA()``) via ``Result.gdat_expression_names`` —
-        the form NFsim/RuleMonkey output uses. If False (network methods:
-        ode/ssa/psa), ``run_network`` writes function columns bare, so the
-        plain ``expression_names`` are used. Default False.
+        Default False, matching BNG2.pl's default. As of bngsim's
+        single-format schema (issue #58), function columns are written bare
+        with the synthetic ``_rateLawN`` intermediates already excluded, for
+        every method — ``Result.expression_names``/``expressions`` carry
+        exactly that, so there is no per-method header/column massaging here.
     append : bool
         If True and the target files already exist, append rows from
         *result* (skipping its first row, which duplicates the prior
@@ -455,30 +452,20 @@ def _write_bngsim_results(
     func_array = np.empty((result.n_times, 0))
     has_funcs = False
     if print_functions:
-        bare_names = list(result.expression_names)
+        # Single, method-independent schema (issue #58): bare function
+        # headers, synthetic _rateLawN already excluded. expression_names /
+        # expressions carry exactly that for every method, so write them
+        # as-is — no () injection or _rateLaw filtering. (The parity differ
+        # reconciles BNG2.pl's per-method () headers and _rateLaw columns by
+        # normalizing both sides; see scripts/parity_diff.py.)
+        func_names = list(result.expression_names)
         bngsim_func_array = np.asarray(result.expressions)
-        if network_free:
-            # NFsim/RuleMonkey: BNG2.pl drops the synthetic _rateLawN columns
-            # and uses the () header convention. gdat_expression_names carries
-            # both; map each kept label back to its source data column (strip
-            # the () suffix) so names and data stay aligned.
-            gdat_names = list(result.gdat_expression_names)
-            kept = {g[:-2] for g in gdat_names}
-            keep = [i for i, n in enumerate(bare_names) if n in kept]
-            sel_names = gdat_names
-        else:
-            # run_network (ode/ssa/psa): BNG2.pl writes every function column
-            # bare, INCLUDING synthetic _rateLawN. Emit whatever bngsim exposes
-            # as-is — never filter here (that is the network-free convention).
-            keep = list(range(len(bare_names)))
-            sel_names = bare_names
         if (
-            keep
+            func_names
             and bngsim_func_array.ndim == 2
-            and bngsim_func_array.shape[1] == len(bare_names)
+            and bngsim_func_array.shape[1] == len(func_names)
         ):
-            func_names = sel_names
-            func_array = bngsim_func_array[:, keep]
+            func_array = bngsim_func_array
             has_funcs = True
 
     if has_funcs:
@@ -803,7 +790,7 @@ def _run_rulemonkey_job(job, input_path, output_dir, sim_options, result_options
         result = rm_session.simulate(job.t_span[0], job.t_span[1], job.n_points)
 
     _write_bngsim_results(
-        result, output_dir, job.output_root, network_free=True, **result_options
+        result, output_dir, job.output_root, **result_options
     )
     return _make_bng_result(output_dir, method=job.method)
 
@@ -873,7 +860,6 @@ def execute_bngsim_direct_job(job):
 
         _write_bngsim_results(
             result, output_dir, job.output_root,
-            network_free=True,
             **result_options,
         )
         return _make_bng_result(output_dir, method=job.method)

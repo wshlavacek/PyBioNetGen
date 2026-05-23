@@ -36,7 +36,9 @@ def _make_mock_result(obs_names=None, obs_data=None, species_names=None,
     if func_data is None:
         func_data = np.empty((n_times, 0))
 
-    gdat_func_names = [f"{n}()" for n in func_names]
+    # bngsim's single-format schema (issue #58): gdat_expression_names is
+    # bare and identical to expression_names — no () suffix, no _rateLawN.
+    gdat_func_names = list(func_names)
 
     core = MagicMock()
     core.expression_names = func_names
@@ -157,22 +159,26 @@ class TestWriteBngsimResults:
             assert "f1()" not in header
             assert "f2()" not in header
 
-    def test_print_functions_network_free_uses_paren_convention(self):
-        # NFsim/RuleMonkey output carries BNG2.pl's () header convention on
-        # function columns; the network-free write path must reproduce it.
+    def test_print_functions_network_free_writes_bare_names(self):
+        # bngsim's single-format schema (issue #58): every method, including
+        # network-free (NFsim/RuleMonkey), writes function columns bare — no
+        # () suffix. Regression guard for the write-path retirement: an
+        # earlier version stripped a presumed () off bngsim's already-bare
+        # gdat_expression_names, dropping every nf function column.
         from bionetgen.core.tools.bngsim_bridge import _write_bngsim_results
 
         func_data = np.random.rand(10, 2)
         result = _make_mock_result(func_names=["kf_BSA", "kr_BSA"], func_data=func_data)
         with tempfile.TemporaryDirectory() as tmpdir:
             _write_bngsim_results(
-                result, tmpdir, "nf_model",
-                print_functions=True, network_free=True,
+                result, tmpdir, "nf_model", print_functions=True,
             )
             with open(os.path.join(tmpdir, "nf_model.gdat")) as f:
                 header = f.readline()
-            assert "kf_BSA()" in header
-            assert "kr_BSA()" in header
+            assert "kf_BSA" in header
+            assert "kr_BSA" in header
+            assert "kf_BSA()" not in header
+            assert "kr_BSA()" not in header
 
     def test_no_observables_no_funcs_skips_gdat(self):
         from bionetgen.core.tools.bngsim_bridge import _write_bngsim_results
