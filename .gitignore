@@ -20,3 +20,6 @@ test_sbml.xml
 htmlcov/
 .claude/
 uv.lock
+
+# Local scratch (PR drafts, notes) — never tracked
+.local/
