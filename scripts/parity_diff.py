@@ -385,6 +385,95 @@ def safe_load(path):
         return None, f"{type(e).__name__}: {e}"
 
 
+# bngsim settles .gdat/.scan on a single, method-independent schema that
+# diverges from BNG2.pl in two cosmetic ways (per the bngsim devs, 2026-05):
+#   (1) function-column headers are bare — bngsim writes ``kf_BSA`` where
+#       BNG2.pl writes ``kf_BSA()`` on its NFsim output;
+#   (2) the synthetic ``_rateLaw<digits>`` columns run_network injects into
+#       the ODE .gdat are omitted by default (internal rate-law intermediates).
+# Values, observables, species and .cdat are identical — the only diffs are
+# header text and the presence of those columns. We normalize both sides
+# before the positional compare so these don't read as failures. The
+# normalization is deliberately narrow: a trailing ``()`` is stripped from
+# headers and ``_rateLaw<digits>`` columns are dropped; ANY other column
+# difference still falls through to the shape/value checks. See
+# PyBNF-Private#58.
+_RATELAW_RE = re.compile(r"^_rateLaw\d+$")
+
+
+def _read_columns(path):
+    """Column names from the BNG header (the last ``#`` line before data).
+
+    BNG .gdat/.cdat/.scan carry a single comment header
+    ``#   time   A   B   kf()``. Returns ``list[str]`` or ``None`` if no
+    header is present / the file can't be read (caller falls back to a
+    positional compare).
+    """
+    names = None
+    try:
+        with open(path) as fh:
+            for line in fh:
+                s = line.strip()
+                if not s:
+                    continue
+                if s.startswith("#"):
+                    names = s.lstrip("#").split()
+                else:
+                    break
+    except OSError:
+        return None
+    return names
+
+
+def _canon(name):
+    """Canonical function-column name: drop one trailing ``()``."""
+    return name[:-2] if name.endswith("()") else name
+
+
+def _normalize_columns(data, names):
+    """Drop ``_rateLaw<digits>`` columns and canonicalize headers.
+
+    Returns ``(data, names)``. When the header is unavailable or its token
+    count doesn't match the data width, returns ``(data, None)`` — a
+    positional fallback that changes nothing.
+    """
+    if names is None or len(names) != data.shape[1]:
+        return data, None
+    keep = [i for i, n in enumerate(names) if not _RATELAW_RE.match(n)]
+    return data[:, keep], [_canon(names[i]) for i in keep]
+
+
+def load_normalized(path):
+    """``safe_load`` + drop ``_rateLaw`` columns + canonicalize headers.
+
+    Returns ``(data, names, err)``; ``names`` is ``None`` when the header is
+    unavailable (positional fallback).
+    """
+    data, err = safe_load(path)
+    if err:
+        return None, None, err
+    data, names = _normalize_columns(data, _read_columns(path))
+    return data, names, None
+
+
+def _align_columns(sub, sub_names, bng, bng_names):
+    """Reorder ``bng`` columns to ``sub``'s order, matched by name.
+
+    Only reorders when both headers are present and the (already
+    ``_rateLaw``-stripped, ``()``-canonicalized) name *sets* are equal — so
+    a column ordering difference is absorbed but a genuine schema divergence
+    (a real column on one side only) is left for the shape/value check to
+    flag. Returns ``(sub, bng)`` unchanged on any mismatch or missing header.
+    """
+    if sub_names is None or bng_names is None or sub_names == bng_names:
+        return sub, bng
+    if (set(sub_names) == set(bng_names)
+            and len(sub_names) == len(set(sub_names))):
+        bidx = {n: i for i, n in enumerate(bng_names)}
+        return sub, bng[:, [bidx[n] for n in sub_names]]
+    return sub, bng
+
+
 def _time_tol(times):
     """Per-file time-column tolerance, scale-relative.
 
@@ -564,12 +653,13 @@ def deterministic_compare(sub_dir, bng_dir):
     overall_max_abs = 0.0
     overall_max_rel = 0.0
     for name in common:
-        sub, e1 = safe_load(sub_files[name])
-        bng, e2 = safe_load(bng_files[name])
+        sub, sub_names, e1 = load_normalized(sub_files[name])
+        bng, bng_names, e2 = load_normalized(bng_files[name])
         if e1 or e2:
             per_file[name] = {"load_error": e1 or e2}
             overall_pass = False
             continue
+        sub, bng = _align_columns(sub, sub_names, bng, bng_names)
         if sub.shape != bng.shape:
             per_file[name] = {"shape_sub": list(sub.shape),
                               "shape_bng": list(bng.shape)}
@@ -787,27 +877,36 @@ def stochastic_compare(sub_seed_dirs, bng_seed_dirs):
     for name in common:
         sub_arrs = []
         bng_arrs = []
+        sub_names = bng_names = None
         load_err = None
         for p in sub_per_name[name]:
-            a, e = safe_load(p)
+            a, nm, e = load_normalized(p)
             if e:
                 load_err = e
                 break
             sub_arrs.append(a)
+            sub_names = sub_names if sub_names is not None else nm
         if load_err:
             per_file[name] = {"load_error": load_err}
             overall_pass = False
             continue
         for p in bng_per_name[name]:
-            a, e = safe_load(p)
+            a, nm, e = load_normalized(p)
             if e:
                 load_err = e
                 break
             bng_arrs.append(a)
+            bng_names = bng_names if bng_names is not None else nm
         if load_err:
             per_file[name] = {"load_error": load_err}
             overall_pass = False
             continue
+        # All seeds on a side share the header; reorder each bng seed's
+        # columns to sub's order (matched by name) so the cosmetic
+        # ()/_rateLaw normalization carries through the ensemble compare.
+        if sub_arrs and bng_arrs:
+            bng_arrs = [_align_columns(sub_arrs[0], sub_names, b, bng_names)[1]
+                        for b in bng_arrs]
         # Need seeds to align in shape on each side; if any seed has a
         # different shape, treat as shape-mismatch (real signal).
         sub_shapes = {a.shape for a in sub_arrs}

@@ -465,3 +465,110 @@ class TestSubprocessNfUnreliableRegistry:
             for key in ("ode_suffix", "nf_suffix", "issue", "reason"):
                 assert key in entry, f"{stem} missing {key}"
                 assert isinstance(entry[key], str) and entry[key]
+
+
+# ---------------------------------------------------------------------------
+# Cosmetic header/column normalization — bare-vs-() function headers and
+# omitted _rateLaw<digits> columns (bngsim's method-independent schema).
+# See parity_diff._normalize_columns / _align_columns and PyBNF-Private#58.
+# ---------------------------------------------------------------------------
+
+def _write_gdat_named(path, names, arr):
+    """Write a BNG-style .gdat with an explicit header token list."""
+    path = Path(path)
+    with open(path, "w") as f:
+        f.write("# " + "  ".join(names) + "\n")
+        for row in arr:
+            f.write(" ".join(f"{v: .12e}" for v in row) + "\n")
+
+
+class TestColumnNormalizationUnits:
+    def test_read_columns_strips_hash(self, tmp_path):
+        p = tmp_path / "m.gdat"
+        _write_gdat_named(p, ["time", "A", "kf()"], np.zeros((2, 3)))
+        assert pd._read_columns(p) == ["time", "A", "kf()"]
+
+    def test_canon_drops_trailing_parens_only(self):
+        assert pd._canon("kf_BSA()") == "kf_BSA"
+        assert pd._canon("kf_BSA") == "kf_BSA"
+        # not a trailing (): leave intact
+        assert pd._canon("f(x)") == "f(x)"
+
+    def test_normalize_drops_ratelaw_and_canonicalizes(self):
+        names = ["time", "A", "_rateLaw2", "kf()", "_rateLaw10"]
+        data = np.arange(10).reshape(2, 5).astype(float)
+        out, out_names = pd._normalize_columns(data, names)
+        assert out_names == ["time", "A", "kf"]
+        # columns 0,1,3 kept (the two _rateLaw* dropped)
+        np.testing.assert_array_equal(out, data[:, [0, 1, 3]])
+
+    def test_normalize_keeps_userfunc_not_matching_ratelaw(self):
+        # _rateLaw without trailing digits, or a user obs, is NOT dropped.
+        names = ["time", "_rateLaw", "rateLaw3", "myLaw2"]
+        data = np.zeros((1, 4))
+        _, out_names = pd._normalize_columns(data, names)
+        assert out_names == ["time", "_rateLaw", "rateLaw3", "myLaw2"]
+
+    def test_normalize_header_width_mismatch_falls_back(self):
+        data = np.zeros((1, 3))
+        out, out_names = pd._normalize_columns(data, ["time", "A"])
+        assert out_names is None and out.shape == (1, 3)
+
+    def test_align_reorders_when_sets_equal(self):
+        sub = np.array([[1.0, 2.0, 3.0]])
+        bng = np.array([[1.0, 3.0, 2.0]])  # B and A swapped
+        s, b = pd._align_columns(sub, ["time", "A", "B"],
+                                 bng, ["time", "B", "A"])
+        np.testing.assert_array_equal(b, [[1.0, 2.0, 3.0]])
+        np.testing.assert_array_equal(s, sub)
+
+    def test_align_noop_on_real_schema_difference(self):
+        sub = np.zeros((1, 3))
+        bng = np.zeros((1, 3))
+        # Different real column present -> left for shape/value check.
+        s, b = pd._align_columns(sub, ["time", "A", "B"],
+                                 bng, ["time", "A", "C"])
+        np.testing.assert_array_equal(b, bng)
+
+
+class TestDeterministicCosmeticNormalization:
+    def test_bare_vs_parens_and_ratelaw_passes(self, tmp_pair):
+        """BNG2.pl ODE side carries _rateLaw cols + ()-headers; bngsim is
+        bare and omits _rateLaw. Identical values -> PASS, not a shape DIFF.
+        """
+        sub_dir, bng_dir = tmp_pair
+        t = np.linspace(0, 10, 101)
+        a, b, kf = np.sin(t), np.cos(t), 0.5 * t
+        # bngsim (sub): bare headers, no _rateLaw.
+        _write_gdat_named(sub_dir / "m.gdat",
+                          ["time", "A", "B", "kf"],
+                          np.column_stack([t, a, b, kf]))
+        # BNG2.pl (bng): () on function header + interspersed _rateLaw cols.
+        _write_gdat_named(bng_dir / "m.gdat",
+                          ["time", "A", "_rateLaw2", "B", "kf()", "_rateLaw3"],
+                          np.column_stack([t, a, 99 * t, b, kf, 7 * t]))
+        status, details = pd.deterministic_compare(sub_dir, bng_dir)
+        assert status == "pass", details
+
+    def test_real_diff_still_caught_after_normalization(self, tmp_pair):
+        """Normalization must not mask a genuine divergence in a kept col."""
+        sub_dir, bng_dir = tmp_pair
+        t = np.linspace(0, 10, 101)
+        _write_gdat_named(sub_dir / "m.gdat", ["time", "A", "kf"],
+                          np.column_stack([t, np.sin(t), 0.5 * t]))
+        _write_gdat_named(bng_dir / "m.gdat",
+                          ["time", "A", "kf()", "_rateLaw2"],
+                          np.column_stack([t, 1.1 * np.sin(t), 0.5 * t, t]))
+        status, _ = pd.deterministic_compare(sub_dir, bng_dir)
+        assert status == "diff"
+
+    def test_extra_real_column_still_fails(self, tmp_pair):
+        """A real (non-_rateLaw) extra column is a schema divergence: DIFF."""
+        sub_dir, bng_dir = tmp_pair
+        t = np.linspace(0, 10, 51)
+        _write_gdat_named(sub_dir / "m.gdat", ["time", "A"],
+                          np.column_stack([t, np.sin(t)]))
+        _write_gdat_named(bng_dir / "m.gdat", ["time", "A", "C"],
+                          np.column_stack([t, np.sin(t), np.cos(t)]))
+        status, _ = pd.deterministic_compare(sub_dir, bng_dir)
+        assert status == "diff"
