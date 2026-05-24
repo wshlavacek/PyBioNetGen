@@ -158,18 +158,38 @@ class BNGResult:
         # we gotta open the file and pull that line in
         with open(path, "r") as f:
             header = f.readline()
-        # Ensure the header info is actually there
-        if not header.startswith("#"):
-            msg = f"No header line that starts with # in file {path}"
-            self.logger.error(msg, loc=f"{__file__} : BNGResult._load_dat()")
-            raise BNGFileError(path, message=msg)
-        # Now turn it into a list of names for our struct array
-        header = header.replace("#", "")
-        headers = header.split()
+        if header.startswith("#"):
+            # Normal case: names come from this file's own header line.
+            names = tuple(header.replace("#", "").split())
+        else:
+            # Headerless file. BNG2.pl writes continuation segments
+            # (simulate(...continue=>1, suffix=>"N")) without a header line —
+            # the column names live only in the base-suffix file. Recover them
+            # from a sibling .gdat/.cdat in the same directory whose header has
+            # the same column count; otherwise fall back to positional names so
+            # a continuation run still loads instead of crashing the whole job.
+            ncol = len(header.split())
+            names = None
+            ext = os.path.splitext(path)[1]
+            parent = os.path.dirname(path) or "."
+            for sib in sorted(os.listdir(parent)):
+                sib_path = os.path.join(parent, sib)
+                if not sib.endswith(ext) or os.path.samefile(sib_path, path):
+                    continue
+                with open(sib_path, "r") as sf:
+                    sib_hdr = sf.readline()
+                if sib_hdr.startswith("#") and len(sib_hdr.replace("#", "").split()) == ncol:
+                    names = tuple(sib_hdr.replace("#", "").split())
+                    break
+            if names is None:
+                # No header here and no sibling to borrow names from — this is a
+                # genuinely malformed/orphaned file, not a continuation segment.
+                msg = f"No header line that starts with # in file {path}"
+                self.logger.error(msg, loc=f"{__file__} : BNGResult._load_dat()")
+                raise BNGFileError(path, message=msg)
         # For a magical reason this is how numpy.loadtxt wants it,
         # in tuples passed as a dictionary with names/formats as keys
-        names = tuple(headers)
-        formats = tuple([dformat for i in range(len(headers))])
+        formats = tuple([dformat for i in range(len(names))])
         # return the loadtxt result as a record array
         # which is similar to pandas data format without the helper functions
         return np.rec.array(

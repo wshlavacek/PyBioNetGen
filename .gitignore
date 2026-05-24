@@ -23,3 +23,6 @@ uv.lock
 
 # Local scratch (PR drafts, notes) — never tracked
 .local/
+
+# Candidate model corpus: symlinks to externally-licensed models (RuleHub/RuleMonkey/etc.)
+dev/candidate_corpus/
