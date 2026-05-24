@@ -47,6 +47,23 @@ TEND_OVERRIDES = {
     "scaling_example.bngl": 50,
 }
 
+# Per-model ODE solver tolerance overrides, keyed by .bngl filename. Some
+# models are ill-conditioned initial-value problems whose trajectory is not
+# resolved at BNG2.pl's and bngsim's shared default atol/rtol=1e-8: BOTH
+# CVODE configurations give a (different) wrong answer there — one merely
+# stays bounded while the other can run negative — so the default-tolerance
+# DIFF is a property of the IVP, not of either engine. Tightening to 1e-12
+# makes the two integrators converge to the same physical solution (verified
+# for eco_coevolution_host_parasite: they then agree to ~9 sig figs). We
+# inject the tighter tolerance into BOTH stacks so the parity check exercises
+# the model at a tolerance where it is actually well-posed. A non-negativity
+# clamp is deliberately NOT the fix — some models carry legitimately-negative
+# observables. Applies to ode/cvode actions; BNG ignores atol/rtol on
+# nf/ssa actions, so injecting unconditionally is harmless.
+TOL_OVERRIDES = {
+    "eco_coevolution_host_parasite.bngl": {"atol": "1e-12", "rtol": "1e-12"},
+}
+
 # Per-model timeout overrides (seconds), keyed by .bngl filename. The default
 # --timeout is a parity budget tuned for fast models. This dict previously
 # carried 600 s entries for two 200-point parameter_scans
@@ -138,6 +155,37 @@ def patch_bngl_tend_only(text, tend_override):
             out_lines.append(line)
             continue
         out_lines.append(tend_re.sub(rf"\g<1>{tend_override}", line))
+    return "".join(out_lines)
+
+
+def inject_tol(text, tol_override):
+    """Set atol/rtol on every active simulate-style action's parameter block.
+
+    Mirrors the seed injection: inserts ``atol=>X,rtol=>Y,`` right after the
+    action's opening ``{``. Any pre-existing atol/rtol tokens in the block are
+    stripped first so the override wins (no duplicate keys). Comment lines are
+    left untouched. Applied identically to both stacks.
+    """
+    if not tol_override:
+        return text
+    atol = tol_override["atol"]
+    rtol = tol_override["rtol"]
+    action_open = re.compile(
+        r"((?:simulate(?:_\w+)?|parameter_scan|bifurcate)\s*\(\s*\{)"
+    )
+    strip_re = re.compile(r"[ar]tol\s*=>\s*[-+0-9.eE]+\s*,?\s*")
+    out_lines = []
+    for line in text.splitlines(keepends=True):
+        if line.lstrip().startswith("#") or not action_open.search(line):
+            out_lines.append(line)
+            continue
+        new_line = strip_re.sub("", line)
+        new_line = action_open.sub(rf"\g<1>atol=>{atol},rtol=>{rtol},", new_line)
+        # Tidy any comma artifacts from stripping a pre-existing token.
+        new_line = re.sub(r"\{\s*,", "{", new_line)
+        new_line = re.sub(r",(\s*\})", r"\1", new_line)
+        new_line = re.sub(r",\s*,", ",", new_line)
+        out_lines.append(new_line)
     return "".join(out_lines)
 
 
@@ -289,13 +337,15 @@ def main():
             continue
         rel = src.relative_to(root)
         tend_override = TEND_OVERRIDES.get(src.name)
+        tol_override = TOL_OVERRIDES.get(src.name)
         if is_stochastic(text):
             n_stoch += 1
             for seed in range(1, args.n_seeds + 1):
                 patched_dir = patch_root / rel.parent / f"{rel.stem}__seed{seed}"
                 patched_dir.mkdir(parents=True, exist_ok=True)
                 patched_path = patched_dir / rel.name
-                patched_path.write_text(patch_bngl(text, seed, tend_override))
+                patched_path.write_text(
+                    inject_tol(patch_bngl(text, seed, tend_override), tol_override))
                 out_dir = out_root / rel.parent / rel.stem / f"seed{seed}"
                 units.append({
                     "bngl": str(src),
@@ -306,13 +356,14 @@ def main():
                 })
         else:
             n_det += 1
-            # Apply t_end override if needed (none of the deterministic
-            # models in current corpus need it, but kept for safety).
-            if tend_override is not None:
+            # Apply t_end and/or tolerance overrides if either is set.
+            if tend_override is not None or tol_override is not None:
                 patched_dir = patch_root / rel.parent
                 patched_dir.mkdir(parents=True, exist_ok=True)
                 patched_path = patched_dir / rel.name
-                patched_path.write_text(patch_bngl_tend_only(text, tend_override))
+                patched_path.write_text(
+                    inject_tol(patch_bngl_tend_only(text, tend_override),
+                               tol_override))
                 run_path = patched_path
             else:
                 run_path = src
@@ -395,6 +446,7 @@ def main():
         "simulator": args.simulator,
         "n_seeds": args.n_seeds,
         "tend_overrides": TEND_OVERRIDES,
+        "tol_overrides": TOL_OVERRIDES,
         "timeout_overrides": TIMEOUT_OVERRIDES,
         "n_deterministic_models": n_det,
         "n_stochastic_models": n_stoch,
