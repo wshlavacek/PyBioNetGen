@@ -343,6 +343,38 @@ SUBPROCESS_NF_ANALYTIC = {
     },
 }
 
+# Models where the subprocess NF reference is wrong AND there is neither an
+# ODE segment nor a documented analytic answer to check against — typically
+# large aggregation / ring-closure models that can't be network-generated
+# (combinatorial blow-up) and have no closed form. For these we revalidate
+# bngsim's NFsim ensemble against bngsim's RuleMonkey ensemble: RuleMonkey
+# (method=>"rm", an exact rejection-free network-free algorithm) is an
+# INDEPENDENT engine, so agreement is strong positive evidence that bngsim's
+# NFsim is correct and the legacy BNG2.pl NFsim v1.14.3 reference is the
+# outlier. The revalidation re-runs each bngsim-NF seed's already-patched model
+# as RuleMonkey (same seeds, same capped horizon) and applies the same
+# ensemble sigma-test. Regression-safe: if bngsim's NFsim ever drifts from
+# RuleMonkey, the model flips back to DIFF. Each entry is just documentation
+# (issue/reason); membership is what triggers the revalidation.
+SUBPROCESS_NF_RULEMONKEY = {
+    "bench_blbr_rings_posner1995": {
+        "issue": "legacy NFsim v1.14.3 ring-closure (no -bscb)",
+        "reason": "BLBR cyclic-aggregate model. bngsim NFsim disagrees with "
+                  "the legacy subprocess NFsim catastrophically on Obs_Cyclic_"
+                  "Dimer / bond observables (~37% cell pass). Revalidated "
+                  "against bngsim RuleMonkey (exact network-free): bngsim NF "
+                  "and RuleMonkey agree to 99.9%, so legacy NFsim is the buggy "
+                  "reference. Verified 2026-05-24.",
+    },
+    "bench_blbr_dembo1978_monovalent_inhibitor": {
+        "issue": "legacy NFsim v1.14.3 aggregate handling",
+        "reason": "BLBR monovalent-inhibitor model. bngsim NF vs legacy "
+                  "subprocess NF DIFFs (~97% pass, persists at full horizon); "
+                  "bngsim NF vs bngsim RuleMonkey agree to 99.7%. Legacy NFsim "
+                  "is the outlier. Verified 2026-05-24.",
+    },
+}
+
 # Relative tolerance for the ODE-oracle revalidation. Looser than the
 # deterministic REL_TOL because an nf ensemble mean differs from the ODE
 # (infinite-size) limit by a finite-size systematic offset on top of
@@ -1010,6 +1042,16 @@ def stochastic_compare(sub_seed_dirs, bng_seed_dirs):
         # Observable columns: ensemble means, stds; ddof=1 for sample std
         sub_obs = sub_stack[:, :, 1:]
         bng_obs = bng_stack[:, :, 1:]
+        # A file with only a time column (no observables) carries nothing to
+        # compare — e.g. the time-only .cdat a network-free model writes. It
+        # passes vacuously rather than crashing the reductions below. (In the
+        # usual subprocess-vs-bngsim run only one side writes this .cdat, so it
+        # isn't a common file; it surfaces when both sides are bngsim, as in the
+        # RuleMonkey-oracle revalidation.)
+        if sub_obs.shape[2] == 0 or bng_obs.shape[2] == 0:
+            per_file[name] = {"note": "no observable columns; nothing to compare",
+                              "n_cols": int(sub_obs.shape[2]), "pass": True}
+            continue
         N_sub = sub_obs.shape[0]
         N_bng = bng_obs.shape[0]
         mu_s = np.mean(sub_obs, axis=0)
@@ -1211,6 +1253,69 @@ def revalidate_against_analytic(bng_dirs, model_stem, entry):
         "oracle": "analytic", "n_seeds": len(arrs), "checks": checks,
         "issue": entry.get("issue"), "reason": entry.get("reason"),
     }
+
+
+_NF_METHOD_RE = re.compile(r"method\s*=>\s*['\"]nf['\"]")
+
+
+def _load_parity_sweep():
+    """Lazy-import the sibling parity_sweep module (for run_one) on demand."""
+    import importlib.util
+    p = Path(__file__).resolve().parent / "parity_sweep.py"
+    spec = importlib.util.spec_from_file_location("parity_sweep", p)
+    mod = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def revalidate_against_rulemonkey(bng_ok, bng_dirs, model_stem, entry,
+                                  timeout=120):
+    """Validate a bngsim NFsim ensemble against bngsim's RuleMonkey ensemble.
+
+    For nf-only aggregation/ring models in SUBPROCESS_NF_RULEMONKEY where the
+    legacy subprocess NFsim reference is suspect and there is no ODE/analytic
+    oracle. Re-runs each bngsim-NF seed's already-patched model with
+    method=>"rm" (RuleMonkey, exact network-free) — same baked-in seed and
+    capped horizon — then applies the standard ensemble sigma-test between the
+    bngsim-NF and bngsim-RM ensembles. PASS means two independent network-free
+    engines agree, i.e. the subprocess-NF DIFF is a reference bug. Regression-
+    safe: if bngsim-NF later drifts from RuleMonkey it flips back to DIFF.
+    Returns ('pass'|'diff', details).
+    """
+    import tempfile
+    try:
+        ps = _load_parity_sweep()
+    except Exception as exc:  # pragma: no cover - env-dependent
+        return "diff", {"oracle": "rulemonkey", "reason": f"parity_sweep import failed: {exc}"}
+
+    tmp = Path(tempfile.mkdtemp(prefix=f"rm_oracle_{model_stem}_"))
+    rm_dirs = []
+    for i, r in enumerate(bng_ok):
+        run_path = r.get("run")
+        if not run_path or not Path(run_path).is_file():
+            continue
+        text = Path(run_path).read_text()
+        rm_text, n = _NF_METHOD_RE.subn('method=>"rm"', text)
+        if n == 0:  # not an nf model after all
+            continue
+        rm_bngl = tmp / f"seed{i}" / Path(run_path).name
+        rm_bngl.parent.mkdir(parents=True, exist_ok=True)
+        rm_bngl.write_text(rm_text)
+        out_dir = tmp / f"out{i}"
+        res = ps.run_one("bngsim", str(rm_bngl), str(rm_bngl), str(out_dir), timeout)
+        if res.get("status") == "ok":
+            rm_dirs.append(str(out_dir))
+    if len(rm_dirs) < 2:
+        return "diff", {"oracle": "rulemonkey", "n_rm_ok": len(rm_dirs),
+                        "reason": "RuleMonkey produced too few seed outputs"}
+    # Reuse the standard ensemble comparison: bngsim-NF vs bngsim-RM.
+    status, details = stochastic_compare(bng_dirs, rm_dirs)
+    details["oracle"] = "rulemonkey"
+    details["n_rm_ok"] = len(rm_dirs)
+    details["issue"] = entry.get("issue")
+    details["reason"] = entry.get("reason")
+    return status, details
 
 
 def main():
@@ -1416,28 +1521,34 @@ def main():
                 stem = Path(bngl).stem
                 ref_bug = SUBPROCESS_NF_UNRELIABLE.get(stem)
                 analytic = SUBPROCESS_NF_ANALYTIC.get(stem)
-                ode_status, ode_details = (None, None)
+                rulemonkey = SUBPROCESS_NF_RULEMONKEY.get(stem)
+                oracle_status, oracle_details, oracle_field = (None, None, "ode_oracle")
                 if ref_bug is not None:
-                    ode_status, ode_details = revalidate_nf_against_ode(
+                    oracle_status, oracle_details = revalidate_nf_against_ode(
                         sub_dirs, bng_dirs, stem, ref_bug)
                 elif analytic is not None:
-                    ode_status, ode_details = revalidate_against_analytic(
+                    oracle_status, oracle_details = revalidate_against_analytic(
                         bng_dirs, stem, analytic)
                     ref_bug = analytic  # reason/issue come from the entry
-                if ref_bug is not None and ode_status == "pass":
+                elif rulemonkey is not None:
+                    oracle_status, oracle_details = revalidate_against_rulemonkey(
+                        bng_ok, bng_dirs, stem, rulemonkey)
+                    ref_bug = rulemonkey
+                    oracle_field = "rulemonkey_oracle"
+                if ref_bug is not None and oracle_status == "pass":
                     buckets["PASS_REF_BUG"].append(bngl)
                     per_model[bngl] = {
                         "bucket": "PASS_REF_BUG", "regime": "stochastic",
                         "reason": ref_bug["reason"],
                         "issue": ref_bug.get("issue"),
                         "details": details,
-                        "ode_oracle": ode_details,
+                        oracle_field: oracle_details,
                     }
                 else:
                     per_model[bngl] = {"bucket": "DIFF", "regime": "stochastic",
                                        "details": details}
-                    if ode_details is not None:
-                        per_model[bngl]["ode_oracle"] = ode_details
+                    if oracle_details is not None:
+                        per_model[bngl][oracle_field] = oracle_details
                     buckets["DIFF"].append(bngl)
 
     # Tag models re-judged at an escalated seed count (overlay merge).
@@ -1514,6 +1625,17 @@ def main():
                              f"n_pass={oo.get('n_pass')}/{oo.get('n_cells')}, "
                              f"max_abs_nf_vs_ode={oo.get('max_abs_nf_vs_ode')}, "
                              f"n_seeds={oo.get('n_seeds')}")
+            if "rulemonkey_oracle" in info and info["rulemonkey_oracle"]:
+                ro = info["rulemonkey_oracle"]
+                # pick a file that actually carries a comparison (skip the
+                # time-only .cdat whose entry has no frac_pass)
+                pf = next((v for v in ro.get("per_file", {}).values()
+                           if "frac_pass" in v),
+                          next(iter(ro.get("per_file", {}).values()), {}))
+                lines.append(f"- RuleMonkey-oracle revalidation (bngsim NF vs "
+                             f"bngsim RM): frac_pass={pf.get('frac_pass')}, "
+                             f"max_abs_mean_diff={pf.get('max_abs_mean_diff')}, "
+                             f"n_rm_seeds_ok={ro.get('n_rm_ok')}")
             for k in ("sub_status", "bng_status", "sub_error", "bng_error",
                       "n_bng_failed", "n_sub_failed"):
                 if k in info and info[k] not in ("", 0):

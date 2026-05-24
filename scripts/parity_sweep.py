@@ -36,6 +36,16 @@ from pathlib import Path
 OUTPUT_EXTENSIONS = {".gdat", ".cdat", ".net", ".scan", ".xml", ".species"}
 DETERMINISTIC_METHODS = {"ode", "cvode"}
 
+# Per-model t_end CAP (seconds of simulated time), keyed by .bngl filename.
+# CAP semantics: every active simulate/scan action whose t_end EXCEEDS the cap
+# is reduced to the cap; actions already at or below it are left untouched.
+# (This is a change from the older "set every t_end to X" behaviour, which is
+# wrong for multi-phase models — capping a 25-unit equilibration to 1 must not
+# also *stretch* a 1.5-unit main run. For single-phase models cap == set.)
+# Applied identically to BOTH stacks so the parity check stays apples-to-apples;
+# both engines integrate the same shortened horizon, so the ensemble still
+# agrees. These are runtime fixtures (we only need bngsim and BNG2.pl to match
+# on whatever window we ask for), not statements about the models' biology.
 TEND_OVERRIDES = {
     "AD 3 State FREE Expanding nfs.bngl": 100,  # default 650 -> 180s timeout
     # B6: bngsim codegen falls back to interpreted ODE RHS for this model
@@ -45,6 +55,67 @@ TEND_OVERRIDES = {
     # within the timeout. The cap is a sweep-side workaround for a
     # documented bngsim codegen limitation; not a model-correctness change.
     "scaling_example.bngl": 50,
+
+    # --- candidate-corpus glacial tier -------------------------------------
+    # These 28 models are stochastic (nf/ssa) and time-integration-bound, so
+    # wall scales ~linearly with t_end. Single-run wall was 12-65 s; tagged
+    # "glacial" only because the DIFF runs 10 seeds (projected = wall x 10 >
+    # 2 min). Caps target ~6-10 s/run (~60-100 s DIFF -> "slow" tier). Comment
+    # = original t_end(s) and measured single-run wall. Two basenames cover two
+    # models each (noted). Values were measured-and-tuned, not just estimated.
+    "jobs_tofit_gen48ind13.bngl": 100,                      # nf 1000,  ~65s
+    "jobs_tofit_gen34ind26.bngl": 100,                      # nf 1000,  ~65s
+    "jobs_tofit_iter44p17.bngl": 100,                       # nf 1000,  ~63s
+    "fceri_ji.bngl": 60,                                    # nf 500,   ~61s
+    "example2_fit.bngl": 16,                                # nf 126,   ~61s
+    "v21.bngl": 8,                                          # ode+ssa 100, ~56s (ssa-bound); cap 15 still ~14s
+    "tcr_iter28p4h2.bngl": 2.0,                             # equil 15.6 + main 0.94, ~59s
+    "tcr_iter9p44.bngl": 2.0,                               # equil 15.6 + main 0.94, ~51s
+    "egfr_nf_iter5p12h10.bngl": 9,                          # nf 60,    ~51s
+    "e6.bngl": 25,                                          # nf 200,   ~60s
+    "e5.bngl": 30,                                          # nf 200,   ~46s
+    "e4.bngl": 40,                                          # nf 200,   ~35s
+    "e3.bngl": 60,                                          # nf 200,   ~25s
+    # e2 NOT capped: it's a noisy model that sits right on the ensemble-test
+    # threshold — capped to 80 it marginally DIFFs (4/303 cells), but at full
+    # t_end=200 (~20s) it PASSES. Run it full-horizon rather than paper over
+    # the noise with extra seed replicates.
+    "e1.bngl": 110,                                         # nf 200,   ~14s
+    "egfr_net.bngl": 30,                                    # nf 120,   ~33s
+    "bench_blbr_rings_posner1995.bngl": 900,                # nf 3000,  ~27s
+    "PushPull.bngl": 1200,                                  # nf 4000,  ~25s
+    "tcr_gen20ind9.bngl": 1.0,                              # rulehub: equil 25.2 + main 1.5 (~61s); rulemonkey: main 1.5 (~12s)
+    "bench_blbr_dembo1978_monovalent_inhibitor.bngl": 1200, # nf 3000,  ~19s
+    "receptor_nf_iter91p28.bngl": 60,                       # equil 600 + main 60, ~19s
+    "example3_fit.bngl": 1800,                              # nf 5000; rulehub bench (~17s) + rulemonkey (~21s)
+    "tlbr_yang2008.bngl": 1800,                             # nf 3000,  ~13s
+    "BLBR.bngl": 5,                                         # nf 10 / n_steps 1000, ~16s
+    "example6_ground_truth.bngl": 60,                       # equil 600 + main 60, ~15s
+    "blbr_heterogeneity_goldstein1980.bngl": 5,             # nf parameter_scan, t_end 10 (also n_scan_pts cut below), ~28s
+}
+
+# Per-model n_scan_pts override, keyed by .bngl filename. Reduces the number of
+# parameter_scan sample points for scan-bound stochastic models whose cost is
+# dominated by the point count, not by t_end. Applied to both stacks; each scan
+# point is still ensemble-compared cell-by-cell in the .scan, so fewer points
+# is a smaller-but-still-real parity check.
+NSCANPTS_OVERRIDES = {
+    "blbr_heterogeneity_goldstein1980.bngl": 6,  # was 18
+}
+
+# Per-model ACTION INJECTION, keyed by .bngl filename. Some corpus models carry
+# no run action (only generate_network, or none), so they emit no comparable
+# .gdat/.cdat/.scan and can't be parity-diffed. We append a simulate action at
+# sweep time (before stochastic classification, so the injected method decides
+# the regime) to turn them into real fixtures, applied identically to BOTH
+# stacks. The source .bngl stays pristine; the action lives here, mirroring the
+# seed/t_end/tol/rename injections. The appended text is also subject to the
+# t_end cap and seed injection below, so a capped horizon still applies.
+ACTION_INJECT = {
+    # generate_network-only EGFR tutorial: add an ODE run so it produces a
+    # .gdat (9 observables). Network gen + ODE integrate in ~2 s on both
+    # stacks; the screen's ~25 s was parallel-worker contention, not real cost.
+    "Rule_based_egfr_tutorial.bngl": 'simulate({method=>"ode",t_end=>20,n_steps=>100})',
 }
 
 # Per-model ODE solver tolerance overrides, keyed by .bngl filename. Some
@@ -144,42 +215,79 @@ def is_stochastic(text):
     return any(m not in DETERMINISTIC_METHODS for m in methods)
 
 
-def patch_bngl(text, seed, tend_override=None):
-    """Inject seed=>K into every active simulate/scan action; optional t_end override.
+TEND_RE = re.compile(r"(t_end\s*=>\s*)([0-9eE.+\-*/() ]+)")
+NSCANPTS_RE = re.compile(r"(n_scan_pts\s*=>\s*)(\d+)")
+SEED_INJECT_RE = re.compile(
+    r"((?:simulate(?:_\w+)?|parameter_scan|bifurcate)\s*\(\s*\{)"
+)
+
+
+def _cap_tend(line, cap):
+    """Reduce any t_end in `line` that EXCEEDS `cap` to `cap`; leave smaller ones.
+
+    Cap (not set) semantics so a multi-phase model — e.g. a long equilibration
+    + a short main run — has only its over-budget phase shortened. The matched
+    value is restricted by TEND_RE to digits/operators/exponent chars, so the
+    arithmetic eval (which resolves expressions like ``10*60``) can't execute
+    anything; an unparseable value is treated as over-budget and capped.
+    """
+    if cap is None:
+        return line
+
+    def repl(m):
+        raw = m.group(2).strip()
+        try:
+            val = eval(raw, {"__builtins__": {}}, {})
+        except Exception:
+            val = None
+        if val is None or val > cap:
+            return f"{m.group(1)}{cap}"
+        return m.group(0)
+
+    return TEND_RE.sub(repl, line)
+
+
+def _set_nscanpts(line, n):
+    """Override parameter_scan n_scan_pts (cuts scan-bound runtime). No-op if None."""
+    if n is None:
+        return line
+    return NSCANPTS_RE.sub(rf"\g<1>{n}", line)
+
+
+def patch_bngl(text, seed, tend_override=None, nscanpts_override=None):
+    """Inject seed=>K into every active simulate/scan action; optional t_end cap.
 
     parameter_scan/bifurcate get the seed too — BNG2.pl forwards the
     action's params (including ``seed``) to each per-point simulation, so
     an ``ssa`` scan needs the seed on the scan action, not a ``simulate``.
+    t_end is capped (see _cap_tend) and n_scan_pts optionally reduced; both
+    applied identically on each stack.
     """
     out_lines = []
-    seed_inject = re.compile(
-        r"((?:simulate(?:_\w+)?|parameter_scan|bifurcate)\s*\(\s*\{)"
-    )
-    tend_re = re.compile(r"(t_end\s*=>\s*)([0-9eE.+\-*/() ]+)")
     for line in text.splitlines(keepends=True):
         stripped = line.lstrip()
         if stripped.startswith("#"):
             out_lines.append(line)
             continue
-        new_line = seed_inject.sub(rf"\g<1>seed=>{seed},", line)
-        if tend_override is not None:
-            new_line = tend_re.sub(rf"\g<1>{tend_override}", new_line)
+        new_line = SEED_INJECT_RE.sub(rf"\g<1>seed=>{seed},", line)
+        new_line = _cap_tend(new_line, tend_override)
+        new_line = _set_nscanpts(new_line, nscanpts_override)
         out_lines.append(new_line)
     return "".join(out_lines)
 
 
-def patch_bngl_tend_only(text, tend_override):
-    """For deterministic models we only need the t_end override (no seed)."""
-    if tend_override is None:
+def patch_bngl_tend_only(text, tend_override, nscanpts_override=None):
+    """For deterministic models we only need the t_end cap (no seed)."""
+    if tend_override is None and nscanpts_override is None:
         return text
     out_lines = []
-    tend_re = re.compile(r"(t_end\s*=>\s*)([0-9eE.+\-*/() ]+)")
     for line in text.splitlines(keepends=True):
         stripped = line.lstrip()
         if stripped.startswith("#"):
             out_lines.append(line)
             continue
-        out_lines.append(tend_re.sub(rf"\g<1>{tend_override}", line))
+        out_lines.append(
+            _set_nscanpts(_cap_tend(line, tend_override), nscanpts_override))
     return "".join(out_lines)
 
 
@@ -379,6 +487,7 @@ def main():
             continue
         rel = src.relative_to(root)
         tend_override = TEND_OVERRIDES.get(src.name)
+        nscanpts_override = NSCANPTS_OVERRIDES.get(src.name)
         tol_override = TOL_OVERRIDES.get(src.name)
         renames = SYMBOL_RENAMES.get(src.name)
         # Apply symbol renames to the source text up front so every patched
@@ -386,6 +495,13 @@ def main():
         # rename does not touch method/seed tokens, so stochastic
         # classification below is unaffected.
         text = rename_symbols(text, renames)
+        # Inject a run action for models that ship without one, BEFORE the
+        # stochastic check so the injected method picks the regime. Appended
+        # to the (renamed) source; the seed/t_end patchers then treat it like
+        # any native action.
+        action_inject = ACTION_INJECT.get(src.name)
+        if action_inject:
+            text = text.rstrip() + "\n" + action_inject + "\n"
         if is_stochastic(text):
             n_stoch += 1
             for seed in range(1, args.n_seeds + 1):
@@ -393,7 +509,8 @@ def main():
                 patched_dir.mkdir(parents=True, exist_ok=True)
                 patched_path = patched_dir / rel.name
                 patched_path.write_text(
-                    inject_tol(patch_bngl(text, seed, tend_override), tol_override))
+                    inject_tol(patch_bngl(text, seed, tend_override,
+                                          nscanpts_override), tol_override))
                 out_dir = out_root / rel.parent / rel.stem / f"seed{seed}"
                 units.append({
                     "bngl": str(src),
@@ -405,12 +522,14 @@ def main():
         else:
             n_det += 1
             # Write a patched copy if any override or rename applies.
-            if tend_override is not None or tol_override is not None or renames:
+            if (tend_override is not None or nscanpts_override is not None
+                    or tol_override is not None or renames):
                 patched_dir = patch_root / rel.parent
                 patched_dir.mkdir(parents=True, exist_ok=True)
                 patched_path = patched_dir / rel.name
                 patched_path.write_text(
-                    inject_tol(patch_bngl_tend_only(text, tend_override),
+                    inject_tol(patch_bngl_tend_only(text, tend_override,
+                                                    nscanpts_override),
                                tol_override))
                 run_path = patched_path
             else:
