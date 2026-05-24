@@ -235,6 +235,23 @@ KNOWN_DETERMINISTIC_ARTIFACTS = {
                   "and all non-staircase columns agree to 12 sig figs. "
                   "Verified 2026-05-17.",
     },
+    # Lotka-Volterra predator-prey, a neutrally-stable conservative
+    # oscillator integrated over ~112 cycles (period ~8.9, t_end 1000).
+    # The two integrators' conserved quantity drifts by a hair over 100+
+    # cycles, so the large-amplitude oscillation (peak ~3503) develops a
+    # tiny phase/amplitude offset: max_abs 0.395 at a Prey value of ~1490
+    # (rel 2.7e-4). Both stacks stay bounded and positive; species and
+    # observables agree to ~4 sig figs throughout. Same family as the
+    # `proliferation` stiff-oscillator phase-wander entry. Verified
+    # 2026-05-24. Observed max_abs 0.395.
+    "predator-prey-dynamics": {
+        "max_abs_bound": 5.0,
+        "reason": "neutrally-stable Lotka-Volterra oscillator over ~112 "
+                  "cycles; the two integrators' conserved quantity drifts "
+                  "into a tiny phase/amplitude offset (max_abs 0.395 on a "
+                  "peak-3503 oscillation, rel 2.7e-4). Both stacks bounded "
+                  "and positive, agree to ~4 sig figs. Verified 2026-05-24.",
+    },
 }
 
 # Models where the *subprocess* reference is the wrong oracle for the
