@@ -64,6 +64,25 @@ TOL_OVERRIDES = {
     "eco_coevolution_host_parasite.bngl": {"atol": "1e-12", "rtol": "1e-12"},
 }
 
+# Per-model symbol renames, keyed by .bngl filename. Mirrors TOL_OVERRIDES:
+# applied identically to BOTH stacks so the parity check stays apples-to-
+# apples. The motivating case is bngsim's NFsim (ExprTk) reserving the name
+# `frac` (fractional part), which legacy muParser did not — the three V19xx
+# endemic-infection models carry a model parameter literally named `frac`
+# (a scalar 0.5/0.8 coefficient, never a .gdat observable column), so under
+# method=>"nf" bngsim aborts on the name collision (bngsim #63/#64) while
+# legacy runs them. Renaming frac->fracsym is semantically null (it is just
+# a label for a constant). This is an interim rescue until bngsim #64 (remap
+# reserved-word identifiers in NFsim codegen, like the ODE path's
+# _alias_keyword_param) lands. Each value maps old symbol -> new symbol; the
+# rename is a whole-word (\b) substitution so substrings like "fractions" are
+# untouched.
+SYMBOL_RENAMES = {
+    "V1988a_endemic_infection.bngl": {"frac": "fracsym"},
+    "V1990_cooke_endemic.bngl": {"frac": "fracsym"},
+    "V1990_kemper_endemic.bngl": {"frac": "fracsym"},
+}
+
 # Per-model timeout overrides (seconds), keyed by .bngl filename. The default
 # --timeout is a parity budget tuned for fast models. This dict previously
 # carried 600 s entries for two 200-point parameter_scans
@@ -71,7 +90,13 @@ TOL_OVERRIDES = {
 # backend-hook route delegated each scan point as a separate atomic job, so
 # 200 points overran the budget. The in-process parameter_scan driver now
 # runs both in ~2-3 s, so the overrides are no longer needed.
-TIMEOUT_OVERRIDES = {}
+TIMEOUT_OVERRIDES = {
+    # NFsim model, t_end=1000 over 1000 steps: ~82 s/seed on an idle machine
+    # but it overran the 180 s parity budget under 2-worker contention during
+    # the slow-tier sweep (timeout is a contention artifact, not a real
+    # failure — the model runs fine). 300 s covers it with margin.
+    "mlnr.bngl": 300,
+}
 
 
 def parse_simulate_methods(text):
@@ -187,6 +212,23 @@ def inject_tol(text, tol_override):
         new_line = re.sub(r",\s*,", ",", new_line)
         out_lines.append(new_line)
     return "".join(out_lines)
+
+
+def rename_symbols(text, renames):
+    """Whole-word rename of model identifiers, applied identically to both stacks.
+
+    Each (old -> new) is substituted on word boundaries (``\\bold\\b``) so a
+    parameter named ``frac`` is renamed everywhere it appears as a token
+    (definition, rate-law uses) without touching substrings like
+    ``fractions``. Renames in comments are harmless (BNG strips comments).
+    Longer source names are applied first so one rename can't partially
+    match another.
+    """
+    if not renames:
+        return text
+    for old in sorted(renames, key=len, reverse=True):
+        text = re.sub(rf"\b{re.escape(old)}\b", renames[old], text)
+    return text
 
 
 def run_one(simulator, bngl_path, run_path, out_dir, timeout):
@@ -338,6 +380,12 @@ def main():
         rel = src.relative_to(root)
         tend_override = TEND_OVERRIDES.get(src.name)
         tol_override = TOL_OVERRIDES.get(src.name)
+        renames = SYMBOL_RENAMES.get(src.name)
+        # Apply symbol renames to the source text up front so every patched
+        # copy (seeded or deterministic) inherits them on both stacks. The
+        # rename does not touch method/seed tokens, so stochastic
+        # classification below is unaffected.
+        text = rename_symbols(text, renames)
         if is_stochastic(text):
             n_stoch += 1
             for seed in range(1, args.n_seeds + 1):
@@ -356,8 +404,8 @@ def main():
                 })
         else:
             n_det += 1
-            # Apply t_end and/or tolerance overrides if either is set.
-            if tend_override is not None or tol_override is not None:
+            # Write a patched copy if any override or rename applies.
+            if tend_override is not None or tol_override is not None or renames:
                 patched_dir = patch_root / rel.parent
                 patched_dir.mkdir(parents=True, exist_ok=True)
                 patched_path = patched_dir / rel.name
@@ -447,6 +495,7 @@ def main():
         "n_seeds": args.n_seeds,
         "tend_overrides": TEND_OVERRIDES,
         "tol_overrides": TOL_OVERRIDES,
+        "symbol_renames": SYMBOL_RENAMES,
         "timeout_overrides": TIMEOUT_OVERRIDES,
         "n_deterministic_models": n_det,
         "n_stochastic_models": n_stoch,
