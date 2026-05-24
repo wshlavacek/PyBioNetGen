@@ -303,6 +303,57 @@ class TestDeterministicCompare:
         status, _ = pd.deterministic_compare(sub_dir, bng_dir)
         assert status == "diff"
 
+    def test_near_zero_relative_blowup_forgiven(self, tmp_pair):
+        """The bmp-signaling case: a transient in a sub-scale column
+        settles to +5e-8 on one integrator and -5e-7 on the other (a sign
+        flip near zero), so abs diff ~5.5e-7 sits a hair over the file-
+        relative atol (1e-9 * file_scale 500 = 5e-7) and per-cell rel ~1.1.
+        The value carries no real magnitude (5e-7 is 1e-9 of the file peak
+        and 1e-4 of its own column peak), so the hard *relative* ceiling
+        must not condemn it — it falls to the soft group and the
+        fail-fraction budget forgives the handful of cells.
+        """
+        sub_dir, bng_dir = tmp_pair
+        t = np.linspace(0, 10, 801)
+        big = np.full_like(t, 500.0)          # file_scale = 500
+        tiny_sub = np.zeros_like(t)
+        tiny_sub[100] = 3e-3                   # column peak 3e-3 (sub-scale)
+        tiny_bng = tiny_sub.copy()
+        # Near-zero sign-flip noise on 3 rows: sub ~ +5e-8, bng ~ -5e-7.
+        for r in (312, 313, 314):
+            tiny_sub[r] = 5e-8
+            tiny_bng[r] = -5e-7
+        sub_arr = np.column_stack([t, big, tiny_sub])
+        bng_arr = np.column_stack([t, big, tiny_bng])
+        _write_gdat(sub_dir / "m.gdat", sub_arr, 2)
+        _write_gdat(bng_dir / "m.gdat", bng_arr, 2)
+        status, details = pd.deterministic_compare(sub_dir, bng_dir)
+        assert status == "pass", details
+
+    def test_many_near_zero_cells_still_caught_by_budget(self, tmp_pair):
+        """Guard for the near-zero rel-ceiling exemption: forgiving a
+        *sprinkling* of near-zero cells must not forgive a wholesale
+        sub-scale divergence. The same sign-flip noise on >0.5% of cells
+        is soft (below the hard ceilings) but exceeds FAIL_FRAC_BUDGET, so
+        the file is still DIFF.
+        """
+        sub_dir, bng_dir = tmp_pair
+        t = np.linspace(0, 10, 801)
+        big = np.full_like(t, 500.0)
+        tiny_sub = np.zeros_like(t)
+        tiny_sub[100] = 3e-3
+        tiny_bng = tiny_sub.copy()
+        # ~2% of the 801 rows get near-zero sign-flip noise (> 0.5% budget).
+        for r in range(0, 801, 50):           # 17 rows, 17/(801*2) ~ 1.06%
+            tiny_sub[r] = 5e-8
+            tiny_bng[r] = -5e-7
+        sub_arr = np.column_stack([t, big, tiny_sub])
+        bng_arr = np.column_stack([t, big, tiny_bng])
+        _write_gdat(sub_dir / "m.gdat", sub_arr, 2)
+        _write_gdat(bng_dir / "m.gdat", bng_arr, 2)
+        status, _ = pd.deterministic_compare(sub_dir, bng_dir)
+        assert status == "diff"
+
     def test_concentrated_divergence_caught_by_hard_abs_ceiling(self, tmp_pair):
         """A single cell with an absolute diff above 1% of file scale
         is caught even though it's only one cell — and the per-cell

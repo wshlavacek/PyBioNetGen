@@ -170,6 +170,19 @@ NEAR_ZERO_REL = 1e-9
 FAIL_FRAC_BUDGET = 5e-3
 HARD_REL_CEILING = 0.05
 HARD_ABS_CEILING_FILE = 1e-2
+# The hard *relative* ceiling only condemns a cell that carries real
+# magnitude. On a near-zero value (|y| negligible vs the file peak) a
+# large relative diff is underflow noise — e.g. a transient settling to
+# +2e-8 on one integrator and -5e-7 on the other in a column whose own
+# peak is 1e6x below those values' relative blow-up: abs diff ~5e-7 (a
+# hair over the file-relative atol) yet rel ~1.1. That is not a
+# concentrated real divergence, so it must not be an un-forgivable HARD
+# fail; it falls to the soft group where FAIL_FRAC_BUDGET absorbs a
+# sprinkling of such cells. The hard *absolute* ceiling is untouched, so
+# a genuine divergence (>=0.1 of scale in this corpus) is still caught
+# regardless of where it sits. Floor is 1e-6 of file scale — 100,000x
+# below any real divergence, so it can only ever exempt underflow noise.
+HARD_REL_MAG_FLOOR = 1e-6
 
 # Models whose DIFF has been investigated and confirmed to be a
 # comparison artifact, not a simulator discrepancy. They stay in the
@@ -729,7 +742,13 @@ def deterministic_compare(sub_dir, bng_dir):
         # is "soft": cells past the per-cell tol but within the hard
         # ceilings, plausibly stiff-transient integrator noise. Forgive
         # the soft group iff their fraction is within FAIL_FRAC_BUDGET.
-        hard_rel_fail = reld_clean > HARD_REL_CEILING
+        # A relative blow-up is a HARD divergence only on a cell carrying
+        # real magnitude; on a near-zero value it is underflow noise (see
+        # HARD_REL_MAG_FLOOR) and must stay in the soft group. The hard
+        # absolute ceiling is unconditional, so concentrated real
+        # divergence is still caught.
+        rel_carries_magnitude = colmag > HARD_REL_MAG_FLOOR * scale
+        hard_rel_fail = (reld_clean > HARD_REL_CEILING) & rel_carries_magnitude
         hard_abs_fail = absd_clean > HARD_ABS_CEILING_FILE * scale
         hard_fail = effective_fail & (hard_rel_fail | hard_abs_fail)
         soft_fail = effective_fail & ~hard_fail
