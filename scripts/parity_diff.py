@@ -312,6 +312,32 @@ SUBPROCESS_NF_UNRELIABLE = {
     },
 }
 
+# Models where the subprocess NF reference is wrong AND there is no ODE
+# segment to revalidate against (nf-only). Instead of the ODE oracle we accept
+# bngsim iff its nf ensemble mean matches the model's DOCUMENTED ANALYTIC
+# answer at the final time. This is regression-safe: if bngsim ever stops
+# matching the analytic expectation, the model flips back to DIFF. Each entry
+# gives the .gdat suffix ("" for an unsuffixed simulate) and a dict of
+# {column_name: [expected_final_value, abs_tolerance]} checked against the
+# bngsim ensemble-mean final row.
+SUBPROCESS_NF_ANALYTIC = {
+    "ft_clamped_species_strict": {
+        "suffix": "",
+        "issue": "legacy NFsim v1.14.3 ignores $-Fixed (clamped) species",
+        "reason": "Fixed-species ($A) feature test. The model documents the "
+                  "exact answer: A_tot kept at 100 (clamped, non-catalytic "
+                  "rule must not deplete it), B_tot grows at k*A0=10/s to "
+                  "~500 at t=50. bngsim NFsim enforces the $ clamp "
+                  "(A_tot=100, B_tot=496); subprocess's vendored NFsim "
+                  "v1.14.3 silently ignores it (A_tot->0.8, B_tot->99.2, the "
+                  "documented '$ ignored' failure). bngsim is correct; the "
+                  "subprocess reference is the wrong oracle. There is no ODE "
+                  "segment, so bngsim is validated against the documented "
+                  "analytic answer. Verified 2026-05-24.",
+        "expect": {"A_tot": [100.0, 5.0], "B_tot": [500.0, 60.0]},
+    },
+}
+
 # Relative tolerance for the ODE-oracle revalidation. Looser than the
 # deterministic REL_TOL because an nf ensemble mean differs from the ODE
 # (infinite-size) limit by a finite-size systematic offset on top of
@@ -1136,6 +1162,52 @@ def revalidate_nf_against_ode(sub_dirs, bng_dirs, model_stem, entry):
     return ("pass" if ok else "diff"), details
 
 
+def revalidate_against_analytic(bng_dirs, model_stem, entry):
+    """Validate a bngsim nf ensemble against a model's documented analytic answer.
+
+    For nf-only models in SUBPROCESS_NF_ANALYTIC, where the subprocess
+    reference is known wrong and there is no ODE segment to compare against.
+    Checks each expected column's value at the final output time against the
+    bngsim ensemble-mean. Regression-safe: a future bngsim change that breaks
+    the expectation flips the model back to DIFF. Returns ('pass'|'diff', d).
+    """
+    suffix = entry["suffix"]
+    fname = f"{model_stem}.gdat" if not suffix else f"{model_stem}_{suffix}.gdat"
+    arrs, names = [], None
+    for d in bng_dirs:
+        p = Path(d) / fname
+        if p.is_file():
+            a, e = safe_load(p)
+            if e is None and a is not None:
+                arrs.append(a)
+                if names is None:
+                    names = _read_columns(p)
+    if not arrs:
+        return "diff", {"oracle": "analytic",
+                        "reason": f"no bngsim outputs {fname}"}
+    if names is None:
+        return "diff", {"oracle": "analytic",
+                        "reason": f"{fname} has no column header"}
+    if len({a.shape for a in arrs}) != 1:
+        return "diff", {"oracle": "analytic",
+                        "reason": "bngsim seed shapes inconsistent"}
+    final = np.stack(arrs).mean(axis=0)[-1]
+    checks, ok = {}, True
+    for col, (exp, tol) in entry["expect"].items():
+        if col not in names:
+            checks[col] = {"reason": "column not found"}
+            ok = False
+            continue
+        got = float(final[names.index(col)])
+        passed = abs(got - exp) <= tol
+        ok = ok and passed
+        checks[col] = {"expected": exp, "tol": tol, "got": got, "pass": passed}
+    return ("pass" if ok else "diff"), {
+        "oracle": "analytic", "n_seeds": len(arrs), "checks": checks,
+        "issue": entry.get("issue"), "reason": entry.get("reason"),
+    }
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--subprocess", required=True, help="subprocess sweep --out")
@@ -1336,11 +1408,17 @@ def main():
                 # oracle: if bngsim's nf tracks ODE, bngsim is the correct
                 # engine and the subprocess-comparison DIFF is reclassified
                 # PASS_REF_BUG. Otherwise it stays DIFF.
-                ref_bug = SUBPROCESS_NF_UNRELIABLE.get(Path(bngl).stem)
+                stem = Path(bngl).stem
+                ref_bug = SUBPROCESS_NF_UNRELIABLE.get(stem)
+                analytic = SUBPROCESS_NF_ANALYTIC.get(stem)
                 ode_status, ode_details = (None, None)
                 if ref_bug is not None:
                     ode_status, ode_details = revalidate_nf_against_ode(
-                        sub_dirs, bng_dirs, Path(bngl).stem, ref_bug)
+                        sub_dirs, bng_dirs, stem, ref_bug)
+                elif analytic is not None:
+                    ode_status, ode_details = revalidate_against_analytic(
+                        bng_dirs, stem, analytic)
+                    ref_bug = analytic  # reason/issue come from the entry
                 if ref_bug is not None and ode_status == "pass":
                     buckets["PASS_REF_BUG"].append(bngl)
                     per_model[bngl] = {

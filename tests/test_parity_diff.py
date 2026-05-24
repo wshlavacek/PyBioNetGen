@@ -518,6 +518,69 @@ class TestSubprocessNfUnreliableRegistry:
                 assert isinstance(entry[key], str) and entry[key]
 
 
+class TestRevalidateAgainstAnalytic:
+    """The analytic-accept path for nf-only models whose subprocess reference
+    is wrong and which have no ODE segment (SUBPROCESS_NF_ANALYTIC). bngsim is
+    accepted iff its ensemble-mean final row matches the documented values."""
+
+    ENTRY = {"suffix": "", "issue": "X", "reason": "y",
+             "expect": {"A_tot": [100.0, 5.0], "B_tot": [500.0, 60.0]}}
+
+    def _bng(self, tmp_path, final_A, final_B, n=10, jitter=0.0):
+        rng = np.random.default_rng(0)
+        T = 51
+        t = np.linspace(0, 50, T)
+        dirs = []
+        for i in range(1, n + 1):
+            d = tmp_path / "bng" / f"seed{i}"
+            d.mkdir(parents=True)
+            A = np.linspace(100, final_A, T) + rng.normal(0, jitter, T)
+            B = np.linspace(0, final_B, T) + rng.normal(0, jitter, T)
+            _write_gdat_named(d / "m.gdat", ["time", "A_tot", "B_tot"],
+                              np.column_stack([t, A, B]))
+            dirs.append(str(d))
+        return dirs
+
+    def test_matches_analytic_passes(self, tmp_path):
+        # bngsim final A_tot=100, B_tot=496 -> within tol of 100/500.
+        dirs = self._bng(tmp_path, 100.0, 496.0, jitter=0.3)
+        status, det = pd.revalidate_against_analytic(dirs, "m", self.ENTRY)
+        assert status == "pass", det
+        assert det["checks"]["A_tot"]["pass"] and det["checks"]["B_tot"]["pass"]
+
+    def test_ignored_clamp_fails(self, tmp_path):
+        # the '$ ignored' failure: A_tot->0.8, B_tot->99 -> far outside tol.
+        dirs = self._bng(tmp_path, 0.8, 99.0)
+        status, det = pd.revalidate_against_analytic(dirs, "m", self.ENTRY)
+        assert status == "diff", det
+        assert not det["checks"]["A_tot"]["pass"]
+
+    def test_missing_column_fails(self, tmp_path):
+        d = tmp_path / "bng" / "seed1"
+        d.mkdir(parents=True)
+        _write_gdat_named(d / "m.gdat", ["time", "A_tot"],
+                          np.column_stack([np.linspace(0, 50, 5),
+                                           np.full(5, 100.0)]))
+        status, det = pd.revalidate_against_analytic([str(d)], "m", self.ENTRY)
+        assert status == "diff"
+        assert det["checks"]["B_tot"]["reason"] == "column not found"
+
+    def test_no_outputs_fails(self, tmp_path):
+        empty = tmp_path / "bng" / "seed1"
+        empty.mkdir(parents=True)
+        status, det = pd.revalidate_against_analytic([str(empty)], "m", self.ENTRY)
+        assert status == "diff"
+        assert "no bngsim outputs" in det["reason"]
+
+    def test_registry_well_formed(self):
+        for stem, entry in pd.SUBPROCESS_NF_ANALYTIC.items():
+            assert "suffix" in entry and isinstance(entry["suffix"], str)
+            assert entry.get("reason") and entry.get("issue")
+            assert entry["expect"]
+            for col, spec in entry["expect"].items():
+                assert len(spec) == 2 and spec[1] >= 0
+
+
 # ---------------------------------------------------------------------------
 # Cosmetic header/column normalization — bare-vs-() function headers and
 # omitted _rateLaw<digits> columns (bngsim's method-independent schema).
