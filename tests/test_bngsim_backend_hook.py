@@ -278,6 +278,64 @@ def test_helper_contract_normalizes_single_ode_job():
     assert direct.result_options["print_functions"] is True
 
 
+def test_helper_translates_nf_param_flags():
+    """param=>"-ogf -gml N" maps to print_functions + gml (jobs_ground).
+
+    BNG2.pl passes the raw NFsim flag string to the binary; the BNGsim helper
+    has no raw-flag passthrough but translates the common flags to named
+    options so global-function .gdat columns are emitted like BNG2.pl's.
+    """
+    job = load_backend_job({
+        "artifact_path": "/tmp/model.xml",
+        "artifact_format": "bng-xml",
+        "method": "nf",
+        "simulation_options": {
+            "t_start": "0", "t_end": "50", "n_steps": "50",
+            "param": "-ogf -gml 500000",
+        },
+        "output_prefix": "/tmp/out/model",
+    })
+    direct = direct_job_from_backend_job(job)
+    assert direct.result_options["print_functions"] is True
+    assert direct.bngsim_options["gml"] == 500000
+    # the raw param string is consumed, not passed through verbatim
+    assert "param" not in direct.bngsim_options
+
+
+def test_helper_param_ogf_overrides_default_print_functions():
+    # BNG2.pl's hook always sends print_functions (defaulting to 0), so it is
+    # indistinguishable from a keyword; param=>"-ogf" is an explicit request
+    # for function output and must win over that auto-sent default. This is the
+    # jobs_ground scenario: the payload carries print_functions=0 AND param.
+    job = load_backend_job({
+        "artifact_path": "/tmp/model.xml",
+        "artifact_format": "bng-xml",
+        "method": "nf",
+        "simulation_options": {
+            "t_start": "0", "t_end": "50", "n_steps": "50",
+            "param": "-ogf", "print_functions": "0",
+        },
+        "output_prefix": "/tmp/out/model",
+    })
+    direct = direct_job_from_backend_job(job)
+    assert direct.result_options["print_functions"] is True
+
+    # A param string with no -ogf leaves an explicit print_functions=>1 intact.
+    job2 = load_backend_job({
+        "artifact_path": "/tmp/model.xml",
+        "artifact_format": "bng-xml",
+        "method": "nf",
+        "simulation_options": {
+            "t_start": "0", "t_end": "50", "n_steps": "50",
+            "param": "-gml 1000", "print_functions": "1",
+        },
+        "output_prefix": "/tmp/out/model",
+    })
+    direct2 = direct_job_from_backend_job(job2)
+    assert direct2.result_options["print_functions"] is True
+    assert direct2.bngsim_options["gml"] == 1000
+
+
 def test_helper_method_override_restores_rm_from_env(monkeypatch):
     """BIONETGEN_BNGSIM_BACKEND_METHOD=rm flips an nf job back to rm.
 

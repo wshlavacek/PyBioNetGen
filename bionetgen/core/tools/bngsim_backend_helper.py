@@ -97,6 +97,41 @@ def _as_int(value: Any, default: int | None = None) -> int | None:
     return int(number)
 
 
+def _parse_nf_param_flags(param: Any) -> dict[str, Any]:
+    """Map a BNG2.pl NFsim ``param=>`` flag string to BNGsim named options.
+
+    BNG2.pl forwards the ``param`` string verbatim to the NFsim binary's
+    command line. BNGsim has no raw-flag passthrough but exposes the same
+    capabilities as named options, so the common flags are translated:
+
+      ``-ogf`` (output global functions) -> ``print_functions=1`` (the
+        global functions become extra .gdat columns, matching BNG2.pl)
+      ``-gml N`` (global molecule limit) -> ``gml=N``
+
+    Unrecognized flags are ignored (BNGsim manages e.g. complex bookkeeping
+    itself). Returns a dict of recognized options; callers apply it with
+    ``setdefault`` so an explicit ``print_functions=>``/``gml=>`` keyword on
+    the action still wins.
+    """
+    if not isinstance(param, str):
+        return {}
+    toks = param.strip().strip('"').strip("'").split()
+    out: dict[str, Any] = {}
+    i = 0
+    while i < len(toks):
+        tok = toks[i]
+        if tok in ("-ogf", "--ogf"):
+            out["print_functions"] = 1
+        elif tok in ("-gml", "--gml", "-globalMoleculeLimit"):
+            if i + 1 < len(toks):
+                gml = _as_int(toks[i + 1])
+                if gml is not None:
+                    out["gml"] = gml
+                i += 1
+        i += 1
+    return out
+
+
 def _normalize_method(method: Any) -> str:
     method_name = str(method or "").strip().lower()
     if method_name in NETWORK_METHOD_ALIASES:
@@ -217,6 +252,17 @@ def direct_job_from_backend_job(job: BackendHelperJob) -> BngsimDirectJob:
     # final-state writeback so BNG2.pl's readNFspecies can continue the
     # trajectory across saveConcentrations/resetConcentrations segments.
     get_final_state = bool(_as_int(opts.pop("get_final_state", 0), 0))
+
+    # Translate a raw NFsim flag string (e.g. param=>"-ogf -gml 500000") into
+    # the structured options BNGsim uses. BNG2.pl passes `param` verbatim to
+    # the NFsim binary; BNGsim has no raw-flag passthrough but exposes the
+    # same capabilities as named options. A param flag overrides the matching
+    # named option: BNG2.pl's hook always sends print_functions (defaulting to
+    # 0), so it is indistinguishable from an explicit keyword — and a model
+    # author writing param=>"-ogf" is explicitly requesting function output,
+    # which must win over that auto-sent default.
+    for flag_key, flag_val in _parse_nf_param_flags(opts.pop("param", None)).items():
+        opts[flag_key] = flag_val
 
     result_options = {}
     if "print_functions" in opts:

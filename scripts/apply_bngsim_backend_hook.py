@@ -206,6 +206,11 @@ _NF_BODY = r'''        # BNG2.pl has written the BNG XML and normalized the run.
                 seed => $params->{seed},
                 print_functions => $params->{print_functions},
                 get_final_state => $params->{get_final_state},
+                # Forward the raw NFsim flag string (e.g. "-ogf -gml 500000").
+                # BNG2.pl passes it verbatim to the NFsim binary; the BNGsim
+                # backend has no raw-flag passthrough but the helper translates
+                # the common flags (-ogf, -gml) into named options.
+                param => $params->{param},
             );
             my %job = (
                 artifact_path => File::Spec->rel2abs("${prefix}.xml"),
