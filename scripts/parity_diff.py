@@ -129,16 +129,21 @@ SHIFT_MASK_K = 3
 # term (TIME_TOL_REL) scales with t_max so the bar stays meaningful on long
 # trajectories.
 #
-# TIME_TOL_REL is 1 ppb of t_max. Two CVODE runs agree on output times to
-# ~1e-13 relative, but bngsim's NfsimSession and BNG2.pl's NFsim build their
-# sample-time grids with different float arithmetic and drift up to ~1 ppb of
-# the trajectory length (observed deterministically, same across all seeds,
-# on `scaling_example`: ~49 ns over a 50-unit span). 1 ppb still sits 5-6
-# decades below any real time-axis misalignment — an off-by-one-sample bug is
-# a whole sample step, i.e. ~1/n_steps of t_max (e.g. ~1.4e-3 of t_max for a
-# 730-step run), millions of ppb. Tracked upstream (NFsim sample-time grid).
+# TIME_TOL_REL is 0.1 ppm of t_max. The binding constraint is NOT float
+# arithmetic (two CVODE runs agree on output times to ~1e-13 relative) but the
+# TEXT PRECISION of BNG2.pl's .gdat: the time column is written as `%.8e`
+# (9 significant figures), so a sample time that is a non-terminating decimal
+# is rounded with up to ~0.5e-8 relative error, while bngsim writes more digits
+# (closer to the true value). Two engines that agree to full reference text
+# precision can therefore differ by ~5e-9 relative — above the old 1 ppb bar.
+# Observed deterministically (same across all seeds): `scaling_example` ~49 ns
+# over a 50-unit span, and `HBF1998_brusselator` 3.3e-8 at t≈10 (sample times
+# = 10 + k/30, non-terminating) on 40/361 rows. 0.1 ppm covers 9-sig-fig
+# rounding with ~20x margin and still sits 4-5 decades below any real
+# time-axis misalignment — an off-by-one-sample bug is a whole sample step,
+# i.e. ~1/n_steps of t_max (e.g. ~1.4e-3 of t_max for a 730-step run).
 TIME_TOL_FLOOR = 1e-9
-TIME_TOL_REL = 1e-9
+TIME_TOL_REL = 1e-7
 # Deterministic near-zero floor: a cell where both sides are below
 # scale * NEAR_ZERO_FLOOR_REL (scale = file peak magnitude) is below
 # the integrator's resolvable range — the quantity is numerically zero

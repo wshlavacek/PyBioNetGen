@@ -30,24 +30,27 @@ import parity_diff as pd  # noqa: E402
 
 class TestTimeTol:
     def test_floor_for_subunit_trajectory(self):
-        # t_max < 1 => TIME_TOL_REL * t_max < floor, so floor wins.
-        assert pd._time_tol(np.linspace(0, 0.5, 11)) == pd.TIME_TOL_FLOOR
+        # TIME_TOL_REL * t_max < floor when t_max < FLOOR/REL = 1e-2, so the
+        # floor wins for a truly sub-unit (millisecond-scale) trajectory.
+        assert pd._time_tol(np.linspace(0, 0.005, 11)) == pd.TIME_TOL_FLOOR
 
     def test_scales_with_long_trajectory(self):
-        # t_max=1e6: tolerance = TIME_TOL_REL * 1e6 = 1e-3, above the floor.
+        # t_max=1e6: tolerance = TIME_TOL_REL * 1e6 = 1e-7 * 1e6 = 0.1.
         t = np.linspace(0, 1e6, 1001)
-        assert pd._time_tol(t) == pytest.approx(1e-3, rel=1e-9)
+        assert pd._time_tol(t) == pytest.approx(0.1, rel=1e-9)
 
-    def test_nfsim_time_grid_drift_forgiven(self):
-        # Real scaling_example case: bngsim's NfsimSession and BNG2.pl's
-        # NFsim build their sample-time grids with different float
-        # arithmetic and drift ~1 ppb of t_max. On a 50-unit span the
-        # observed max drift is ~4.93e-8; the bar is 1e-9 * 50 = 5e-8,
-        # so it just clears. A 6e-8 drift (above the bar) must still fail.
-        t = np.linspace(0, 50, 731)
-        assert pd._time_tol(t) == pytest.approx(5e-8, rel=1e-9)
-        assert 4.93e-8 < pd._time_tol(t)
-        assert 6e-8 > pd._time_tol(t)
+    def test_gdat_text_precision_forgiven(self):
+        # BNG2.pl writes the .gdat time column as %.8e (9 sig figs), so a
+        # non-terminating sample time is rounded with up to ~5e-9 relative
+        # error while bngsim writes the true value. The HBF1998_brusselator
+        # case: sample times 10 + k/30, max observed diff 3.3e-8 at t~10 on a
+        # ~12-unit span. The bar must forgive it: 1e-7 * 12 = 1.2e-6 >> 3.3e-8.
+        t = np.linspace(0, 12, 361)
+        assert pd._time_tol(t) == pytest.approx(1.2e-6, rel=1e-9)
+        assert pd._time_tol(t) > 3.3e-8
+        # but a real off-by-one-sample misalignment (a whole step ~ 12/360 =
+        # 3.3e-2) is still decades above the bar and must fail.
+        assert pd._time_tol(t) < 3.3e-2
 
     def test_empty_returns_floor(self):
         assert pd._time_tol(np.array([])) == pd.TIME_TOL_FLOOR
@@ -58,9 +61,9 @@ class TestTimeTol:
 
     def test_uses_max_not_mean(self):
         # mostly zeros plus one large t: scale uses the max.
-        # TIME_TOL_REL * 1e9 = 1e-9 * 1e9 = 1.0.
+        # TIME_TOL_REL * 1e9 = 1e-7 * 1e9 = 100.
         t = np.array([0.0, 0.0, 0.0, 1e9])
-        assert pd._time_tol(t) == pytest.approx(1.0, rel=1e-9)
+        assert pd._time_tol(t) == pytest.approx(100.0, rel=1e-9)
 
 
 # ---------------------------------------------------------------------------
