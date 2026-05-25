@@ -10,6 +10,7 @@ Tests for remaining uncovered modules:
   - csimulator.py
 """
 
+import contextlib
 import os
 import tempfile
 import textwrap
@@ -19,6 +20,24 @@ import numpy as np
 import pytest
 
 from bionetgen.core.exc import BNGError, BNGFileError
+
+
+@contextlib.contextmanager
+def _temp_c_file(content):
+    """Yield the path to a .c file containing ``content``.
+
+    The file handle is closed before yielding because Windows cannot reopen a
+    still-open ``NamedTemporaryFile`` (extract_odes_from_mexfile opens the path
+    itself, which would raise ``PermissionError [WinError 32]``).
+    """
+    fd, path = tempfile.mkstemp(suffix=".c")
+    try:
+        with os.fdopen(fd, "w") as handle:
+            handle.write(content)
+        yield path
+    finally:
+        os.unlink(path)
+
 
 # ---------------------------------------------------------------------------
 # 1. sympy_odes.py — internal helpers and extract_odes_from_mexfile
@@ -284,29 +303,19 @@ class TestSympyOdes:
             NV_Ith_S(ydot, 0) = -params[0]*NV_Ith_S(y, 0);
             NV_Ith_S(ydot, 1) = params[0]*NV_Ith_S(y, 0) - params[1]*NV_Ith_S(y, 1);
         """)
-        with tempfile.NamedTemporaryFile(suffix=".c", mode="w", delete=False) as f:
-            f.write(mex_content)
-            f.flush()
-            try:
-                result = self.so.extract_odes_from_mexfile(f.name)
-                assert len(result.species) == 2
-                assert len(result.params) == 2
-                assert len(result.odes) == 2
-                assert result.species_names == ["A", "B"]
-                assert result.param_names == ["k1", "k2"]
-                assert result.source_path == f.name
-            finally:
-                os.unlink(f.name)
+        with _temp_c_file(mex_content) as path:
+            result = self.so.extract_odes_from_mexfile(path)
+            assert len(result.species) == 2
+            assert len(result.params) == 2
+            assert len(result.odes) == 2
+            assert result.species_names == ["A", "B"]
+            assert result.param_names == ["k1", "k2"]
+            assert result.source_path == path
 
     def test_extract_odes_no_assignments_raises(self):
-        with tempfile.NamedTemporaryFile(suffix=".c", mode="w", delete=False) as f:
-            f.write("// nothing useful\n")
-            f.flush()
-            try:
-                with pytest.raises(ValueError, match="No ODE assignments found"):
-                    self.so.extract_odes_from_mexfile(f.name)
-            finally:
-                os.unlink(f.name)
+        with _temp_c_file("// nothing useful\n") as path:
+            with pytest.raises(ValueError, match="No ODE assignments found"):
+                self.so.extract_odes_from_mexfile(path)
 
     # -- extract_odes_from_mexfile (cvode mex format) --
     def test_extract_odes_cvode_format(self):
@@ -328,16 +337,11 @@ class TestSympyOdes:
                 NV_Ith_S(Dspecies, 1) = NV_Ith_S(ratelaws, 0);
             }
         """)
-        with tempfile.NamedTemporaryFile(suffix=".c", mode="w", delete=False) as f:
-            f.write(mex_content)
-            f.flush()
-            try:
-                result = self.so.extract_odes_from_mexfile(f.name)
-                assert len(result.species) == 2
-                assert len(result.params) == 2
-                assert len(result.odes) == 2
-            finally:
-                os.unlink(f.name)
+        with _temp_c_file(mex_content) as path:
+            result = self.so.extract_odes_from_mexfile(path)
+            assert len(result.species) == 2
+            assert len(result.params) == 2
+            assert len(result.odes) == 2
 
     def test_extract_odes_cvode_no_deriv_raises(self):
         mex_content = textwrap.dedent("""\
@@ -345,14 +349,9 @@ class TestSympyOdes:
                 // no assignments
             }
         """)
-        with tempfile.NamedTemporaryFile(suffix=".c", mode="w", delete=False) as f:
-            f.write(mex_content)
-            f.flush()
-            try:
-                with pytest.raises(ValueError, match="No ODE assignments found"):
-                    self.so.extract_odes_from_mexfile(f.name)
-            finally:
-                os.unlink(f.name)
+        with _temp_c_file(mex_content) as path:
+            with pytest.raises(ValueError, match="No ODE assignments found"):
+                self.so.extract_odes_from_mexfile(path)
 
     # -- SympyOdes dataclass --
     def test_sympy_odes_dataclass(self):
