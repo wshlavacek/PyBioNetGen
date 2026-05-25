@@ -1,0 +1,193 @@
+#################
+# file metadata #
+#################
+
+#---
+# Filename: BSA_v[version_number].bngl
+# Versions:
+#  - Version 1 (v1) was created on 02-August-2016.
+# Completed: TBA
+# [PII REMOVED]
+# Copyright: All rights reserved.
+# Software: 
+#  - RuleBender 2.0.r382r3-osx64
+#  - BioNetGen 2.2.6
+#  - NFsim 1.11
+#  - Software is available online (http://bionetgen.org/index.php/Download).
+#---
+
+begin model
+
+##################
+# model metadata #
+##################
+
+#---
+# Title: A rule-based model for multivalent ligand-receptor interactions
+# Contributors:
+#  - William S. Hlavacek
+#  - Chang-Shung Tung
+# Description: 
+#  - The ligand is bovine serum albumin (BSA)
+#    conjugated to n dinitrophenyl (DNP) groups (on average).
+#  - The receptor is DNP-specific monoclonal cell-surface IgE on RBL-2H3 cells.
+#  - IgE is tethered to the cell surface through interaction with 
+#    the alpha subunit of the multimeric high-affinity IgE receptor 
+#    (Fcer1a, http://www.uniprot.org/uniprot/P12371).
+#  - The model is formulated for a single RBL-2H3 cell.
+#  - The model incorporates diffusional slowing of ligand capture and release.
+#  - The model incorporates steric effects.
+#  - The model incorporates slow and fast receptor aggregate mobility classes.
+# Inputs:
+#  - ligand dose
+# Outputs:
+#  - amount of bound ligand
+#  - receptor site occupancy
+#  - average receptor mobility
+#  - average ligand-induced receptor aggregate size
+#  - ligand-induced receptor aggregate size distribution
+# Cell lines:
+#  - rat basophilic leukemia (RBL) cells, clone 2H3 (RBL-2H3)
+# Compartments:
+#  - extracellular fluid (ecf)
+#  - extracellular face of the plasma membrane (epm)
+# References:
+#  - Bujacz A (2012) Acta Crystallogr D Biol Crystallogr 68: 1278-1289. [PMID: 22993082]
+#  - Drinkwater N, ..., Sutton BJ (2014) Nat Struct Mol Biol 21: 397-404. [PMID: 24632569]
+#  - Erickson J, ..., Baird B (1986) Mol Immunol 72: 769-781. [PMID: 2948110]
+#  - Erickson J, ..., Baird B (1987) Biophys J 52: 657-662. [PMID: 2960385]
+#  - Mahajan A, ..., Wilson BS (2014) ACS Chem Biol 9: 1508-1519. [PMID: 24784318]
+#  - Majorek KA, ..., Minor W (2012) Mol Immunol 52: 174-182. [PMID: 22677715]
+#  - Medda L, Monduzzi M, Salis A (2015) Chem Commun 51: 6663-6666. [PMID: 25782536]
+#  - Swift DG, Posner RG, Hammer DA (1998) Biophys J 75: 2597-2611. [PMID: 9788956]
+#---
+
+begin parameters
+
+# fraction of a cell to consider in a (stochastic) simulation
+#  comments:
+#   - This scaling factor should multiply compartment volumes, 
+#     copy numbers, and rate constants of zero-order processes.
+#   - This parameter can be set to a value <1 to accelerate stochastic
+#     simulation.
+#   - The value of f has no effect on the efficiency of a deterministic
+#     (ODE-based) simulation.
+#  usage examples: 
+#   - Volume_cytosol 1e-12*f # L per cell
+#   - Protein_copyNumber 100*f # copies per cell
+#   - k_synthesis 10*f # copies per cell per s [0->Protein() k_synthesis]
+f 1 # dimensionless, 0<f<=1
+
+# Avogadro constant
+NA 6.02214e23 # molecules per mol
+
+# ratio of a circle's circumference to its diameter
+pi 3.14159265359 # dimensionless
+
+##########################
+# compartment properties #
+##########################
+
+# volume of extracellular fluid (ecf) surrounding a single RBL-2H3 cell
+#  If cells are in suspension, we assume the following:
+#   - cell density of 2e6 cells per mL
+#  If cells are adherent to a surface, we assume the following:
+#   - 15 cm culture dishes (cells 95% confluent)
+#   - 1.2e5 cells per cm^2
+#   - growth surface area of 140 cm^2
+#   - 1.7e7 cells per dish
+#   - 0.25 mL of medium per square cm of growth surface
+#   - 35 mL of medium per dish
+Vecf 2e-9*f # L per cell (2 nL per cell)
+
+# average diameter of an RBL-2H3 cell (Swift et al., 1998)
+Dcell 1.5e-4 # dm (15 microns)
+
+# height of a thin layer adjacent to the extracellular face of the plasma membrane
+#  in which cell-surface ligand-receptor interactions occur
+#  comments:
+#   - This height is estimated as the largest dimension of a
+#     complex of Fcer1a, IgE, and BSA.
+#   - Models of the IgE-FceRIalpha complex are available.
+#     See Drinkwater et al. (2014) and Mahajan et al. (2014).
+#   - The structure of BSA is known (Bujacz, 2012; Majorek et al., 2012).
+Hepm 3e-7 # dm (30 nm)
+
+# volume of the thin layer adjacent to the extracellular face of the plasma membrane
+Vepm=(pi/6)*((Dcell+Hepm)^3-Dcell^3)*f # L (dm^3) per cell
+
+# viscosity of extracellular fluid (water) at 37 C
+eta_ecf 0.6913 # mPa s
+
+# viscosity of plasma membrane (olive oil) at 37 C
+eta_mem 34.1 # mPa s
+
+#####################
+# ligand properties #
+#####################
+
+# molecular weight of BSA
+mwt_BSA 66463 # g per mol
+
+# molecular weight of 2,4-dinitrophenol
+mwt_DNP 184 # g per mol
+
+# molecular weight of DNP-L-tyrosine (DCT)
+mwt_DCT 513 # g per mol
+
+# number of DNP groups per BSA (on average)
+n 24 # dimensionless
+
+# molecular weight of BSA conjugated to n DNP groups
+mwt_DNPnBSA=mwt_BSA+n*mwt_DNP # g per mol (~71 kDa for DNP_{24}-BSA)
+
+# diffusion coefficient of BSA in water (Medda et al., 2015)
+#  comments:
+#   - T = 37 C
+#   - pH = 7, 
+#   - [NaCl] = 0.1 M 
+D_BSA 8e-9 # dm^2/s
+
+# ligand dose
+Lconc_nM 1 # nM
+Lconc=1e-9*Lconc_nM # M
+Lcpc=Lconc*(NA*Vecf) # copies per cell
+
+#######################
+# receptor properties #
+#######################
+
+# average number of receptors per cell (Erickson et al., 1987)
+Rcpc 3e5*f # copies per cell
+
+###################################################
+# rate constants for ligand-receptor interactions #
+###################################################
+
+# equilibrium association constant for DCT binding to a Fab arm in surface IgE (Erickson et al., 1986)
+KA_DCT 1.4e9/(NA*Vecf) # /M (KD = ~0.7 nM)
+
+# association rate constant for DCT binding to a Fab arm in surface IgE (Erickson et al., 1987)
+kon_DCT 2.6e7/(NA*Vecf) # /M/s
+
+# dissociation rate constant
+koff_DCT=kon_DCT/KA_DCT # /s (~0.02 per s)
+
+# rate constants for DNP_n-BSA
+#  comments:
+#   - BSA is significantly larger than DCT.
+#   - We correct for the size difference using the Stokes-Einstein relation
+#     and an assumption that molecular weight is proportional to molecular volume.
+kon=kon_DCT*(mwt_DCT/mwt_DNPnBSA)^(1/3) # kon = ~5e6 /M/s
+koff=koff_DCT
+
+end parameters
+
+end model
+
+begin actions
+
+simulate({method=>"nf",complex=>1,gml=>10000000,get_final_state=>0,\
+	t_start=>0,t_end=>120,n_steps=>120})
+
+end actions

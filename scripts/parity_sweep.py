@@ -135,25 +135,6 @@ TOL_OVERRIDES = {
     "eco_coevolution_host_parasite.bngl": {"atol": "1e-12", "rtol": "1e-12"},
 }
 
-# Per-model symbol renames, keyed by .bngl filename. Mirrors TOL_OVERRIDES:
-# applied identically to BOTH stacks so the parity check stays apples-to-
-# apples. The motivating case is bngsim's NFsim (ExprTk) reserving the name
-# `frac` (fractional part), which legacy muParser did not — the three V19xx
-# endemic-infection models carry a model parameter literally named `frac`
-# (a scalar 0.5/0.8 coefficient, never a .gdat observable column), so under
-# method=>"nf" bngsim aborts on the name collision (bngsim #63/#64) while
-# legacy runs them. Renaming frac->fracsym is semantically null (it is just
-# a label for a constant). This is an interim rescue until bngsim #64 (remap
-# reserved-word identifiers in NFsim codegen, like the ODE path's
-# _alias_keyword_param) lands. Each value maps old symbol -> new symbol; the
-# rename is a whole-word (\b) substitution so substrings like "fractions" are
-# untouched.
-SYMBOL_RENAMES = {
-    "V1988a_endemic_infection.bngl": {"frac": "fracsym"},
-    "V1990_cooke_endemic.bngl": {"frac": "fracsym"},
-    "V1990_kemper_endemic.bngl": {"frac": "fracsym"},
-}
-
 # Per-model timeout overrides (seconds), keyed by .bngl filename. The default
 # --timeout is a parity budget tuned for fast models. This dict previously
 # carried 600 s entries for two 200-point parameter_scans
@@ -168,6 +149,45 @@ TIMEOUT_OVERRIDES = {
     # failure — the model runs fine). 300 s covers it with margin.
     "mlnr.bngl": 300,
 }
+
+
+def load_manifest_overrides(manifest_path):
+    """Return {id: overrides-dict} from a parity-corpus manifest.
+
+    ``id`` is the vendored relpath under the models root (e.g.
+    ``fast/rulehub/.../model.bngl``), which equals ``src.relative_to(root)``
+    during the sweep — so overrides are looked up per-file, free of the
+    basename collisions that the hardcoded dicts suffer (12 basenames recur
+    across sources). See scripts/build_parity_corpus.py.
+    """
+    data = json.loads(Path(manifest_path).read_text())
+    return {rec["id"]: rec.get("overrides", {}) for rec in data["models"]}
+
+
+def overrides_for(src, root, manifest_ov):
+    """Per-model overrides for ``src``.
+
+    With a manifest: look up by relpath id (collision-free). Without one:
+    fall back to the basename-keyed module dicts (standalone / back-compat).
+    Returns a dict with keys t_end, n_scan_pts, tol, action_inject,
+    timeout (missing keys absent).
+    """
+    if manifest_ov is not None:
+        rel = src.relative_to(root).as_posix()
+        return dict(manifest_ov.get(rel, {}))
+    name = src.name
+    out = {}
+    if name in TEND_OVERRIDES:
+        out["t_end"] = TEND_OVERRIDES[name]
+    if name in NSCANPTS_OVERRIDES:
+        out["n_scan_pts"] = NSCANPTS_OVERRIDES[name]
+    if name in TOL_OVERRIDES:
+        out["tol"] = TOL_OVERRIDES[name]
+    if name in ACTION_INJECT:
+        out["action_inject"] = ACTION_INJECT[name]
+    if name in TIMEOUT_OVERRIDES:
+        out["timeout"] = TIMEOUT_OVERRIDES[name]
+    return out
 
 
 def parse_simulate_methods(text):
@@ -321,33 +341,19 @@ def inject_tol(text, tol_override):
     return "".join(out_lines)
 
 
-def rename_symbols(text, renames):
-    """Whole-word rename of model identifiers, applied identically to both stacks.
-
-    Each (old -> new) is substituted on word boundaries (``\\bold\\b``) so a
-    parameter named ``frac`` is renamed everywhere it appears as a token
-    (definition, rate-law uses) without touching substrings like
-    ``fractions``. Renames in comments are harmless (BNG strips comments).
-    Longer source names are applied first so one rename can't partially
-    match another.
-    """
-    if not renames:
-        return text
-    for old in sorted(renames, key=len, reverse=True):
-        text = re.sub(rf"\b{re.escape(old)}\b", renames[old], text)
-    return text
-
-
-def run_one(simulator, bngl_path, run_path, out_dir, timeout):
+def run_one(simulator, bngl_path, run_path, out_dir, timeout, timeout_override=None):
     """Run a (possibly patched) .bngl through bionetgen.run() in a subprocess.
 
     `bngl_path` is the original (just for logging / summary identity).
     `run_path` is what bionetgen.run() actually loads (patched copy or original).
+    `timeout_override`, when set, replaces the default per-model budget (it is
+    resolved per-model by the caller — from the manifest or the basename dict).
     """
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     log_path = out_dir / "_run.log"
-    timeout = TIMEOUT_OVERRIDES.get(Path(bngl_path).name, timeout)
+    if timeout_override is not None:
+        timeout = timeout_override
     inner = (
         "import sys, bionetgen\n"
         f"bionetgen.run({str(run_path)!r}, out={str(out_dir)!r}, "
@@ -449,6 +455,14 @@ def main():
         choices=("subprocess", "bngsim"),
         help="Simulator to pass to bionetgen.run()",
     )
+    ap.add_argument(
+        "--manifest",
+        default="",
+        help="parity-corpus manifest.json; when given, per-model "
+        "overrides are read from it keyed by relpath id "
+        "(collision-free). Without it, the basename-keyed "
+        "module dicts are used (standalone).",
+    )
     ap.add_argument("--n-seeds", type=int, default=10, help="Seeds 1..N for stochastic models")
     ap.add_argument("--workers", type=int, default=8)
     ap.add_argument("--timeout", type=int, default=180, help="Per-model timeout (s)")
@@ -465,6 +479,7 @@ def main():
     args = ap.parse_args()
 
     root = Path(args.root).resolve()
+    manifest_ov = load_manifest_overrides(args.manifest) if args.manifest else None
     out_root = Path(args.out).resolve()
     out_root.mkdir(parents=True, exist_ok=True)
     patch_root = out_root / "_patched"
@@ -493,20 +508,16 @@ def main():
             n_unreadable += 1
             continue
         rel = src.relative_to(root)
-        tend_override = TEND_OVERRIDES.get(src.name)
-        nscanpts_override = NSCANPTS_OVERRIDES.get(src.name)
-        tol_override = TOL_OVERRIDES.get(src.name)
-        renames = SYMBOL_RENAMES.get(src.name)
-        # Apply symbol renames to the source text up front so every patched
-        # copy (seeded or deterministic) inherits them on both stacks. The
-        # rename does not touch method/seed tokens, so stochastic
-        # classification below is unaffected.
-        text = rename_symbols(text, renames)
+        ov = overrides_for(src, root, manifest_ov)
+        tend_override = ov.get("t_end")
+        nscanpts_override = ov.get("n_scan_pts")
+        tol_override = ov.get("tol")
+        timeout_override = ov.get("timeout")
         # Inject a run action for models that ship without one, BEFORE the
         # stochastic check so the injected method picks the regime. Appended
-        # to the (renamed) source; the seed/t_end patchers then treat it like
-        # any native action.
-        action_inject = ACTION_INJECT.get(src.name)
+        # to the source; the seed/t_end patchers then treat it like any
+        # native action.
+        action_inject = ov.get("action_inject")
         if action_inject:
             text = text.rstrip() + "\n" + action_inject + "\n"
         if is_stochastic(text):
@@ -528,16 +539,16 @@ def main():
                         "out_dir": str(out_dir),
                         "role": f"seed{seed}",
                         "regime": "stochastic",
+                        "timeout_override": timeout_override,
                     }
                 )
         else:
             n_det += 1
-            # Write a patched copy if any override or rename applies.
+            # Write a patched copy if any override applies.
             if (
                 tend_override is not None
                 or nscanpts_override is not None
                 or tol_override is not None
-                or renames
             ):
                 patched_dir = patch_root / rel.parent
                 patched_dir.mkdir(parents=True, exist_ok=True)
@@ -558,6 +569,7 @@ def main():
                     "out_dir": str(out_dir),
                     "role": "det",
                     "regime": "deterministic",
+                    "timeout_override": timeout_override,
                 }
             )
 
@@ -609,6 +621,7 @@ def main():
                 u["run"],
                 u["out_dir"],
                 args.timeout,
+                u.get("timeout_override"),
             ): u
             for u in units
         }
@@ -643,9 +656,10 @@ def main():
                 "bngsim_path": bngsim_path,
                 "simulator": args.simulator,
                 "n_seeds": args.n_seeds,
+                "manifest": args.manifest or None,
+                "override_source": "manifest" if manifest_ov is not None else "module-dicts",
                 "tend_overrides": TEND_OVERRIDES,
                 "tol_overrides": TOL_OVERRIDES,
-                "symbol_renames": SYMBOL_RENAMES,
                 "timeout_overrides": TIMEOUT_OVERRIDES,
                 "n_deterministic_models": n_det,
                 "n_stochastic_models": n_stoch,
