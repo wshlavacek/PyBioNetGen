@@ -358,10 +358,19 @@ def serve(socket_path: str) -> int:
     """
     if os.path.exists(socket_path):
         os.unlink(socket_path)
-    srv = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    # AF_UNIX is POSIX-only and serve() is never reached on Windows (BNGCLI
+    # guards it); getattr keeps mypy happy on win32, where the attribute is
+    # absent, without an ignore that warn_unused_ignores would flag on POSIX.
+    af_unix = getattr(socket, "AF_UNIX")
+    srv = socket.socket(af_unix, socket.SOCK_STREAM)
     try:
         srv.bind(socket_path)
-        srv.listen(1)
+        # A readiness probe connects-then-closes before serve accepts it,
+        # leaving that connection occupying a backlog slot until accept(). With
+        # a backlog of 1 the next client can hit a full queue and get
+        # ECONNREFUSED (flaky on loaded runners); a generous backlog avoids it
+        # and costs nothing.
+        srv.listen(socket.SOMAXCONN)
         # Handshake: BNGCLI blocks on this line before launching BNG2.pl.
         print(SERVE_READY_TOKEN, flush=True)
         while True:

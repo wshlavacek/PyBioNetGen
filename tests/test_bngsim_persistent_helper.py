@@ -52,6 +52,11 @@ def serve_thread():
     The socket lives under a short temp dir -- AF_UNIX paths are length
     limited (~104 chars) and pytest's tmp_path is too long on macOS.
     """
+    if os.name != "posix":
+        # serve uses an AF_UNIX socket and BNGCLI only starts the persistent
+        # helper on POSIX (it returns early on Windows, falling back to the
+        # one-shot per-job path). Nothing to test off POSIX.
+        pytest.skip("persistent helper (AF_UNIX serve) is POSIX-only")
     base = "/tmp" if os.path.isdir("/tmp") else None
     sock_dir = tempfile.mkdtemp(prefix="bngsh-test-", dir=base)
     sock_path = os.path.join(sock_dir, "h.sock")
