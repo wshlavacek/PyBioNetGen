@@ -34,13 +34,15 @@ def test_resolve_local_bngsim_checkout_prefers_env_override(monkeypatch, tmp_pat
 
 def test_build_uv_command_uses_editable_checkout(monkeypatch):
     module = _load_run_dev_checks()
-    monkeypatch.setattr(module, "resolve_local_bngsim_checkout", lambda: Path("/tmp/bngsim"))
+    checkout = Path("/tmp/bngsim")
+    monkeypatch.setattr(module, "resolve_local_bngsim_checkout", lambda: checkout)
 
     command = module.build_uv_command("uv")
 
     assert command[:4] == ["uv", "run", "--no-project", "--with-requirements"]
     assert "--with-editable" in command
-    assert "/tmp/bngsim" in command
+    # build_uv_command inserts str(checkout); on Windows that is \tmp\bngsim.
+    assert str(checkout) in command
     assert ["--with", "lxml", "--with", "networkx"] == command[-4:]
 
 
