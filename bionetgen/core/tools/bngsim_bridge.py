@@ -1290,7 +1290,8 @@ def _bngl_has_protocol_block(bngl_path):
 # on its next run (matters for long-lived consumers like the VS Code
 # extension).
 _CACHE_MISS = object()
-_ROUTING_ACTIONS_CACHE = {}
+# key: (abspath, st_mtime_ns, st_size); value: parsed actions list (or None).
+_ROUTING_ACTIONS_CACHE: dict[tuple[str, int, int], list | None] = {}
 _ROUTING_ACTIONS_CACHE_MAX = 128
 
 
