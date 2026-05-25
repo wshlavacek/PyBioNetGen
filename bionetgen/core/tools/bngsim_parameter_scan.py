@@ -51,25 +51,56 @@ from dataclasses import dataclass
 logger = logging.getLogger("bionetgen.bngsim_bridge")
 
 # Scan/bifurcate arg keys this driver knows how to honor in-process.
-_SCAN_SUPPORTED_KEYS = frozenset({
-    "parameter", "par_min", "par_max", "n_scan_pts", "log_scale",
-    "method", "t_start", "t_end", "n_steps", "suffix", "prefix",
-    "reset_conc", "atol", "rtol", "print_CDAT", "print_functions", "seed",
-})
+_SCAN_SUPPORTED_KEYS = frozenset(
+    {
+        "parameter",
+        "par_min",
+        "par_max",
+        "n_scan_pts",
+        "log_scale",
+        "method",
+        "t_start",
+        "t_end",
+        "n_steps",
+        "suffix",
+        "prefix",
+        "reset_conc",
+        "atol",
+        "rtol",
+        "print_CDAT",
+        "print_functions",
+        "seed",
+    }
+)
 # Keys that are recognized but not handled in-process: their presence
 # (when meaningful) forces a fallback rather than a silent wrong answer.
-_SCAN_FALLBACK_KEYS = frozenset({
-    "par_scan_vals", "sample_times", "steady_state", "continue",
-})
+_SCAN_FALLBACK_KEYS = frozenset(
+    {
+        "par_scan_vals",
+        "sample_times",
+        "steady_state",
+        "continue",
+    }
+)
 # Keys that are recognized and safe to ignore (output is unaffected).
-_SCAN_IGNORED_KEYS = frozenset({
-    "parallel", "num_cores", "verbose", "get_final_state",
-})
+_SCAN_IGNORED_KEYS = frozenset(
+    {
+        "parallel",
+        "num_cores",
+        "verbose",
+        "get_final_state",
+    }
+)
 
 # Action types allowed in a fast-path scan sequence.
-_SCAN_ALLOWED_ACTIONS = frozenset({
-    "generate_network", "parameter_scan", "bifurcate", "setParameter",
-})
+_SCAN_ALLOWED_ACTIONS = frozenset(
+    {
+        "generate_network",
+        "parameter_scan",
+        "bifurcate",
+        "setParameter",
+    }
+)
 # The two workflow actions the driver can drive in-process.
 _WORKFLOW_ACTIONS = frozenset({"parameter_scan", "bifurcate"})
 
@@ -111,13 +142,13 @@ def _scan_action_text_is_clean(bngl_text):
 class ScanRequest:
     """A parameter_scan/bifurcate reduced to the in-process driver's inputs."""
 
-    action: str            # "parameter_scan" or "bifurcate"
+    action: str  # "parameter_scan" or "bifurcate"
     parameter: str
     par_min: float
     par_max: float
     n_scan_pts: int
     log_scale: bool
-    method: str            # "ode" or "ssa" (normalized; "cvode" -> "ode")
+    method: str  # "ode" or "ssa" (normalized; "cvode" -> "ode")
     t_start: float
     t_end: float
     n_steps: int
@@ -187,8 +218,11 @@ def detect_inprocess_scan(actions_items, bngl_text=None):
     args = {k: v for k, v in (getattr(scan_action, "args", None) or {}).items()}
 
     for key in args:
-        if key not in _SCAN_SUPPORTED_KEYS and key not in _SCAN_FALLBACK_KEYS \
-                and key not in _SCAN_IGNORED_KEYS:
+        if (
+            key not in _SCAN_SUPPORTED_KEYS
+            and key not in _SCAN_FALLBACK_KEYS
+            and key not in _SCAN_IGNORED_KEYS
+        ):
             logger.debug("scan fast path declined: unknown option %r", key)
             return None
 
@@ -217,8 +251,7 @@ def detect_inprocess_scan(actions_items, bngl_text=None):
             if "reset_conc" in args:
                 reset_conc = _as_truthy(args["reset_conc"])
 
-        for required in ("parameter", "par_min", "par_max", "n_scan_pts",
-                         "t_end", "n_steps"):
+        for required in ("parameter", "par_min", "par_max", "n_scan_pts", "t_end", "n_steps"):
             if required not in args:
                 return None
 
@@ -314,9 +347,7 @@ def _make_network_gen_bngl(bngl_path, model_name, work_dir):
     text = _COMMENT_RE.sub("", text)
     text, n_sub = _WORKFLOW_ACTION_RE.subn("", text)
     if n_sub != 1:
-        raise ValueError(
-            f"expected exactly one parameter_scan/bifurcate action, found {n_sub}"
-        )
+        raise ValueError(f"expected exactly one parameter_scan/bifurcate action, found {n_sub}")
     gen_path = os.path.join(work_dir, f"{model_name}.bngl")
     with open(gen_path, "w") as fh:
         fh.write(text)
@@ -391,16 +422,18 @@ def _write_bifurcation_file(scan_path, parameter, col_name, fwd_col, bwd_col):
     n = len(fwd_col)
     with open(scan_path, "w") as fh:
         fh.write(
-            "# " + f"{parameter:>14}"
-            + " " + f"{col_name + '_fwd':>16}"
-            + " " + f"{col_name + '_bwd':>16}" + "\n"
+            "# "
+            + f"{parameter:>14}"
+            + " "
+            + f"{col_name + '_fwd':>16}"
+            + " "
+            + f"{col_name + '_bwd':>16}"
+            + "\n"
         )
         for i in range(n):
             par_value, fwd = fwd_col[i]
             bwd = bwd_col[n - 1 - i][1]
-            fh.write(
-                f"{par_value:16.8e} {fwd:16.8e} {bwd:16.8e}\n"
-            )
+            fh.write(f"{par_value:16.8e} {fwd:16.8e} {bwd:16.8e}\n")
 
 
 def _build_model_and_metadata(net_path, request):
@@ -437,8 +470,15 @@ def _build_model_and_metadata(net_path, request):
 
 
 def _run_scan_loop(
-    model, sim, request, values, species_names, param_linked,
-    work_dir, basename, write_results,
+    model,
+    sim,
+    request,
+    values,
+    species_names,
+    param_linked,
+    work_dir,
+    basename,
+    write_results,
 ):
     """Drive one in-process scan pass.
 
@@ -493,7 +533,9 @@ def _run_scan_loop(
         )
         point_name = f"{basename}_{k + 1:05d}"
         write_results(
-            result, work_dir, point_name,
+            result,
+            work_dir,
+            point_name,
             print_functions=request.print_functions,
             print_cdat=request.print_cdat,
         )
@@ -512,19 +554,23 @@ def _run_scan_loop(
     return scan_rows, expression_names
 
 
-def _generate_network(bngl_path, model_name, bngpath, gen_dir, run_subprocess,
-                       suppress, log_file, timeout, app):
+def _generate_network(
+    bngl_path, model_name, bngpath, gen_dir, run_subprocess, suppress, log_file, timeout, app
+):
     """Run BNG2.pl once to emit ``<model_name>.net``; return its path."""
     gen_bngl = _make_network_gen_bngl(bngl_path, model_name, gen_dir)
     run_subprocess(
-        gen_bngl, gen_dir, bngpath,
-        suppress=suppress, log_file=log_file, timeout=timeout, app=app,
+        gen_bngl,
+        gen_dir,
+        bngpath,
+        suppress=suppress,
+        log_file=log_file,
+        timeout=timeout,
+        app=app,
     )
     net_path = os.path.join(gen_dir, f"{model_name}.net")
     if not os.path.isfile(net_path):
-        raise FileNotFoundError(
-            f"network generation produced no {model_name}.net"
-        )
+        raise FileNotFoundError(f"network generation produced no {model_name}.net")
     return net_path
 
 
@@ -538,8 +584,15 @@ def _new_simulator(model, request):
 
 
 def run_inprocess_scan(
-    bngl_path, output_dir, bngpath, request, model_name,
-    suppress=False, log_file=None, timeout=None, app=None,
+    bngl_path,
+    output_dir,
+    bngpath,
+    request,
+    model_name,
+    suppress=False,
+    log_file=None,
+    timeout=None,
+    app=None,
 ):
     """Dispatch an in-process ``parameter_scan`` or ``bifurcate`` run.
 
@@ -547,12 +600,26 @@ def run_inprocess_scan(
     """
     if request.action == "bifurcate":
         return run_bifurcate_with_bngsim(
-            bngl_path, output_dir, bngpath, request, model_name,
-            suppress=suppress, log_file=log_file, timeout=timeout, app=app,
+            bngl_path,
+            output_dir,
+            bngpath,
+            request,
+            model_name,
+            suppress=suppress,
+            log_file=log_file,
+            timeout=timeout,
+            app=app,
         )
     return run_parameter_scan_with_bngsim(
-        bngl_path, output_dir, bngpath, request, model_name,
-        suppress=suppress, log_file=log_file, timeout=timeout, app=app,
+        bngl_path,
+        output_dir,
+        bngpath,
+        request,
+        model_name,
+        suppress=suppress,
+        log_file=log_file,
+        timeout=timeout,
+        app=app,
     )
 
 
@@ -586,7 +653,7 @@ def run_parameter_scan_with_bngsim(
     output_dir = os.path.abspath(output_dir)
     os.makedirs(output_dir, exist_ok=True)
 
-    basename = (request.prefix or model_name)
+    basename = request.prefix or model_name
     basename += "_" + (request.suffix or request.parameter)
     work_dir = os.path.join(output_dir, basename)
     scan_path = os.path.join(output_dir, basename + ".scan")
@@ -594,24 +661,40 @@ def run_parameter_scan_with_bngsim(
     gen_dir = tempfile.mkdtemp(prefix="bngsim_scan_gen_")
     try:
         net_path = _generate_network(
-            bngl_path, model_name, bngpath, gen_dir, _run_bngl_subprocess,
-            suppress, log_file, timeout, app,
+            bngl_path,
+            model_name,
+            bngpath,
+            gen_dir,
+            _run_bngl_subprocess,
+            suppress,
+            log_file,
+            timeout,
+            app,
         )
-        model, species_names, observable_names, param_linked = (
-            _build_model_and_metadata(net_path, request)
+        model, species_names, observable_names, param_linked = _build_model_and_metadata(
+            net_path, request
         )
         sim = _new_simulator(model, request)
 
         values = scan_values(request)
         scan_rows, expression_names = _run_scan_loop(
-            model, sim, request, values, species_names, param_linked,
-            work_dir, basename, _write_bngsim_results,
+            model,
+            sim,
+            request,
+            values,
+            species_names,
+            param_linked,
+            work_dir,
+            basename,
+            _write_bngsim_results,
         )
         column_names = observable_names + expression_names
         _write_scan_file(scan_path, request.parameter, column_names, scan_rows)
         logger.info(
-            "parameter_scan fast path: %d points for %r via in-process "
-            "BNGsim (%s)", len(values), request.parameter, request.method,
+            "parameter_scan fast path: %d points for %r via in-process BNGsim (%s)",
+            len(values),
+            request.parameter,
+            request.method,
         )
         return _make_bng_result(output_dir, request.method)
     finally:
@@ -652,7 +735,7 @@ def run_bifurcate_with_bngsim(
     output_dir = os.path.abspath(output_dir)
     os.makedirs(output_dir, exist_ok=True)
 
-    prefix = (request.prefix or model_name)
+    prefix = request.prefix or model_name
     if request.suffix:
         prefix += "_" + request.suffix
     fwd_base = prefix + "_forward"
@@ -661,11 +744,18 @@ def run_bifurcate_with_bngsim(
     gen_dir = tempfile.mkdtemp(prefix="bngsim_bifurcate_gen_")
     try:
         net_path = _generate_network(
-            bngl_path, model_name, bngpath, gen_dir, _run_bngl_subprocess,
-            suppress, log_file, timeout, app,
+            bngl_path,
+            model_name,
+            bngpath,
+            gen_dir,
+            _run_bngl_subprocess,
+            suppress,
+            log_file,
+            timeout,
+            app,
         )
-        model, species_names, observable_names, param_linked = (
-            _build_model_and_metadata(net_path, request)
+        model, species_names, observable_names, param_linked = _build_model_and_metadata(
+            net_path, request
         )
         # One Simulator drives both passes so concentrations carry across
         # every point and across the forward→backward boundary.
@@ -675,12 +765,26 @@ def run_bifurcate_with_bngsim(
         bwd_values = list(reversed(fwd_values))
 
         fwd_rows, expression_names = _run_scan_loop(
-            model, sim, request, fwd_values, species_names, param_linked,
-            os.path.join(output_dir, fwd_base), fwd_base, _write_bngsim_results,
+            model,
+            sim,
+            request,
+            fwd_values,
+            species_names,
+            param_linked,
+            os.path.join(output_dir, fwd_base),
+            fwd_base,
+            _write_bngsim_results,
         )
         bwd_rows, _ = _run_scan_loop(
-            model, sim, request, bwd_values, species_names, param_linked,
-            os.path.join(output_dir, bwd_base), bwd_base, _write_bngsim_results,
+            model,
+            sim,
+            request,
+            bwd_values,
+            species_names,
+            param_linked,
+            os.path.join(output_dir, bwd_base),
+            bwd_base,
+            _write_bngsim_results,
         )
 
         # Merge: one file per output column (observables, then BNGL
@@ -690,15 +794,19 @@ def run_bifurcate_with_bngsim(
         for j, col_name in enumerate(column_names):
             fwd_col = [(par, cols[j]) for par, cols in fwd_rows]
             bwd_col = [(par, cols[j]) for par, cols in bwd_rows]
-            out_path = os.path.join(
-                output_dir, f"{prefix}_bifurcation_{col_name}.scan"
-            )
+            out_path = os.path.join(output_dir, f"{prefix}_bifurcation_{col_name}.scan")
             _write_bifurcation_file(
-                out_path, request.parameter, col_name, fwd_col, bwd_col,
+                out_path,
+                request.parameter,
+                col_name,
+                fwd_col,
+                bwd_col,
             )
         logger.info(
-            "bifurcate fast path: %d points for %r via in-process BNGsim "
-            "(%s)", len(fwd_values), request.parameter, request.method,
+            "bifurcate fast path: %d points for %r via in-process BNGsim (%s)",
+            len(fwd_values),
+            request.parameter,
+            request.method,
         )
         return _make_bng_result(output_dir, request.method)
     finally:

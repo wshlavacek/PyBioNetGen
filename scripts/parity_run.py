@@ -38,6 +38,7 @@ Layout under ``--out``:
 Run from the .venv-bngsim venv so the spawned sweeps and the backend
 helper see the pinned bngsim. Cap --workers at the core count.
 """
+
 import argparse
 import json
 import subprocess
@@ -62,15 +63,22 @@ def run(cmd):
         sys.exit(f"step failed (exit {proc.returncode}): {' '.join(str(c) for c in cmd)}")
 
 
-def sweep(simulator, root, out, n_seeds, workers, timeout, limit,
-          include, exclude, models=None):
+def sweep(simulator, root, out, n_seeds, workers, timeout, limit, include, exclude, models=None):
     cmd = [
-        sys.executable, SWEEP,
-        "--root", root, "--out", out,
-        "--simulator", simulator,
-        "--n-seeds", n_seeds,
-        "--workers", workers,
-        "--timeout", timeout,
+        sys.executable,
+        SWEEP,
+        "--root",
+        root,
+        "--out",
+        out,
+        "--simulator",
+        simulator,
+        "--n-seeds",
+        n_seeds,
+        "--workers",
+        workers,
+        "--timeout",
+        timeout,
     ]
     if limit:
         cmd += ["--limit", limit]
@@ -84,8 +92,18 @@ def sweep(simulator, root, out, n_seeds, workers, timeout, limit,
 
 
 def diff(sub, bng, md_out, json_out, overlays=()):
-    cmd = [sys.executable, DIFF, "--subprocess", sub, "--bngsim", bng,
-           "--out", md_out, "--json-out", json_out]
+    cmd = [
+        sys.executable,
+        DIFF,
+        "--subprocess",
+        sub,
+        "--bngsim",
+        bng,
+        "--out",
+        md_out,
+        "--json-out",
+        json_out,
+    ]
     for ov_sub, ov_bng in overlays:
         cmd += ["--overlay-subprocess", ov_sub, "--overlay-bngsim", ov_bng]
     run(cmd)
@@ -119,21 +137,28 @@ def is_escalatable_stochastic_diff(info):
 
 
 def main():
-    ap = argparse.ArgumentParser(
-        description="Adaptive BNGsim parity sweep (base + escalation).")
+    ap = argparse.ArgumentParser(description="Adaptive BNGsim parity sweep (base + escalation).")
     ap.add_argument("--root", required=True, help="Directory tree with .bngl files")
     ap.add_argument("--out", required=True, help="Output root")
-    ap.add_argument("--n-seeds", type=int, default=10,
-                    help="Base seed count for stochastic models (default 10)")
-    ap.add_argument("--escalate-seeds", type=int, default=50,
-                    help="Seed count to re-judge stochastic DIFFs at (default 50)")
+    ap.add_argument(
+        "--n-seeds", type=int, default=10, help="Base seed count for stochastic models (default 10)"
+    )
+    ap.add_argument(
+        "--escalate-seeds",
+        type=int,
+        default=50,
+        help="Seed count to re-judge stochastic DIFFs at (default 50)",
+    )
     ap.add_argument("--workers", type=int, default=6)
     ap.add_argument("--timeout", type=int, default=180, help="Per-model timeout (s)")
     ap.add_argument("--limit", type=int, default=0, help="Max .bngl files (0=all)")
     ap.add_argument("--include", default="", help="Substring path filter")
     ap.add_argument("--exclude", default="", help="Substring path filter (drop)")
-    ap.add_argument("--no-escalate", action="store_true",
-                    help="Run only the base sweep + diff; skip escalation.")
+    ap.add_argument(
+        "--no-escalate",
+        action="store_true",
+        help="Run only the base sweep + diff; skip escalation.",
+    )
     args = ap.parse_args()
 
     out = Path(args.out).resolve()
@@ -150,10 +175,15 @@ def main():
     started = time.time()
 
     # 1. Base sweeps.
-    common = dict(root=args.root, n_seeds=str(args.n_seeds),
-                  workers=str(args.workers), timeout=str(args.timeout),
-                  limit=str(args.limit) if args.limit else "",
-                  include=args.include, exclude=args.exclude)
+    common = dict(
+        root=args.root,
+        n_seeds=str(args.n_seeds),
+        workers=str(args.workers),
+        timeout=str(args.timeout),
+        limit=str(args.limit) if args.limit else "",
+        include=args.include,
+        exclude=args.exclude,
+    )
     print("=== [1/4] base sweep — subprocess ===")
     sweep("subprocess", out=str(base_sub), **common)
     print("=== [1/4] base sweep — bngsim ===")
@@ -166,21 +196,24 @@ def main():
 
     # 3. Decide escalation set.
     to_escalate = sorted(
-        bngl for bngl, info in base["per_model"].items()
-        if is_escalatable_stochastic_diff(info))
+        bngl for bngl, info in base["per_model"].items() if is_escalatable_stochastic_diff(info)
+    )
     structural = sorted(
-        Path(bngl).name for bngl, info in base["per_model"].items()
-        if info.get("bucket") == "DIFF" and info.get("regime") == "stochastic"
-        and not is_escalatable_stochastic_diff(info))
+        Path(bngl).name
+        for bngl, info in base["per_model"].items()
+        if info.get("bucket") == "DIFF"
+        and info.get("regime") == "stochastic"
+        and not is_escalatable_stochastic_diff(info)
+    )
 
-    print(f"\n=== base buckets: "
-          f"{ {b: len(v) for b, v in base['buckets'].items()} } ===")
-    print(f"stochastic DIFFs to escalate "
-          f"({args.n_seeds}->{args.escalate_seeds} seeds): "
-          f"{[Path(m).name for m in to_escalate] or 'none'}")
+    print(f"\n=== base buckets: { {b: len(v) for b, v in base['buckets'].items()} } ===")
+    print(
+        f"stochastic DIFFs to escalate "
+        f"({args.n_seeds}->{args.escalate_seeds} seeds): "
+        f"{[Path(m).name for m in to_escalate] or 'none'}"
+    )
     if structural:
-        print(f"stochastic DIFFs left as-is (structural, seed-independent): "
-              f"{structural}")
+        print(f"stochastic DIFFs left as-is (structural, seed-independent): {structural}")
 
     overlays = ()
     if args.no_escalate or not to_escalate:
@@ -190,20 +223,33 @@ def main():
             print("=== [3/4] no escalatable stochastic DIFFs — skipping ===")
         # Final report == base report; re-diff so the file names are stable.
     else:
-        print(f"=== [3/4] escalation re-run "
-              f"({len(to_escalate)} models @ {args.escalate_seeds} seeds) ===")
+        print(
+            f"=== [3/4] escalation re-run "
+            f"({len(to_escalate)} models @ {args.escalate_seeds} seeds) ==="
+        )
         models = [Path(m).name for m in to_escalate]
-        esc_common = dict(root=args.root, n_seeds=str(args.escalate_seeds),
-                          workers=str(args.workers), timeout=str(args.timeout),
-                          limit="", include="", exclude="")
+        esc_common = dict(
+            root=args.root,
+            n_seeds=str(args.escalate_seeds),
+            workers=str(args.workers),
+            timeout=str(args.timeout),
+            limit="",
+            include="",
+            exclude="",
+        )
         sweep("subprocess", out=str(esc_sub), models=models, **esc_common)
         sweep("bngsim", out=str(esc_bng), models=models, **esc_common)
         overlays = ((str(esc_sub), str(esc_bng)),)
 
     # 4. Final diff (with overlay if escalation ran).
     print("=== [4/4] final diff ===")
-    diff(str(base_sub), str(base_bng), str(final_report_md),
-         str(final_report_json), overlays=overlays)
+    diff(
+        str(base_sub),
+        str(base_bng),
+        str(final_report_md),
+        str(final_report_json),
+        overlays=overlays,
+    )
     final = json.loads(final_report_json.read_text())
 
     # Summary.
@@ -212,13 +258,15 @@ def main():
     final_counts = {b: len(v) for b, v in final["buckets"].items()}
     flipped = sorted(set(base["buckets"]["DIFF"]) - set(final["buckets"]["DIFF"]))
     print("\n" + "=" * 64)
-    print(f"adaptive parity sweep done in {elapsed/60:.1f}m")
+    print(f"adaptive parity sweep done in {elapsed / 60:.1f}m")
     print(f"  base : {base_counts}")
     print(f"  final: {final_counts}")
     if overlays:
-        print(f"  escalated {len(to_escalate)} stochastic DIFF(s) to "
-              f"{args.escalate_seeds} seeds; "
-              f"{len(flipped)} flipped DIFF->PASS (small-sample noise):")
+        print(
+            f"  escalated {len(to_escalate)} stochastic DIFF(s) to "
+            f"{args.escalate_seeds} seeds; "
+            f"{len(flipped)} flipped DIFF->PASS (small-sample noise):"
+        )
         for m in flipped:
             print(f"    - {Path(m).name}")
         still = sorted(set(final["buckets"]["DIFF"]) & set(to_escalate))

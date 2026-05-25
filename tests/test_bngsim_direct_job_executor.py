@@ -56,10 +56,12 @@ def test_net_job_instantiates_simulator_with_expected_method(method):
     mock_bngsim.Model.from_net.return_value = model
     mock_bngsim.Simulator.return_value.run.return_value = _mock_result()
 
-    with patch(f"{BRIDGE}.BNGSIM_AVAILABLE", True), \
-         patch(f"{BRIDGE}.bngsim", mock_bngsim), \
-         patch(f"{BRIDGE}._write_bngsim_results"), \
-         patch(f"{BRIDGE}._make_bng_result", return_value=MagicMock()):
+    with (
+        patch(f"{BRIDGE}.BNGSIM_AVAILABLE", True),
+        patch(f"{BRIDGE}.bngsim", mock_bngsim),
+        patch(f"{BRIDGE}._write_bngsim_results"),
+        patch(f"{BRIDGE}._make_bng_result", return_value=MagicMock()),
+    ):
         execute_bngsim_direct_job(_network_job(method=method))
 
     mock_bngsim.Simulator.assert_called_once_with(model, method=method)
@@ -71,17 +73,15 @@ def test_psa_job_passes_poplevel_to_simulator():
     mock_bngsim.Model.from_net.return_value = model
     mock_bngsim.Simulator.return_value.run.return_value = _mock_result()
 
-    with patch(f"{BRIDGE}.BNGSIM_AVAILABLE", True), \
-         patch(f"{BRIDGE}.bngsim", mock_bngsim), \
-         patch(f"{BRIDGE}._write_bngsim_results"), \
-         patch(f"{BRIDGE}._make_bng_result", return_value=MagicMock()):
-        execute_bngsim_direct_job(
-            _network_job(method="psa", options={"poplevel": 250.0})
-        )
+    with (
+        patch(f"{BRIDGE}.BNGSIM_AVAILABLE", True),
+        patch(f"{BRIDGE}.bngsim", mock_bngsim),
+        patch(f"{BRIDGE}._write_bngsim_results"),
+        patch(f"{BRIDGE}._make_bng_result", return_value=MagicMock()),
+    ):
+        execute_bngsim_direct_job(_network_job(method="psa", options={"poplevel": 250.0}))
 
-    mock_bngsim.Simulator.assert_called_once_with(
-        model, method="psa", poplevel=250.0
-    )
+    mock_bngsim.Simulator.assert_called_once_with(model, method="psa", poplevel=250.0)
 
 
 @pytest.mark.parametrize(
@@ -97,10 +97,12 @@ def test_sbml_and_antimony_jobs_load_mocked_bngsim_models(fmt, loader):
     getattr(mock_bngsim.Model, loader).return_value = model
     mock_bngsim.Simulator.return_value.run.return_value = _mock_result()
 
-    with patch(f"{BRIDGE}.BNGSIM_AVAILABLE", True), \
-         patch(f"{BRIDGE}.bngsim", mock_bngsim), \
-         patch(f"{BRIDGE}._write_bngsim_results"), \
-         patch(f"{BRIDGE}._make_bng_result", return_value=MagicMock()):
+    with (
+        patch(f"{BRIDGE}.BNGSIM_AVAILABLE", True),
+        patch(f"{BRIDGE}.bngsim", mock_bngsim),
+        patch(f"{BRIDGE}._write_bngsim_results"),
+        patch(f"{BRIDGE}._make_bng_result", return_value=MagicMock()),
+    ):
         execute_bngsim_direct_job(_network_job(fmt=fmt, method="ode"))
 
     getattr(mock_bngsim.Model, loader).assert_called_once()
@@ -124,16 +126,16 @@ def test_bng_xml_job_uses_nfsim_session_for_nf_method_only():
         bngsim_options={"seed": 7, "gml": 1000},
     )
 
-    with patch(f"{BRIDGE}.BNGSIM_AVAILABLE", True), \
-         patch(f"{BRIDGE}.BNGSIM_HAS_NFSIM", True), \
-         patch(f"{BRIDGE}.bngsim", mock_bngsim), \
-         patch(f"{BRIDGE}._write_bngsim_results"), \
-         patch(f"{BRIDGE}._make_bng_result", return_value=MagicMock()):
+    with (
+        patch(f"{BRIDGE}.BNGSIM_AVAILABLE", True),
+        patch(f"{BRIDGE}.BNGSIM_HAS_NFSIM", True),
+        patch(f"{BRIDGE}.bngsim", mock_bngsim),
+        patch(f"{BRIDGE}._write_bngsim_results"),
+        patch(f"{BRIDGE}._make_bng_result", return_value=MagicMock()),
+    ):
         execute_bngsim_direct_job(job)
 
-    mock_bngsim.NfsimSession.assert_called_once_with(
-        "/model.xml", molecule_limit=1000
-    )
+    mock_bngsim.NfsimSession.assert_called_once_with("/model.xml", molecule_limit=1000)
     session.initialize.assert_called_once_with(7)
     session.simulate.assert_called_once_with(0.0, 10.0, 11)
     mock_bngsim.Simulator.assert_not_called()
@@ -149,9 +151,11 @@ def test_bng_xml_job_uses_nfsim_session_for_nf_method_only():
     )
     mock_bngsim.NfsimSession.reset_mock()
 
-    with patch(f"{BRIDGE}.BNGSIM_AVAILABLE", True), \
-         patch(f"{BRIDGE}.BNGSIM_HAS_NFSIM", True), \
-         patch(f"{BRIDGE}.bngsim", mock_bngsim):
+    with (
+        patch(f"{BRIDGE}.BNGSIM_AVAILABLE", True),
+        patch(f"{BRIDGE}.BNGSIM_HAS_NFSIM", True),
+        patch(f"{BRIDGE}.bngsim", mock_bngsim),
+    ):
         with pytest.raises(BNGSimError, match="network-free simulation"):
             execute_bngsim_direct_job(bad_job)
 
@@ -190,16 +194,16 @@ def test_bng_xml_rm_job_writes_final_state_and_replays_conc():
         get_final_state=True,
     )
 
-    with patch(f"{BRIDGE}.BNGSIM_AVAILABLE", True), \
-         patch(f"{BRIDGE}.BNGSIM_HAS_RULEMONKEY", True), \
-         patch(f"{BRIDGE}.bngsim", mock_bngsim), \
-         patch(f"{BRIDGE}._write_bngsim_results"), \
-         patch(f"{BRIDGE}._make_bng_result", return_value=MagicMock()):
+    with (
+        patch(f"{BRIDGE}.BNGSIM_AVAILABLE", True),
+        patch(f"{BRIDGE}.BNGSIM_HAS_RULEMONKEY", True),
+        patch(f"{BRIDGE}.bngsim", mock_bngsim),
+        patch(f"{BRIDGE}._write_bngsim_results"),
+        patch(f"{BRIDGE}._make_bng_result", return_value=MagicMock()),
+    ):
         execute_bngsim_direct_job(job)
 
-    mock_bngsim.RuleMonkeySession.assert_called_once_with(
-        "/model.xml", molecule_limit=1000
-    )
+    mock_bngsim.RuleMonkeySession.assert_called_once_with("/model.xml", molecule_limit=1000)
     session.initialize.assert_called_once_with(7)
     session.simulate.assert_called_once_with(0.0, 10.0, 11)
     # get_final_state writeback -> <root>.species (was missing for rm)
@@ -218,9 +222,11 @@ def test_direct_job_writer_creates_gdat_and_cdat_files():
 
     with tempfile.TemporaryDirectory() as tmpdir:
         job = _network_job(method="ode", output_dir=tmpdir)
-        with patch(f"{BRIDGE}.BNGSIM_AVAILABLE", True), \
-             patch(f"{BRIDGE}.bngsim", mock_bngsim), \
-             patch(f"{BRIDGE}._make_bng_result", return_value=MagicMock()):
+        with (
+            patch(f"{BRIDGE}.BNGSIM_AVAILABLE", True),
+            patch(f"{BRIDGE}.bngsim", mock_bngsim),
+            patch(f"{BRIDGE}._make_bng_result", return_value=MagicMock()),
+        ):
             execute_bngsim_direct_job(job)
 
         assert os.path.isfile(os.path.join(tmpdir, "model.gdat"))

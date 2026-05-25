@@ -32,6 +32,7 @@ from bionetgen.modelapi.structs import (
 # Helpers / stubs
 # ---------------------------------------------------------------------------
 
+
 class FakePattern:
     """Lightweight stand-in for Pattern objects used in Observable, Rule, etc."""
 
@@ -46,6 +47,7 @@ class FakePattern:
 # ===================================================================
 # 1. Exception classes
 # ===================================================================
+
 
 class TestBNGError:
     def test_is_base_exception(self):
@@ -211,6 +213,7 @@ class TestAllInheritFromBNGError:
 # ===================================================================
 # 2. Struct classes
 # ===================================================================
+
 
 class TestModelObj:
     def test_str_repr_delegate_to_gen_string(self):
@@ -525,6 +528,7 @@ class TestPopulationMap:
 # ===================================================================
 # 3. RuleMod
 # ===================================================================
+
 
 class TestRuleMod:
     def test_init_none(self):

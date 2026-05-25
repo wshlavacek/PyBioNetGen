@@ -69,10 +69,7 @@ def plotDAT(app):
     args = app.pargs
     # we need to have gdat/cdat files
     if not args.input.endswith((".gdat", ".cdat", ".scan")):
-        msg = (
-            "Input file has to be either a .gdat, .cdat, or .scan file: "
-            f"{args.input}"
-        )
+        msg = f"Input file has to be either a .gdat, .cdat, or .scan file: {args.input}"
         app.log.error(msg, f"{__file__} : plotDAT()")
         raise BNGFileError(args.input, message=msg)
     inp = args.input
@@ -127,9 +124,7 @@ def runAtomizeTool(app):
                 graph_dict = resArr.database.scts[graph_name]
                 for node_name in graph_dict:
                     if node_name not in G.nodes:
-                        G.add_node(
-                            node_name, shape="roundrectangle", shape_fill="#c6c6c6"
-                        )
+                        G.add_node(node_name, shape="roundrectangle", shape_fill="#c6c6c6")
                     for node_arr in graph_dict[node_name]:
                         # this is still a list
                         for conn_name in node_arr:

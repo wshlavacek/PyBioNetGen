@@ -3,6 +3,7 @@ override injected into both stacks (see TOL_OVERRIDES). Covers clean
 insertion, replacement of pre-existing atol/rtol (no duplicate keys),
 comment lines, the no-op passthrough, and the registry contract.
 """
+
 from __future__ import annotations
 
 import importlib.util
@@ -84,8 +85,10 @@ class TestInjectTol:
         assert ps.inject_tol(line, None) == line
 
     def test_parameter_scan_action_patched(self):
-        line = ('parameter_scan({method=>"ode",t_end=>10,parameter=>"k",'
-                'par_min=>1,par_max=>2,n_scan_pts=>3,log_scale=>0})\n')
+        line = (
+            'parameter_scan({method=>"ode",t_end=>10,parameter=>"k",'
+            "par_min=>1,par_max=>2,n_scan_pts=>3,log_scale=>0})\n"
+        )
         p = _params_of(ps.inject_tol(line, TOL))
         assert p["atol"] == "1e-12" and p["rtol"] == "1e-12"
 

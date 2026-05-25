@@ -295,7 +295,7 @@ class TestBNGFile:
         from bionetgen.modelapi.bngfile import BNGFile
 
         bf = BNGFile("/some/model.bngl")
-        bngl_bad = "begin model\nend model\nbegin actions\nsimulate({method=>\"ode\"})\n"
+        bngl_bad = 'begin model\nend model\nbegin actions\nsimulate({method=>"ode"})\n'
 
         with tempfile.TemporaryDirectory() as tmpdir:
             src = os.path.join(tmpdir, "model.bngl")
@@ -394,9 +394,7 @@ class TestBNGFile:
                 f.write(SAMPLE_BNGL)
 
             xml_file = StringIO()
-            with pytest.raises(
-                BNGFileError, match="did not produce an XML file"
-            ):
+            with pytest.raises(BNGFileError, match="did not produce an XML file"):
                 bf.generate_xml(xml_file, model_file=src)
 
     @patch("bionetgen.modelapi.bngfile.find_BNG_path", return_value=("/fake", None))
@@ -443,12 +441,11 @@ class TestBNGFile:
             return original_exists(path)
 
         out = StringIO()
-        with patch("builtins.open", side_effect=patched_open), patch(
-            "bionetgen.modelapi.bngfile.os.path.exists", side_effect=patched_exists
+        with (
+            patch("builtins.open", side_effect=patched_open),
+            patch("bionetgen.modelapi.bngfile.os.path.exists", side_effect=patched_exists),
         ):
-            result = bf.write_xml(
-                out, xml_type="bngxml", bngl_str="begin model\nend model\n"
-            )
+            result = bf.write_xml(out, xml_type="bngxml", bngl_str="begin model\nend model\n")
 
         assert result is True
         out.seek(0)
@@ -593,7 +590,7 @@ class TestBNGParserNormalize:
         )
         assert ",," not in out
         # The good comma-separated args survive.
-        assert ',n_steps=>20,print_functions=>1' in out
+        assert ",n_steps=>20,print_functions=>1" in out
 
     def test_b4_empty_args_inside_quotes_preserved(self):
         """The ``,,`` collapse must not touch comma sequences inside string
@@ -854,7 +851,7 @@ class TestBNGParser:
         mock_bf = MagicMock()
         mock_bf.path = "/some/model.bngl"
         mock_bf.parsed_actions = [
-            'generate_network({max_stoich=>{R=>6,L=>3},max_iter=>100})',
+            "generate_network({max_stoich=>{R=>6,L=>3},max_iter=>100})",
         ]
         MockBNGFile.return_value = mock_bf
 
@@ -865,10 +862,7 @@ class TestBNGParser:
         a = list(model_obj.actions.items)[0]
         assert a.args["max_stoich"] == "{R=>6,L=>3}"
         assert a.args["max_iter"] == "100"
-        assert (
-            str(a)
-            == "generate_network({max_stoich=>{R=>6,L=>3},max_iter=>100})"
-        )
+        assert str(a) == "generate_network({max_stoich=>{R=>6,L=>3},max_iter=>100})"
 
     @patch("bionetgen.modelapi.bngparser.BNGFile")
     def test_parse_actions_no_arg_action(self, MockBNGFile):
@@ -962,7 +956,7 @@ class TestBNGParser:
         # context where it appears as an attribute on a Parameter element.
         xml_with_lt = MINIMAL_XML.replace(
             '<Parameter id="k1" type="Constant" value="0.1"/>',
-            '<Parameter id="k1" type="Constant" value="0.1" relation="<"/>'
+            '<Parameter id="k1" type="Constant" value="0.1" relation="<"/>',
         )
 
         def fake_generate_xml(xml_file):
@@ -1117,9 +1111,7 @@ class TestBngmodel:
             ("reaction_rules", "rules", RuleBlock),
         ],
     )
-    def test_add_empty_block_dispatches_supported_name(
-        self, block_name, attr_name, block_cls
-    ):
+    def test_add_empty_block_dispatches_supported_name(self, block_name, attr_name, block_cls):
         model = _make_model_bypass_init()
         delattr(model, attr_name)
 
@@ -1223,7 +1215,7 @@ class TestBngmodel:
 
         # Manually add a before_model action
         mock_action = MagicMock()
-        mock_action.__str__ = MagicMock(return_value="setModelName(\"test\")")
+        mock_action.__str__ = MagicMock(return_value='setModelName("test")')
         model.actions.before_model.append(mock_action)
 
         s = str(model)
@@ -1309,9 +1301,7 @@ class TestBngmodel:
         with pytest.raises(BNGSimError, match="Simulator type 'unknown' is not supported"):
             model.setup_simulator(sim_type="unknown")
 
-    def test_setup_simulator_write_xml_failure_raises_bngmodel_error(
-        self, tmp_path, monkeypatch
-    ):
+    def test_setup_simulator_write_xml_failure_raises_bngmodel_error(self, tmp_path, monkeypatch):
         from bionetgen.core.exc import BNGFileError, BNGModelError
 
         monkeypatch.chdir(tmp_path)
@@ -1334,9 +1324,18 @@ class TestBngmodel:
         model.active_blocks = []
 
         # Reset all blocks
-        for attr in ["parameters", "compartments", "molecule_types", "species",
-                      "observables", "functions", "energy_patterns",
-                      "population_maps", "rules", "actions"]:
+        for attr in [
+            "parameters",
+            "compartments",
+            "molecule_types",
+            "species",
+            "observables",
+            "functions",
+            "energy_patterns",
+            "population_maps",
+            "rules",
+            "actions",
+        ]:
             if hasattr(model, attr):
                 delattr(model, attr)
 

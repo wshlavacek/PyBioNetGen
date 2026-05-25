@@ -15,10 +15,13 @@ def test_normal_mode_logs_and_reraises_cli_failures(tmp_path, capsys, use_output
     visualize = BNGVisualize("test.bngl", output=output)
     visualize.logger = mock.MagicMock()
 
-    with mock.patch(
-        "bionetgen.core.tools.visualize.bionetgen.modelapi.bngmodel",
-        return_value=fake_model,
-    ), mock.patch("bionetgen.core.main.BNGCLI") as mock_cli_cls:
+    with (
+        mock.patch(
+            "bionetgen.core.tools.visualize.bionetgen.modelapi.bngmodel",
+            return_value=fake_model,
+        ),
+        mock.patch("bionetgen.core.main.BNGCLI") as mock_cli_cls,
+    ):
         mock_cli_cls.return_value.run.side_effect = BNGRunError(
             ["perl", "BNG2.pl", "test.bngl"],
             message="boom",
@@ -46,16 +49,18 @@ def test_normal_mode_wraps_dump_failures(capsys):
     visualize = BNGVisualize("test.bngl")
     visualize.logger = mock.MagicMock()
 
-    with mock.patch(
-        "bionetgen.core.tools.visualize.bionetgen.modelapi.bngmodel",
-        return_value=fake_model,
-    ), mock.patch("bionetgen.core.main.BNGCLI"), mock.patch(
-        "bionetgen.core.tools.visualize.VisResult",
-        return_value=fake_vis_result,
+    with (
+        mock.patch(
+            "bionetgen.core.tools.visualize.bionetgen.modelapi.bngmodel",
+            return_value=fake_model,
+        ),
+        mock.patch("bionetgen.core.main.BNGCLI"),
+        mock.patch(
+            "bionetgen.core.tools.visualize.VisResult",
+            return_value=fake_vis_result,
+        ),
     ):
-        with pytest.raises(
-            BNGFileError, match="Failed to generate visualization files: disk full"
-        ):
+        with pytest.raises(BNGFileError, match="Failed to generate visualization files: disk full"):
             visualize._normal_mode()
 
     captured = capsys.readouterr()

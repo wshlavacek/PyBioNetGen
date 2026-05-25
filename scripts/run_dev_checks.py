@@ -300,9 +300,7 @@ def safe_extract_all(archive: tarfile.TarFile, destination: Path) -> None:
         try:
             resolved_member.relative_to(resolved_destination)
         except ValueError as exc:
-            raise RuntimeError(
-                f"Refusing to extract unsafe archive member: {member.name}"
-            ) from exc
+            raise RuntimeError(f"Refusing to extract unsafe archive member: {member.name}") from exc
     try:
         archive.extractall(destination, filter="data")
     except TypeError:

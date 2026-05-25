@@ -318,9 +318,7 @@ class PatternXML(XMLObj):
         #
         if "ListOfComponents" in xml:
             # Single molecule can't have bonds
-            molecule.components = self._process_comp(
-                xml["ListOfComponents"]["Component"]
-            )
+            molecule.components = self._process_comp(xml["ListOfComponents"]["Component"])
         #
         return molecule
 
@@ -686,7 +684,7 @@ class RuleBlockXML(XMLObj):
                     _raise_parse_error(
                         f"Reaction rule {name!r} is missing a RateLaw entry",
                         loc=f"{__file__} : RuleBlockXML.parse_xml()",
-                )
+                    )
                 rate_constants = [self.resolve_ratelaw(rule["RateLaw"])]
                 rule_modifier = self.get_rule_mod(rule)
                 operations = []
@@ -882,11 +880,7 @@ class RuleBlockXML(XMLObj):
                 if call is not None:
                     rule_mod.add_modifier(call)
 
-        if (
-            rule_mod.type is None
-            and len(rule_mod.modifiers) == 0
-            and not had_explicit_ops
-        ):
+        if rule_mod.type is None and len(rule_mod.modifiers) == 0 and not had_explicit_ops:
             return None
         return rule_mod
 

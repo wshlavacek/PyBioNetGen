@@ -20,6 +20,7 @@ Output:
 
 The tree itself should be gitignored; commit only this script + the manifest.
 """
+
 import argparse
 import csv
 import hashlib
@@ -81,15 +82,20 @@ def features(text):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--report", required=True,
-                    help="parity report json whose per_model keys are the 377 suite")
+    ap.add_argument(
+        "--report", required=True, help="parity report json whose per_model keys are the 377 suite"
+    )
     ap.add_argument("--dest", required=True, help="candidate_corpus output dir")
-    ap.add_argument("--exclude-list", action="append", default=[],
-                    help="file of content hashes to skip (one norm_hash per line, "
-                         "'#'-comments and trailing '  # path' allowed). Repeatable. "
-                         "Evicts fitting_template (unfilled PyBNF) models and "
-                         "clear-dupe redundant copies — by CONTENT, so duplicate "
-                         "copies at other paths are caught too.")
+    ap.add_argument(
+        "--exclude-list",
+        action="append",
+        default=[],
+        help="file of content hashes to skip (one norm_hash per line, "
+        "'#'-comments and trailing '  # path' allowed). Repeatable. "
+        "Evicts fitting_template (unfilled PyBNF) models and "
+        "clear-dupe redundant copies — by CONTENT, so duplicate "
+        "copies at other paths are caught too.",
+    )
     args = ap.parse_args()
 
     excluded_hashes = set()
@@ -110,8 +116,8 @@ def main():
     dest = Path(args.dest)
     dest.mkdir(parents=True, exist_ok=True)
 
-    seen = set(corpus_hashes)        # global: corpus + everything selected so far
-    companion_dirs = set()           # source dirs whose non-bngl files we've linked
+    seen = set(corpus_hashes)  # global: corpus + everything selected so far
+    companion_dirs = set()  # source dirs whose non-bngl files we've linked
     manifest = []
 
     for sname, root in SOURCES.items():
@@ -154,38 +160,52 @@ def main():
                             clink.symlink_to(sib)
 
             methods = detect_methods(t)
-            manifest.append({
-                "source": sname,
-                "rel": str(rel),
-                "src": str(src),
-                "link": str(link),
-                "methods": sorted(methods),
-                "stochastic": bool(methods - DET_METHODS) or not methods,
-                "features": features(t),
-                # PyBNF/BioNetFit free-parameter marker. Two flavors that only
-                # BNG2.pl can tell apart: UNFILLED templates reference an
-                # undefined __FREE symbol (crash) vs FILLED best-fit models that
-                # define __FREE-named params with real values (run fine). The
-                # binner routes crashed-__FREE models to a 'fitting_template'
-                # bucket and keeps the runnable ones.
-                "has_free": "__FREE" in t,
-                "src_bytes": len(t),
-            })
-        print(f"{sname:11s}: {len(files):4d} files | NEW {n_new:4d} | "
-              f"dup-corpus {n_dupcorpus:3d} | dup-seen {n_dupseen:3d} | bad {n_bad}")
+            manifest.append(
+                {
+                    "source": sname,
+                    "rel": str(rel),
+                    "src": str(src),
+                    "link": str(link),
+                    "methods": sorted(methods),
+                    "stochastic": bool(methods - DET_METHODS) or not methods,
+                    "features": features(t),
+                    # PyBNF/BioNetFit free-parameter marker. Two flavors that only
+                    # BNG2.pl can tell apart: UNFILLED templates reference an
+                    # undefined __FREE symbol (crash) vs FILLED best-fit models that
+                    # define __FREE-named params with real values (run fine). The
+                    # binner routes crashed-__FREE models to a 'fitting_template'
+                    # bucket and keeps the runnable ones.
+                    "has_free": "__FREE" in t,
+                    "src_bytes": len(t),
+                }
+            )
+        print(
+            f"{sname:11s}: {len(files):4d} files | NEW {n_new:4d} | "
+            f"dup-corpus {n_dupcorpus:3d} | dup-seen {n_dupseen:3d} | bad {n_bad}"
+        )
 
     (dest / "_manifest.json").write_text(json.dumps(manifest, indent=2))
     with open(dest / "_manifest.csv", "w", newline="") as fh:
         w = csv.writer(fh)
         w.writerow(["source", "rel", "methods", "stochastic", "features", "src_bytes"])
         for m in manifest:
-            w.writerow([m["source"], m["rel"], "|".join(m["methods"]),
-                        m["stochastic"], "|".join(m["features"]), m["src_bytes"]])
+            w.writerow(
+                [
+                    m["source"],
+                    m["rel"],
+                    "|".join(m["methods"]),
+                    m["stochastic"],
+                    "|".join(m["features"]),
+                    m["src_bytes"],
+                ]
+            )
 
     n_stoch = sum(1 for m in manifest if m["stochastic"])
-    print(f"\nTOTAL selected: {len(manifest)}  "
-          f"(deterministic {len(manifest)-n_stoch}, stochastic {n_stoch})")
-    print(f"manifest: {dest/'_manifest.json'}")
+    print(
+        f"\nTOTAL selected: {len(manifest)}  "
+        f"(deterministic {len(manifest) - n_stoch}, stochastic {n_stoch})"
+    )
+    print(f"manifest: {dest / '_manifest.json'}")
 
 
 if __name__ == "__main__":

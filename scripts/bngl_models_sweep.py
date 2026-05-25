@@ -49,10 +49,15 @@ DEFAULT_REL_TOL = 1e-2
 # (exception/timeout) and ``shape-mismatch``/``missing-*`` are loud
 # failures already; ``large-abs``/``large-rel`` are the new gates that
 # previously slipped through as OK.
-_DIFF_STATUSES = frozenset({
-    "shape-mismatch", "missing-reference", "missing-output",
-    "large-abs", "large-rel",
-})
+_DIFF_STATUSES = frozenset(
+    {
+        "shape-mismatch",
+        "missing-reference",
+        "missing-output",
+        "large-abs",
+        "large-rel",
+    }
+)
 
 
 @dataclass
@@ -189,8 +194,12 @@ except Exception as e:
 
 
 def run_one(
-    bngl: Path, simulator: str, out_dir: Path, timeout: int,
-    abs_tol: float, rel_tol: float,
+    bngl: Path,
+    simulator: str,
+    out_dir: Path,
+    timeout: int,
+    abs_tol: float,
+    rel_tol: float,
 ) -> ModelResult:
     out_dir.mkdir(parents=True, exist_ok=True)
     result = ModelResult(
@@ -279,9 +288,7 @@ def run_sweep(
             )
             results.append(result)
             status = "OK" if result.ok else ("FAIL" if result.error else "DIFF")
-            print(
-                f"  -> {status} ({result.wall_seconds:.1f}s, {len(result.files)} output files)"
-            )
+            print(f"  -> {status} ({result.wall_seconds:.1f}s, {len(result.files)} output files)")
     return results
 
 
@@ -321,15 +328,21 @@ def main() -> int:
     p.add_argument("--out-root", type=Path, default=Path("dev/bngl_models_sweep_out"))
     p.add_argument("--timeout", type=int, default=300, help="per-model timeout in seconds")
     p.add_argument(
-        "--abs-tol", type=float, default=DEFAULT_ABS_TOL,
+        "--abs-tol",
+        type=float,
+        default=DEFAULT_ABS_TOL,
         help=f"default max abs err allowed (default {DEFAULT_ABS_TOL}; per-model overrides via --tolerances)",
     )
     p.add_argument(
-        "--rel-tol", type=float, default=DEFAULT_REL_TOL,
+        "--rel-tol",
+        type=float,
+        default=DEFAULT_REL_TOL,
         help=f"default max rel err allowed (default {DEFAULT_REL_TOL})",
     )
     p.add_argument(
-        "--tolerances", type=Path, default=DEFAULT_TOL_FILE,
+        "--tolerances",
+        type=Path,
+        default=DEFAULT_TOL_FILE,
         help=f"YAML with per-model tolerance overrides (default {DEFAULT_TOL_FILE.name})",
     )
     args = p.parse_args()

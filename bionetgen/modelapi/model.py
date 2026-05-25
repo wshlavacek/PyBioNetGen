@@ -71,9 +71,7 @@ class bngmodel:
         "population_maps", "rules", "reaction_rules", "actions".
     """
 
-    def __init__(
-        self, bngl_model, BNGPATH=None, generate_network=False, suppress=True
-    ):
+    def __init__(self, bngl_model, BNGPATH=None, generate_network=False, suppress=True):
         self.active_blocks = []
         # We want blocks to be printed in the same order every time
         self._block_order = [
@@ -91,9 +89,7 @@ class bngmodel:
         ]
         self.model_name = ""
         self.model_path = bngl_model
-        self.bngparser = BNGParser(
-            bngl_model, generate_network=generate_network, suppress=True
-        )
+        self.bngparser = BNGParser(bngl_model, generate_network=generate_network, suppress=True)
         self.bngparser.parse_model(self)
         for block in self._block_order:
             if block not in self.active_blocks:
@@ -204,16 +200,14 @@ class bngmodel:
         if normalized_name not in block_adders:
             supported_names = ", ".join(block_adders)
             raise ValueError(
-                f"Unsupported block name '{block_name}'. "
-                f"Supported block names: {supported_names}"
+                f"Unsupported block name '{block_name}'. Supported block names: {supported_names}"
             )
         return block_adders[normalized_name]
 
     def _set_typed_block(self, block, expected_type, attr_name, active_name):
         if not isinstance(block, expected_type):
             raise TypeError(
-                f"{attr_name} block must be a {expected_type.__name__}, "
-                f"got {type(block).__name__}"
+                f"{attr_name} block must be a {expected_type.__name__}, got {type(block).__name__}"
             )
         setattr(self, attr_name, block)
         if active_name not in self.active_blocks:
@@ -233,9 +227,7 @@ class bngmodel:
         Adds a compartments block to the model object.
         """
         if block is not None:
-            self._set_typed_block(
-                block, CompartmentBlock, "compartments", "compartments"
-            )
+            self._set_typed_block(block, CompartmentBlock, "compartments", "compartments")
         else:
             self.compartments = CompartmentBlock()
 
@@ -244,9 +236,7 @@ class bngmodel:
         Adds a molecule types block to the model object.
         """
         if block is not None:
-            self._set_typed_block(
-                block, MoleculeTypeBlock, "molecule_types", "molecule_types"
-            )
+            self._set_typed_block(block, MoleculeTypeBlock, "molecule_types", "molecule_types")
         else:
             self.molecule_types = MoleculeTypeBlock()
 
@@ -264,9 +254,7 @@ class bngmodel:
         Adds an observable block to the model object.
         """
         if block is not None:
-            self._set_typed_block(
-                block, ObservableBlock, "observables", "observables"
-            )
+            self._set_typed_block(block, ObservableBlock, "observables", "observables")
         else:
             self.observables = ObservableBlock()
 
@@ -392,15 +380,12 @@ class bngmodel:
                 # write the sbml
                 with open(sbml_name, "w+") as f:
                     try:
-                        self.bngparser.bngfile.write_xml(
-                            f, xml_type="sbml", bngl_str=str(self)
-                        )
+                        self.bngparser.bngfile.write_xml(f, xml_type="sbml", bngl_str=str(self))
                     except BNGFileError as exc:
                         raise BNGModelError(
                             self.model_path,
                             message=(
-                                "SBML couldn't be generated for libRR simulator: "
-                                f"{exc.message}"
+                                f"SBML couldn't be generated for libRR simulator: {exc.message}"
                             ),
                         ) from exc
                 self.actions.clear_actions()

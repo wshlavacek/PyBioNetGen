@@ -95,9 +95,7 @@ class TestActionList:
         al = ActionList()
         assert "check_iso" in al.arg_dict["generate_network"]
         # Round-trip validation must not raise BNGParseError.
-        al.validate_action(
-            "generate_network", {"check_iso": 1, "overwrite": 1}
-        )
+        al.validate_action("generate_network", {"check_iso": 1, "overwrite": 1})
 
 
 # ======================================================================

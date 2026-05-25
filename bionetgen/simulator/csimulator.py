@@ -87,8 +87,7 @@ class CSimWrapper:
         """
         if len(arr) != self.num_spec_init:
             raise ValueError(
-                "Expected "
-                f"{self.num_spec_init} initial species values, got {len(arr)}"
+                f"Expected {self.num_spec_init} initial species values, got {len(arr)}"
             )
         self.species_init = np.array(arr, dtype=np.float64)
 
@@ -97,9 +96,7 @@ class CSimWrapper:
         Set the parameter values array
         """
         if len(arr) != self.num_params:
-            raise ValueError(
-                f"Expected {self.num_params} parameter values, got {len(arr)}"
-            )
+            raise ValueError(f"Expected {self.num_params} parameter values, got {len(arr)}")
         self.parameters = np.array(arr, dtype=np.float64)
 
     def simulate(self, t_start=0, t_end=100, n_steps=100):
@@ -183,9 +180,7 @@ class CSimulator(BNGSimulator):
         # let's load the model first
         if isinstance(model_file, str):
             # load model file
-            self.model = bionetgen.bngmodel(
-                model_file, generate_network=generate_network
-            )
+            self.model = bionetgen.bngmodel(model_file, generate_network=generate_network)
         elif isinstance(model_file, bionetgen.bngmodel):
             # loaded model
             self.model = model_file
@@ -267,8 +262,7 @@ class CSimulator(BNGSimulator):
                 return float(self.model.parameters[count_value].value)
             except (AttributeError, KeyError, TypeError, ValueError) as exc:
                 msg = (
-                    f"Could not resolve initial species value for '{spc_name}' "
-                    f"from '{count_value}'"
+                    f"Could not resolve initial species value for '{spc_name}' from '{count_value}'"
                 )
                 logger.error(msg, loc=f"{__file__} : CSimulator.simulate()")
                 raise BNGSimError(msg) from exc

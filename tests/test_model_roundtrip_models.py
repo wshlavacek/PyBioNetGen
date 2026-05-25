@@ -63,4 +63,3 @@ def test_roundtrip_preserves_protocol_block(tmp_path, require_bng2):
     for line in expected_lines:
         assert line in rendered
         assert line in rerendered
-

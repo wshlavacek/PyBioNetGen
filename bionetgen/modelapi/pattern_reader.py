@@ -93,15 +93,13 @@ class BNGPatternReader:
         Defines specific parsers for BNG molecules
         """
         # molecules can have tags
-        self.parsers.tag = pp.Combine(
-            pp.Word("%") + (self.parsers.base_name ^ pp.Word(pp.nums))
-        )
+        self.parsers.tag = pp.Combine(pp.Word("%") + (self.parsers.base_name ^ pp.Word(pp.nums)))
         # and compartments
         self.parsers.compartment = pp.Combine(pp.Word("@") + self.parsers.base_name)
         # combine tag and compartment
-        tag_comp = (
-            pp.Optional(self.parsers.tag) + pp.Optional(self.parsers.compartment)
-        ) ^ (pp.Optional(self.parsers.compartment) + pp.Optional(self.parsers.tag))
+        tag_comp = (pp.Optional(self.parsers.tag) + pp.Optional(self.parsers.compartment)) ^ (
+            pp.Optional(self.parsers.compartment) + pp.Optional(self.parsers.tag)
+        )
         # full molecule
         self.parsers.molecule = (
             self.parsers.base_name
@@ -115,9 +113,7 @@ class BNGPatternReader:
         # molecules
         # components are separated by commas
         molecule_separator = pp.Word(".")
-        self.parsers.molecules_parser = pp.delimited_list(
-            molecule_parser, delim=molecule_separator
-        )
+        self.parsers.molecules_parser = pp.delimited_list(molecule_parser, delim=molecule_separator)
         self.parsers.combined_molecules_parser = pp.delimited_list(
             molecule_parser, delim=molecule_separator, combine=True
         )
@@ -132,24 +128,14 @@ class BNGPatternReader:
         zeroMolecule = pp.Word("0")
         # quantifier
         quantifier = pp.Combine(
-            (
-                pp.Word("<")
-                ^ pp.Word("<=")
-                ^ pp.Word("==")
-                ^ pp.Word(">=")
-                ^ pp.Word(">")
-            )
+            (pp.Word("<") ^ pp.Word("<=") ^ pp.Word("==") ^ pp.Word(">=") ^ pp.Word(">"))
             + pp.Word(pp.nums)
         )
         # combine tag and compartment
         tag = self.parsers.tag + (pp.Word(":") ^ pp.Word("::"))
         comp = self.parsers.compartment + (pp.Word(":") ^ pp.Word("::"))
-        tag_comp_1 = (
-            self.parsers.tag + self.parsers.compartment + (pp.Word(":") ^ pp.Word("::"))
-        )
-        tag_comp_2 = (
-            self.parsers.compartment + self.parsers.tag + (pp.Word(":") ^ pp.Word("::"))
-        )
+        tag_comp_1 = self.parsers.tag + self.parsers.compartment + (pp.Word(":") ^ pp.Word("::"))
+        tag_comp_2 = self.parsers.compartment + self.parsers.tag + (pp.Word(":") ^ pp.Word("::"))
         tag_comp = tag ^ comp ^ tag_comp_1 ^ tag_comp_2
         pattern = (
             pp.Optional(tag_comp)
@@ -233,9 +219,7 @@ class BNGPatternReader:
         # if we had a zero molecule we are done
         if split_molecs is None:
             # this is the zero molecule
-            self.logger.debug(
-                f"no molecules found in: {self.pattern_str}, done", loc=log_loc
-            )
+            self.logger.debug(f"no molecules found in: {self.pattern_str}, done", loc=log_loc)
             return pattern
         # we got the molecule list, let's loop over molecules now
         self.logger.debug(f"molecules: {split_molecs}", loc=log_loc)
@@ -271,17 +255,11 @@ class BNGPatternReader:
                     molecule.name = parsed_val
                 else:
                     # only components remain, parse those and loop
-                    split_components = self.parsers.components_parser.parseString(
-                        parsed_val
-                    )
-                    self.logger.debug(
-                        f"split components: {split_components}", loc=log_loc
-                    )
+                    split_components = self.parsers.components_parser.parseString(parsed_val)
+                    self.logger.debug(f"split components: {split_components}", loc=log_loc)
                     for component_str in split_components:
                         # each component is parsed separately now
-                        parsed_component = self.parsers.component.parseString(
-                            component_str
-                        )
+                        parsed_component = self.parsers.component.parseString(component_str)
 
                         component = Component()
                         component.parent_molecule = molecule
@@ -292,9 +270,7 @@ class BNGPatternReader:
                             elif "!" in comp:
                                 # this is a bond, we'll have to figure out how to make the bonds
                                 splt = comp.split("!")
-                                component.bonds += list(
-                                    filter(lambda x: len(x) > 0, splt)
-                                )
+                                component.bonds += list(filter(lambda x: len(x) > 0, splt))
                             elif "~" in comp:
                                 splt = comp.split("~")
                                 splt = list(filter(lambda x: len(x) > 0, splt))
@@ -307,9 +283,7 @@ class BNGPatternReader:
                                 pass
                         # self._label = None
                         molecule.components.append(component)
-                        self.logger.debug(
-                            f"split components: {split_components}", loc=log_loc
-                        )
+                        self.logger.debug(f"split components: {split_components}", loc=log_loc)
             self.logger.debug(
                 f"molecule parsed: {molecule}",
                 loc=log_loc,

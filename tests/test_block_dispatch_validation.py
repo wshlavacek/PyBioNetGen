@@ -97,9 +97,7 @@ def test_model_add_block_dispatches_supported_block(block_cls, attr_name):
         ("protocol", "protocol", ProtocolBlock),
     ],
 )
-def test_model_add_empty_block_dispatches_supported_name(
-    block_name, attr_name, block_cls
-):
+def test_model_add_empty_block_dispatches_supported_name(block_name, attr_name, block_cls):
     model = _make_model_bypass_init()
     delattr(model, attr_name)
 

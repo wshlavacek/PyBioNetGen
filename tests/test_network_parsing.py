@@ -49,6 +49,7 @@ def _make_network_bypass_init():
     net.groups = NetworkGroupBlock()
     return net
 
+
 NET_MINIMAL = """\
 # NET file
 begin parameters
@@ -78,6 +79,7 @@ class TestBNGNetworkParser:
         net_file = tmp_path / "test.net"
         net_file.write_text(NET_CONTENT)
         from bionetgen.network.networkparser import BNGNetworkParser
+
         parser = BNGNetworkParser(str(net_file))
         assert parser.network_name == "test"
         assert len(parser.network_lines) > 0
@@ -86,6 +88,7 @@ class TestBNGNetworkParser:
         net_file = tmp_path / "test.net"
         net_file.write_text(NET_CONTENT)
         from bionetgen.network.network import Network
+
         net = Network(str(net_file))
         # Should have parameters, species, reactions, groups
         assert hasattr(net, "parameters")
@@ -97,6 +100,7 @@ class TestBNGNetworkParser:
         net_file = tmp_path / "test.net"
         net_file.write_text(NET_CONTENT)
         from bionetgen.network.network import Network
+
         net = Network(str(net_file))
         assert "k1" in net.parameters
         assert "k2" in net.parameters
@@ -105,6 +109,7 @@ class TestBNGNetworkParser:
         net_file = tmp_path / "test.net"
         net_file.write_text(NET_CONTENT)
         from bionetgen.network.network import Network
+
         net = Network(str(net_file))
         assert len(net.species) > 0
 
@@ -112,6 +117,7 @@ class TestBNGNetworkParser:
         net_file = tmp_path / "test.net"
         net_file.write_text(NET_CONTENT)
         from bionetgen.network.network import Network
+
         net = Network(str(net_file))
         assert len(net.reactions) > 0
 
@@ -119,6 +125,7 @@ class TestBNGNetworkParser:
         net_file = tmp_path / "test.net"
         net_file.write_text(NET_CONTENT)
         from bionetgen.network.network import Network
+
         net = Network(str(net_file))
         assert "Atot" in net.groups
         assert "Btot" in net.groups
@@ -129,6 +136,7 @@ class TestNetwork:
         net_file = tmp_path / "test.net"
         net_file.write_text(NET_CONTENT)
         from bionetgen.network.network import Network
+
         net = Network(str(net_file))
         s = str(net)
         assert "begin parameters" in s
@@ -138,6 +146,7 @@ class TestNetwork:
         net_file = tmp_path / "test.net"
         net_file.write_text(NET_CONTENT)
         from bionetgen.network.network import Network
+
         net = Network(str(net_file))
         assert repr(net) == "test"
 
@@ -145,6 +154,7 @@ class TestNetwork:
         net_file = tmp_path / "test.net"
         net_file.write_text(NET_CONTENT)
         from bionetgen.network.network import Network
+
         net = Network(str(net_file))
         blocks = list(net)
         assert len(blocks) > 0
@@ -153,6 +163,7 @@ class TestNetwork:
         net_file = tmp_path / "test.net"
         net_file.write_text(NET_CONTENT)
         from bionetgen.network.network import Network
+
         net = Network(str(net_file))
         out_file = tmp_path / "output.net"
         net.write_model(str(out_file))
@@ -164,6 +175,7 @@ class TestNetwork:
         net_file = tmp_path / "test.net"
         net_file.write_text(NET_MINIMAL)
         from bionetgen.network.network import Network
+
         net = Network(str(net_file))
         # Parameters block already exists
         assert "parameters" in net.active_blocks
@@ -276,6 +288,7 @@ class TestNetwork:
         # Network with only parameters — need header line so line 0 isn't begin
         net_file.write_text("# header\nbegin parameters\n  1 k1 1.0\nend parameters\n")
         from bionetgen.network.network import Network
+
         net = Network(str(net_file))
         # Species/reactions/groups should exist as empty blocks
         assert hasattr(net, "species")
@@ -286,6 +299,7 @@ class TestNetwork:
         net_file = tmp_path / "test.net"
         net_file.write_text(NET_CONTENT)
         from bionetgen.network.network import Network
+
         net = Network(str(net_file))
         s1 = str(net)
         assert "begin parameters" in s1

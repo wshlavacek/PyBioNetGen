@@ -23,6 +23,7 @@ For every tier except 'broken' we emit a mirror symlink subtree
     parity_sweep.py --root <dest>/t1_5s --simulator bngsim ...
     parity_diff.py  <subprocess_out> <bngsim_out>
 """
+
 import argparse
 import json
 import os
@@ -32,20 +33,27 @@ from pathlib import Path
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--summary", required=True, action="append",
-                    help="screen _summary.json (n-seeds 1). Repeat for multiple "
-                         "stacks (e.g. subprocess + bngsim); each model is tiered "
-                         "on the SLOWER stack, and counted broken if EITHER stack "
-                         "crashed/errored (can't DIFF a model one side can't run).")
+    ap.add_argument(
+        "--summary",
+        required=True,
+        action="append",
+        help="screen _summary.json (n-seeds 1). Repeat for multiple "
+        "stacks (e.g. subprocess + bngsim); each model is tiered "
+        "on the SLOWER stack, and counted broken if EITHER stack "
+        "crashed/errored (can't DIFF a model one side can't run).",
+    )
     ap.add_argument("--manifest", required=True, help="candidate_corpus _manifest.json")
     ap.add_argument("--dest", required=True, help="output dir for tier symlink trees")
-    ap.add_argument("--ensemble-seeds", type=int, default=10,
-                    help="seeds the real DIFF will use for stochastic models")
+    ap.add_argument(
+        "--ensemble-seeds",
+        type=int,
+        default=10,
+        help="seeds the real DIFF will use for stochastic models",
+    )
     args = ap.parse_args()
 
     # manifest links are relative; parity_sweep emits absolute paths -> normalize
-    manifest = {os.path.abspath(m["link"]): m
-                for m in json.loads(Path(args.manifest).read_text())}
+    manifest = {os.path.abspath(m["link"]): m for m in json.loads(Path(args.manifest).read_text())}
 
     # collect per-link per-stack results across all summaries
     stacks = {}  # name -> {link: result}
@@ -81,17 +89,24 @@ def main():
             wall = max(r["wall_seconds"] for r in per_stack.values())
             projected = wall * args.ensemble_seeds if stochastic else wall
             if projected < 10:
-                tier = "fast"        # <10s  (regular validation set)
+                tier = "fast"  # <10s  (regular validation set)
             elif projected < 120:
-                tier = "slow"        # 10s-2min
+                tier = "slow"  # 10s-2min
             else:
-                tier = "glacial"     # >=2min or timed out
-        rows.append({
-            "link": link, "source": man.get("source", "?"),
-            "methods": man.get("methods", []), "features": man.get("features", []),
-            "stochastic": stochastic, "status": statuses,
-            "wall": wall, "projected": projected, "tier": tier,
-        })
+                tier = "glacial"  # >=2min or timed out
+        rows.append(
+            {
+                "link": link,
+                "source": man.get("source", "?"),
+                "methods": man.get("methods", []),
+                "features": man.get("features", []),
+                "stochastic": stochastic,
+                "status": statuses,
+                "wall": wall,
+                "projected": projected,
+                "tier": tier,
+            }
+        )
 
     dest = Path(args.dest)
     dest.mkdir(parents=True, exist_ok=True)
@@ -112,10 +127,10 @@ def main():
         if r["tier"] in ("broken", "fitting_template"):
             continue
         link = Path(r["link"])
-        rel = link.relative_to(src_root)        # <source>/<rel>
+        rel = link.relative_to(src_root)  # <source>/<rel>
         out = dest / r["tier"] / rel
         out.parent.mkdir(parents=True, exist_ok=True)
-        target = link.resolve()                 # point at the real model file
+        target = link.resolve()  # point at the real model file
         if out.is_symlink() or out.exists():
             out.unlink()
         out.symlink_to(target)
@@ -133,10 +148,9 @@ def main():
         bysrc = Counter(r["source"] for r in sub)
         print(f"{t:9s} {len(sub):6d}  {det:5d} {sto:5d}   {dict(bysrc)}")
     print(f"\ntier symlink trees: {dest}/<tier>/  (emitted {dict(emitted)})")
-    print(f"tier table: {dest/'_tiers.json'}")
+    print(f"tier table: {dest / '_tiers.json'}")
     # surface feature-bearing models — likeliest to exercise untested paths
-    feat = [r for r in rows if r["features"]
-            and r["tier"] not in ("broken", "fitting_template")]
+    feat = [r for r in rows if r["features"] and r["tier"] not in ("broken", "fitting_template")]
     if feat:
         print(f"\nfeature-bearing (non-broken): {len(feat)}")
         fc = Counter(f for r in feat for f in r["features"])

@@ -1,4 +1,5 @@
 """Tests for bionetgen/core/main.py — thin wrappers around tool classes."""
+
 from unittest import mock
 
 import pytest
@@ -9,6 +10,7 @@ from bionetgen.core.exc import BNGFileError, BNGModelError
 class TestRunCLI:
     def test_runs_bngcli(self):
         from bionetgen.core.main import runCLI
+
         app = mock.MagicMock()
         app.pargs.input = "test.bngl"
         app.pargs.output = "/tmp/out"
@@ -34,6 +36,7 @@ class TestRunCLI:
 class TestPlotDAT:
     def test_plot_gdat(self):
         from bionetgen.core.main import plotDAT
+
         app = mock.MagicMock()
         app.pargs.input = "test.gdat"
         app.pargs.output = "/tmp/out.png"
@@ -47,6 +50,7 @@ class TestPlotDAT:
 
     def test_plot_dot_output(self):
         from bionetgen.core.main import plotDAT
+
         app = mock.MagicMock()
         app.pargs.input = "/some/path/test.gdat"
         app.pargs.output = "."
@@ -61,6 +65,7 @@ class TestPlotDAT:
 
     def test_invalid_extension_raises(self):
         from bionetgen.core.main import plotDAT
+
         app = mock.MagicMock()
         app.pargs.input = "test.txt"
         with pytest.raises(BNGFileError, match=r"\.gdat, \.cdat, or \.scan"):
@@ -70,6 +75,7 @@ class TestPlotDAT:
 class TestPrintInfo:
     def test_runs_info(self):
         from bionetgen.core.main import printInfo
+
         app = mock.MagicMock()
         with mock.patch("bionetgen.core.main.BNGInfo") as MockInfo:
             mock_info = mock.MagicMock()
@@ -83,6 +89,7 @@ class TestPrintInfo:
 class TestVisualizeModel:
     def test_runs_visualize(self):
         from bionetgen.core.main import visualizeModel
+
         app = mock.MagicMock()
         app.pargs.input = "test.bngl"
         app.pargs.output = "/tmp/out"
@@ -99,6 +106,7 @@ class TestVisualizeModel:
 class TestGraphDiff:
     def test_runs_gdiff(self):
         from bionetgen.core.main import graphDiff
+
         app = mock.MagicMock()
         app.pargs.input = "g1.graphml"
         app.pargs.input2 = "g2.graphml"
@@ -117,23 +125,28 @@ class TestGraphDiff:
 class TestGenerateNotebook:
     def test_with_input(self):
         from bionetgen.core.main import generate_notebook
+
         app = mock.MagicMock()
         app.pargs.input = "model.bngl"
         app.pargs.output = ""
         app.pargs.open = False
-        app.config = {"bionetgen": {
-            "notebook": {
-                "path": "/tmp/nb.ipynb",
-                "template": "/tmp/nb_tmpl.ipynb",
-                "name": "bng_notebook.ipynb",
-            },
-            "stdout": "DEVNULL",
-            "stderr": "DEVNULL",
-        }}
+        app.config = {
+            "bionetgen": {
+                "notebook": {
+                    "path": "/tmp/nb.ipynb",
+                    "template": "/tmp/nb_tmpl.ipynb",
+                    "name": "bng_notebook.ipynb",
+                },
+                "stdout": "DEVNULL",
+                "stderr": "DEVNULL",
+            }
+        }
         # bionetgen is imported inside the function via `import bionetgen`
         mock_bng = mock.MagicMock()
-        with mock.patch("bionetgen.core.main.BNGNotebook") as MockNB, \
-             mock.patch.dict("sys.modules", {"bionetgen": mock_bng}):
+        with (
+            mock.patch("bionetgen.core.main.BNGNotebook") as MockNB,
+            mock.patch.dict("sys.modules", {"bionetgen": mock_bng}),
+        ):
             mock_nb = mock.MagicMock()
             MockNB.return_value = mock_nb
             generate_notebook(app)
@@ -142,19 +155,22 @@ class TestGenerateNotebook:
 
     def test_without_input(self):
         from bionetgen.core.main import generate_notebook
+
         app = mock.MagicMock()
         app.pargs.input = None
         app.pargs.output = ""
         app.pargs.open = False
-        app.config = {"bionetgen": {
-            "notebook": {
-                "path": "/tmp/nb.ipynb",
-                "template": "/tmp/nb_tmpl.ipynb",
-                "name": "bng_notebook.ipynb",
-            },
-            "stdout": "DEVNULL",
-            "stderr": "DEVNULL",
-        }}
+        app.config = {
+            "bionetgen": {
+                "notebook": {
+                    "path": "/tmp/nb.ipynb",
+                    "template": "/tmp/nb_tmpl.ipynb",
+                    "name": "bng_notebook.ipynb",
+                },
+                "stdout": "DEVNULL",
+                "stderr": "DEVNULL",
+            }
+        }
         with mock.patch("bionetgen.core.main.BNGNotebook") as MockNB:
             mock_nb = mock.MagicMock()
             MockNB.return_value = mock_nb
@@ -164,22 +180,27 @@ class TestGenerateNotebook:
 
     def test_with_dir_output_and_input(self, tmp_path):
         from bionetgen.core.main import generate_notebook
+
         app = mock.MagicMock()
         app.pargs.input = "mymodel.bngl"
         app.pargs.output = str(tmp_path)
         app.pargs.open = False
-        app.config = {"bionetgen": {
-            "notebook": {
-                "path": "/tmp/nb.ipynb",
-                "template": "/tmp/nb_tmpl.ipynb",
-                "name": "bng_notebook.ipynb",
-            },
-            "stdout": "DEVNULL",
-            "stderr": "DEVNULL",
-        }}
+        app.config = {
+            "bionetgen": {
+                "notebook": {
+                    "path": "/tmp/nb.ipynb",
+                    "template": "/tmp/nb_tmpl.ipynb",
+                    "name": "bng_notebook.ipynb",
+                },
+                "stdout": "DEVNULL",
+                "stderr": "DEVNULL",
+            }
+        }
         mock_bng = mock.MagicMock()
-        with mock.patch("bionetgen.core.main.BNGNotebook") as MockNB, \
-             mock.patch.dict("sys.modules", {"bionetgen": mock_bng}):
+        with (
+            mock.patch("bionetgen.core.main.BNGNotebook") as MockNB,
+            mock.patch.dict("sys.modules", {"bionetgen": mock_bng}),
+        ):
             mock_nb = mock.MagicMock()
             MockNB.return_value = mock_nb
             generate_notebook(app)
@@ -188,21 +209,26 @@ class TestGenerateNotebook:
 
     def test_with_open(self):
         from bionetgen.core.main import generate_notebook
+
         app = mock.MagicMock()
         app.pargs.input = None
         app.pargs.output = "nb.ipynb"
         app.pargs.open = True
-        app.config = {"bionetgen": {
-            "notebook": {
-                "path": "/tmp/nb.ipynb",
-                "template": "/tmp/nb_tmpl.ipynb",
-                "name": "bng_notebook.ipynb",
-            },
-            "stdout": "DEVNULL",
-            "stderr": "DEVNULL",
-        }}
-        with mock.patch("bionetgen.core.main.BNGNotebook") as MockNB, \
-             mock.patch("bionetgen.core.main.run_command") as mock_rc:
+        app.config = {
+            "bionetgen": {
+                "notebook": {
+                    "path": "/tmp/nb.ipynb",
+                    "template": "/tmp/nb_tmpl.ipynb",
+                    "name": "bng_notebook.ipynb",
+                },
+                "stdout": "DEVNULL",
+                "stderr": "DEVNULL",
+            }
+        }
+        with (
+            mock.patch("bionetgen.core.main.BNGNotebook") as MockNB,
+            mock.patch("bionetgen.core.main.run_command") as mock_rc,
+        ):
             mock_nb = mock.MagicMock()
             MockNB.return_value = mock_nb
             mock_rc.return_value = (0, None)
@@ -211,6 +237,7 @@ class TestGenerateNotebook:
 
     def test_bad_extension_raises(self):
         from bionetgen.core.main import generate_notebook
+
         app = mock.MagicMock()
         app.pargs.input = "model.txt"
         with pytest.raises(BNGFileError, match=r"\.bngl extension"):
@@ -218,19 +245,22 @@ class TestGenerateNotebook:
 
     def test_failed_load_raises(self):
         from bionetgen.core.main import generate_notebook
+
         app = mock.MagicMock()
         app.pargs.input = "model.bngl"
         app.pargs.output = ""
         app.pargs.open = False
-        app.config = {"bionetgen": {
-            "notebook": {
-                "path": "/tmp/nb.ipynb",
-                "template": "/tmp/nb_tmpl.ipynb",
-                "name": "bng_notebook.ipynb",
-            },
-            "stdout": "DEVNULL",
-            "stderr": "DEVNULL",
-        }}
+        app.config = {
+            "bionetgen": {
+                "notebook": {
+                    "path": "/tmp/nb.ipynb",
+                    "template": "/tmp/nb_tmpl.ipynb",
+                    "name": "bng_notebook.ipynb",
+                },
+                "stdout": "DEVNULL",
+                "stderr": "DEVNULL",
+            }
+        }
         mock_bng = mock.MagicMock()
         mock_bng.bngmodel.side_effect = Exception("fail")
         with mock.patch.dict("sys.modules", {"bionetgen": mock_bng}):

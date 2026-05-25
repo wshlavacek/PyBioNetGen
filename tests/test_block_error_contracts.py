@@ -31,9 +31,7 @@ def test_action_block_delitem_missing_raises_indexerror():
 def test_action_block_add_action_invalid_type_raises_parse_error():
     block = ActionBlock()
 
-    with pytest.raises(
-        BNGParseError, match="Action type not_a_real_action not recognized!"
-    ):
+    with pytest.raises(BNGParseError, match="Action type not_a_real_action not recognized!"):
         block.add_action("not_a_real_action", {})
 
     assert len(block.items) == 0

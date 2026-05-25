@@ -8,6 +8,7 @@ budget — all applied identically to both stacks:
   * _set_nscanpts / NSCANPTS_OVERRIDES — reduce parameter_scan point count.
   * ACTION_INJECT — append a run action to a model that ships without one.
 """
+
 from __future__ import annotations
 
 import importlib.util
@@ -51,23 +52,23 @@ class TestCapTend:
         # Long equilibration (25.2) gets capped; a 1.5 main run also exceeds a
         # cap of 1.0, so both land at the cap — but a phase below the cap would
         # be preserved (covered above). The key property is per-occurrence.
-        line = ("simulate({suffix=>\"equil\",t_end=>25.2013,n_steps=>1});"
-                "simulate({suffix=>\"main\",t_end=>1.5,n_steps=>12})")
+        line = (
+            'simulate({suffix=>"equil",t_end=>25.2013,n_steps=>1});'
+            'simulate({suffix=>"main",t_end=>1.5,n_steps=>12})'
+        )
         out = ps._cap_tend(line, 5)
-        assert "suffix=>\"equil\",t_end=>5,n_steps=>1" in out   # 25.2 -> 5
-        assert "suffix=>\"main\",t_end=>1.5,n_steps=>12" in out  # 1.5 < 5, kept
+        assert 'suffix=>"equil",t_end=>5,n_steps=>1' in out  # 25.2 -> 5
+        assert 'suffix=>"main",t_end=>1.5,n_steps=>12' in out  # 1.5 < 5, kept
 
 
 class TestPatchBnglCap:
     def test_seed_and_cap_together(self):
-        out = ps.patch_bngl('simulate({method=>"nf",t_end=>650})', seed=7,
-                            tend_override=100)
+        out = ps.patch_bngl('simulate({method=>"nf",t_end=>650})', seed=7, tend_override=100)
         assert "seed=>7," in out
         assert "t_end=>100" in out
 
     def test_comment_lines_untouched(self):
-        out = ps.patch_bngl('#simulate({method=>"nf",t_end=>650})\n', seed=1,
-                            tend_override=100)
+        out = ps.patch_bngl('#simulate({method=>"nf",t_end=>650})\n', seed=1, tend_override=100)
         assert out == '#simulate({method=>"nf",t_end=>650})\n'
 
     def test_tend_only_path_caps_without_seed(self):
@@ -77,7 +78,7 @@ class TestPatchBnglCap:
 
 class TestNScanPts:
     def test_override_reduces_points(self):
-        line = "parameter_scan({method=>\"nf\",n_scan_pts=>18,t_end=>10})"
+        line = 'parameter_scan({method=>"nf",n_scan_pts=>18,t_end=>10})'
         out = ps._set_nscanpts(line, 6)
         assert "n_scan_pts=>6" in out
 
@@ -86,8 +87,7 @@ class TestNScanPts:
         assert ps._set_nscanpts(line, None) == line
 
     def test_combined_with_cap_in_patch(self):
-        out = ps.patch_bngl_tend_only(
-            "parameter_scan({t_end=>10,n_scan_pts=>18})", 5, 6)
+        out = ps.patch_bngl_tend_only("parameter_scan({t_end=>10,n_scan_pts=>18})", 5, 6)
         assert "t_end=>5" in out and "n_scan_pts=>6" in out
 
 

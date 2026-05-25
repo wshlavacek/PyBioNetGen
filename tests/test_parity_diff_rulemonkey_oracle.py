@@ -1,12 +1,13 @@
 """Tests for the RuleMonkey-oracle revalidation path in parity_diff:
 
-  * stochastic_compare must not crash on a common file that has only a time
-    column (no observables) — e.g. the time-only .cdat a network-free model
-    writes. This surfaced when both compared sides are bngsim (NF vs RM), where
-    that .cdat becomes a *common* file. It should pass vacuously.
-  * the method nf->rm rewrite the revalidation applies.
-  * the SUBPROCESS_NF_RULEMONKEY registry contract.
+* stochastic_compare must not crash on a common file that has only a time
+  column (no observables) — e.g. the time-only .cdat a network-free model
+  writes. This surfaced when both compared sides are bngsim (NF vs RM), where
+  that .cdat becomes a *common* file. It should pass vacuously.
+* the method nf->rm rewrite the revalidation applies.
+* the SUBPROCESS_NF_RULEMONKEY registry contract.
 """
+
 from __future__ import annotations
 
 import importlib.util
@@ -48,8 +49,7 @@ class TestTimeOnlyFileGuard:
         for side, dirs in (("sub", sub_dirs), ("bng", bng_dirs)):
             for s in (1, 2):
                 d = tmp_path / side / f"seed{s}"
-                _write_gdat(d / "m.gdat", _HEADER_OBS,
-                            [[0.0, 10.0, 5.0], [1.0, 9.0, 6.0]])
+                _write_gdat(d / "m.gdat", _HEADER_OBS, [[0.0, 10.0, 5.0], [1.0, 9.0, 6.0]])
                 _write_gdat(d / "m.cdat", _HEADER_TIME_ONLY, [[0.0], [1.0]])
                 dirs.append(str(d))
         # Must not raise (previously crashed on the time-only .cdat) and the
@@ -75,17 +75,37 @@ class TestTimeOnlyFileGuard:
 
 class TestRuleMonkeyRewriteAndRegistry:
     def test_nf_to_rm_rewrite(self):
-        assert pd._NF_METHOD_RE.sub('method=>"rm"',
-                                    'simulate({method=>"nf",t_end=>10})') == \
-            'simulate({method=>"rm",t_end=>10})'
+        assert (
+            pd._NF_METHOD_RE.sub('method=>"rm"', 'simulate({method=>"nf",t_end=>10})')
+            == 'simulate({method=>"rm",t_end=>10})'
+        )
         # single-quoted nf is matched too (rewrite normalizes to double quotes)
-        assert pd._NF_METHOD_RE.subn('method=>"rm"',
-                                     "simulate({method=>'nf'})")[1] == 1
+        assert pd._NF_METHOD_RE.subn('method=>"rm"', "simulate({method=>'nf'})")[1] == 1
         # leaves non-nf methods alone
-        assert pd._NF_METHOD_RE.subn('method=>"rm"',
-                                     'simulate({method=>"ssa"})')[1] == 0
+        assert pd._NF_METHOD_RE.subn('method=>"rm"', 'simulate({method=>"ssa"})')[1] == 0
 
     def test_registry_contract(self):
         for stem, entry in pd.SUBPROCESS_NF_RULEMONKEY.items():
             assert isinstance(stem, str) and not stem.endswith(".bngl")  # stems
             assert "reason" in entry and "issue" in entry
+
+
+class TestKnownStochasticArtifacts:
+    def test_registry_contract(self):
+        for stem, entry in pd.KNOWN_STOCHASTIC_ARTIFACTS.items():
+            assert isinstance(stem, str) and not stem.endswith(".bngl")
+            assert "reason" in entry and "issue" in entry
+            af = entry["artifact_files"]
+            assert isinstance(af, set) and af
+            # artifact files name the model's own segments
+            assert all(f.startswith(stem) and f.endswith((".gdat", ".cdat")) for f in af), af
+
+    def test_segment_scoped_subset_logic(self):
+        # the reclassification rule: a failing-file set reclassifies iff it is a
+        # non-empty subset of the registered artifact files.
+        art = pd.KNOWN_STOCHASTIC_ARTIFACTS["Kholodenko2000"]["artifact_files"]
+        ssa_only = {"Kholodenko2000_ssa.gdat", "Kholodenko2000_ssa.cdat"}
+        with_ode = ssa_only | {"Kholodenko2000_ode.gdat"}
+        assert ssa_only and ssa_only <= art  # SSA-only -> KNOWN_ARTIFACT
+        assert not (with_ode <= art)  # ode regression -> stays DIFF
+        assert not (set() and set() <= art)  # no failures -> not artifact

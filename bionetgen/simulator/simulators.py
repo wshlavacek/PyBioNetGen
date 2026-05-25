@@ -8,8 +8,7 @@ from .librrsimulator import libRRSimulator
 
 def _raise_unsupported_simulator_type(sim_type) -> NoReturn:
     msg = (
-        f"Simulator type '{sim_type}' is not supported. "
-        "Supported simulator types are: libRR, cpy."
+        f"Simulator type '{sim_type}' is not supported. Supported simulator types are: libRR, cpy."
     )
     raise BNGSimError(msg)
 

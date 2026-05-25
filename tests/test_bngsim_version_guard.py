@@ -11,6 +11,7 @@ These tests exercise the module-load logic by reimporting the bridge
 with the bngsim module patched into something the version probe will
 interpret as "wrong version." We don't touch the real bngsim install.
 """
+
 import importlib
 import sys
 import types
@@ -112,23 +113,19 @@ class TestVersionGuardRouting:
 
     def test_auto_with_too_old_falls_back_silently(self, monkeypatch):
         b = _reload_bridge_with_fake_bngsim(monkeypatch, "0.3.0")
-        decision = b.classify_bngsim_route(
-            "model.bngl", "bngl", simulator="auto", bngl_actions=[]
-        )
+        decision = b.classify_bngsim_route("model.bngl", "bngl", simulator="auto", bngl_actions=[])
         assert decision.route == b.ROUTE_SUBPROCESS
 
     def test_auto_with_too_old_warns_only_once(self, monkeypatch, caplog):
         import logging
+
         b = _reload_bridge_with_fake_bngsim(monkeypatch, "0.3.0")
         # Reset the warned flag so this test sees a fresh warning slot.
         b._VERSION_FALLBACK_WARNED = False
         with caplog.at_level(logging.WARNING, logger="bionetgen.bngsim_bridge"):
-            b.classify_bngsim_route("a.bngl", "bngl", simulator="auto",
-                                    bngl_actions=[])
-            b.classify_bngsim_route("b.bngl", "bngl", simulator="auto",
-                                    bngl_actions=[])
-            b.classify_bngsim_route("c.bngl", "bngl", simulator="auto",
-                                    bngl_actions=[])
+            b.classify_bngsim_route("a.bngl", "bngl", simulator="auto", bngl_actions=[])
+            b.classify_bngsim_route("b.bngl", "bngl", simulator="auto", bngl_actions=[])
+            b.classify_bngsim_route("c.bngl", "bngl", simulator="auto", bngl_actions=[])
         warnings = [r for r in caplog.records if r.levelno >= logging.WARNING]
         assert len(warnings) == 1
         assert "0.3.0" in warnings[0].getMessage()
@@ -137,20 +134,18 @@ class TestVersionGuardRouting:
         """The 'not installed' path is the documented optional contract —
         users on subprocess-only installs should not see a noisy warning."""
         import logging
+
         b = _reload_bridge_without_bngsim(monkeypatch)
         b._VERSION_FALLBACK_WARNED = False
         with caplog.at_level(logging.WARNING, logger="bionetgen.bngsim_bridge"):
-            b.classify_bngsim_route("a.bngl", "bngl", simulator="auto",
-                                    bngl_actions=[])
+            b.classify_bngsim_route("a.bngl", "bngl", simulator="auto", bngl_actions=[])
         warnings = [r for r in caplog.records if r.levelno >= logging.WARNING]
         assert warnings == []
 
     def test_required_format_with_too_old_errors_with_reason(self, monkeypatch):
         b = _reload_bridge_with_fake_bngsim(monkeypatch, "0.3.0")
         # SBML requires bngsim — no subprocess fallback exists.
-        decision = b.classify_bngsim_route(
-            "m.xml", "sbml", simulator="auto", bngl_actions=[]
-        )
+        decision = b.classify_bngsim_route("m.xml", "sbml", simulator="auto", bngl_actions=[])
         assert decision.route == b.ROUTE_ERROR
         assert "0.3.0" in decision.reason
 

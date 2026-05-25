@@ -401,8 +401,12 @@ def _truncate_cdat_to_endpoints(cdat_path):
 
 
 def _write_bngsim_results(
-    result, output_dir, model_name,
-    print_functions=False, append=False, print_cdat=True,
+    result,
+    output_dir,
+    model_name,
+    print_functions=False,
+    append=False,
+    print_cdat=True,
 ):
     """Write BNGsim Result to .gdat and .cdat files.
 
@@ -446,7 +450,11 @@ def _write_bngsim_results(
 
     # Build the optional functions block once for both write/append paths
     obs_names = list(result.observable_names)
-    obs_array = np.asarray(result.observables) if result.n_observables > 0 else np.empty((result.n_times, 0))
+    obs_array = (
+        np.asarray(result.observables)
+        if result.n_observables > 0
+        else np.empty((result.n_times, 0))
+    )
 
     func_names = []
     func_array = np.empty((result.n_times, 0))
@@ -515,8 +523,7 @@ def _write_nf_final_state_species(session, output_dir, output_root):
         save(species_path)
     except Exception as exc:
         logger.warning(
-            "get_final_state: save_species failed (%s); final-state "
-            "writeback skipped.", exc
+            "get_final_state: save_species failed (%s); final-state writeback skipped.", exc
         )
 
 
@@ -542,26 +549,26 @@ def _collapse_nfsim_concentration_changes(
         for species_pattern, target_count in conc_overrides.items():
             mol_type = str(species_pattern).split("(", 1)[0]
             try:
-                collapsed_overrides[mol_type] = (
-                    collapsed_overrides.get(mol_type, 0) + int(target_count)
+                collapsed_overrides[mol_type] = collapsed_overrides.get(mol_type, 0) + int(
+                    target_count
                 )
             except Exception as e:
                 logger.warning(
                     "NFsim: conc override for %s failed: %s",
-                    species_pattern, e,
+                    species_pattern,
+                    e,
                 )
 
     if conc_deltas:
         for species_pattern, delta_count in conc_deltas.items():
             mol_type = str(species_pattern).split("(", 1)[0]
             try:
-                collapsed_deltas[mol_type] = (
-                    collapsed_deltas.get(mol_type, 0) + int(delta_count)
-                )
+                collapsed_deltas[mol_type] = collapsed_deltas.get(mol_type, 0) + int(delta_count)
             except Exception as e:
                 logger.warning(
                     "NFsim: conc delta for %s failed: %s",
-                    species_pattern, e,
+                    species_pattern,
+                    e,
                 )
 
     return collapsed_overrides, collapsed_deltas
@@ -591,7 +598,8 @@ def _apply_nfsim_concentration_changes(
                 except Exception as e:
                     logger.warning(
                         "NFsim: concentration replay for %s failed: %s",
-                        species_pattern, e,
+                        species_pattern,
+                        e,
                     )
 
         for species_pattern, delta in remaining_deltas.items():
@@ -605,7 +613,8 @@ def _apply_nfsim_concentration_changes(
             except Exception as e:
                 logger.warning(
                     "NFsim: concentration replay for %s failed: %s",
-                    species_pattern, e,
+                    species_pattern,
+                    e,
                 )
         return
 
@@ -623,14 +632,16 @@ def _apply_nfsim_concentration_changes(
                 nfsim.add_molecules(mol_type, to_add)
             elif to_add < 0:
                 logger.warning(
-                    "NFsim: cannot decrease %s from %d to %d; "
-                    "leaving count unchanged",
-                    mol_type, current, desired_count,
+                    "NFsim: cannot decrease %s from %d to %d; leaving count unchanged",
+                    mol_type,
+                    current,
+                    desired_count,
                 )
         except Exception as e:
             logger.warning(
                 "NFsim: concentration replay for %s failed: %s",
-                mol_type, e,
+                mol_type,
+                e,
             )
 
     for mol_type, delta in collapsed_deltas.items():
@@ -640,12 +651,14 @@ def _apply_nfsim_concentration_changes(
             elif delta < 0:
                 logger.warning(
                     "NFsim: cannot decrease %s by %d; leaving count unchanged",
-                    mol_type, -delta,
+                    mol_type,
+                    -delta,
                 )
         except Exception as e:
             logger.warning(
                 "NFsim: concentration replay for %s failed: %s",
-                mol_type, e,
+                mol_type,
+                e,
             )
 
 
@@ -665,14 +678,29 @@ def _load_direct_bngsim_model(input_path, fmt):
 # model-construction options; ``bngsim.Simulator.run`` takes per-run
 # integration options. Anything else (e.g. ``print_CDAT``, an output-format
 # flag BNG2.pl always emits) is not a BNGsim argument and is dropped here.
-_SIMULATOR_INIT_OPTIONS = frozenset({
-    "poplevel", "gml", "connectivity", "nfsim_v1143_compat",
-    "block_same_complex_binding", "traversal_limit", "jacobian",
-    "codegen", "net_path", "strict_ssa",
-})
-_SIMULATOR_RUN_OPTIONS = frozenset({
-    "seed", "rtol", "atol", "max_steps", "sample_times",
-})
+_SIMULATOR_INIT_OPTIONS = frozenset(
+    {
+        "poplevel",
+        "gml",
+        "connectivity",
+        "nfsim_v1143_compat",
+        "block_same_complex_binding",
+        "traversal_limit",
+        "jacobian",
+        "codegen",
+        "net_path",
+        "strict_ssa",
+    }
+)
+_SIMULATOR_RUN_OPTIONS = frozenset(
+    {
+        "seed",
+        "rtol",
+        "atol",
+        "max_steps",
+        "sample_times",
+    }
+)
 
 
 def _ss_truthy(value):
@@ -728,9 +756,7 @@ def _partition_simulator_options(sim_options):
             try:
                 run_kwargs["steady_state_tol"] = float(tol)
             except (TypeError, ValueError):
-                logger.warning(
-                    "Direct BNGsim job: ignoring non-numeric steady_state_tol=%r", tol
-                )
+                logger.warning("Direct BNGsim job: ignoring non-numeric steady_state_tol=%r", tol)
         if ss_method is not None:
             normalized = str(ss_method).strip().strip('"').strip("'").lower()
             if normalized in ("newton", "kinsol"):
@@ -760,9 +786,7 @@ def _run_rulemonkey_job(job, input_path, output_dir, sim_options, result_options
     ``RuleMonkeySession`` instead of ``NfsimSession``.
     """
     if not BNGSIM_HAS_RULEMONKEY:
-        raise BNGSimError(
-            "BNGsim RuleMonkey support is not available in this build."
-        )
+        raise BNGSimError("BNGsim RuleMonkey support is not available in this build.")
 
     seed = sim_options.pop("seed", None)
     if seed is None:
@@ -777,9 +801,7 @@ def _run_rulemonkey_job(job, input_path, output_dir, sim_options, result_options
     conc_deltas = sim_options.pop("conc_deltas", None)
     # NFsim CLI-only flags have no RuleMonkeySession analogue.
     if sim_options.pop("nf_params", None):
-        logger.debug(
-            "RuleMonkey job: 'nf_params' has no RuleMonkey analogue; ignored"
-        )
+        logger.debug("RuleMonkey job: 'nf_params' has no RuleMonkey analogue; ignored")
 
     with bngsim.RuleMonkeySession(input_path, molecule_limit=gml) as rm_session:
         if param_overrides:
@@ -787,9 +809,7 @@ def _run_rulemonkey_job(job, input_path, output_dir, sim_options, result_options
                 try:
                     rm_session.set_param(pname, float(pval))
                 except Exception as exc:
-                    logger.debug(
-                        "RuleMonkey: set_param(%s, %s) skipped: %s", pname, pval, exc
-                    )
+                    logger.debug("RuleMonkey: set_param(%s, %s) skipped: %s", pname, pval, exc)
         rm_session.initialize(seed)
         _apply_nfsim_concentration_changes(
             rm_session,
@@ -804,9 +824,7 @@ def _run_rulemonkey_job(job, input_path, output_dir, sim_options, result_options
         if job.get_final_state:
             _write_nf_final_state_species(rm_session, output_dir, job.output_root)
 
-    _write_bngsim_results(
-        result, output_dir, job.output_root, **result_options
-    )
+    _write_bngsim_results(result, output_dir, job.output_root, **result_options)
     return _make_bng_result(output_dir, method=job.method)
 
 
@@ -830,9 +848,7 @@ def execute_bngsim_direct_job(job):
 
     if job.input_format == FORMAT_BNG_XML:
         if job.method == "rm":
-            return _run_rulemonkey_job(
-                job, input_path, output_dir, sim_options, result_options
-            )
+            return _run_rulemonkey_job(job, input_path, output_dir, sim_options, result_options)
         if not _is_nf_method(job.method):
             raise BNGSimError(
                 f"BioNetGen XML files are for network-free simulation, "
@@ -874,7 +890,9 @@ def execute_bngsim_direct_job(job):
                 _write_nf_final_state_species(nfsim, output_dir, job.output_root)
 
         _write_bngsim_results(
-            result, output_dir, job.output_root,
+            result,
+            output_dir,
+            job.output_root,
             **result_options,
         )
         return _make_bng_result(output_dir, method=job.method)
@@ -1163,19 +1181,38 @@ _DIRECT_BNGSIM_FORMATS = {
 
 _BNGSIM_NETWORK_METHODS = frozenset({"ode", "ssa", "psa", "rm"})
 
-_BNGL_ROUTING_COMPLEX_ACTIONS = frozenset({
-    "parameter_scan", "bifurcate",
-    "setParameter", "setConcentration", "addConcentration",
-    "saveConcentrations", "resetConcentrations",
-    "saveParameters", "resetParameters",
-    "writeXML", "writeSBML", "writeModel", "writeNetwork", "writeFile",
-    "writeMfile", "writeCPYfile", "writeMexfile", "writeMDL",
-    "readFile", "visualize", "setModelName",
-})
+_BNGL_ROUTING_COMPLEX_ACTIONS = frozenset(
+    {
+        "parameter_scan",
+        "bifurcate",
+        "setParameter",
+        "setConcentration",
+        "addConcentration",
+        "saveConcentrations",
+        "resetConcentrations",
+        "saveParameters",
+        "resetParameters",
+        "writeXML",
+        "writeSBML",
+        "writeModel",
+        "writeNetwork",
+        "writeFile",
+        "writeMfile",
+        "writeCPYfile",
+        "writeMexfile",
+        "writeMDL",
+        "readFile",
+        "visualize",
+        "setModelName",
+    }
+)
 
-_BNGL_ROUTING_PASSTHROUGH_ACTIONS = frozenset({
-    "generate_network", "generate_hybrid_model",
-})
+_BNGL_ROUTING_PASSTHROUGH_ACTIONS = frozenset(
+    {
+        "generate_network",
+        "generate_hybrid_model",
+    }
+)
 
 
 def _method_supported_by_bngsim_for_routing(method, bngsim_has_nfsim=None):
@@ -1475,8 +1512,7 @@ def classify_bngsim_route(
 
     if simulator not in {"auto", "bngsim", "subprocess"}:
         raise ValueError(
-            f"Unknown simulator '{simulator}'. "
-            "Valid options: 'auto', 'bngsim', 'subprocess'."
+            f"Unknown simulator '{simulator}'. Valid options: 'auto', 'bngsim', 'subprocess'."
         )
 
     if simulator == "bngsim" and not bngsim_available:
@@ -1628,7 +1664,9 @@ def _try_prepare_codegen(net_path):
         logger.debug("Codegen compiled: %s", so_path)
         return so_path
     except Exception as e:
-        logger.warning("Codegen compilation failed (%s); falling back to interpreted ODE RHS (slower)", e)
+        logger.warning(
+            "Codegen compilation failed (%s); falling back to interpreted ODE RHS (slower)", e
+        )
         return ""
 
 
@@ -1660,7 +1698,7 @@ def _run_bngl_subprocess(
 
 
 _RM_QUOTED_RE = re.compile(r'(method\s*=>\s*)(["\'])rm\2', re.IGNORECASE)
-_RM_BARE_RE = re.compile(r'(method\s*=>\s*)rm(?=[\s,)}\]])', re.IGNORECASE)
+_RM_BARE_RE = re.compile(r"(method\s*=>\s*)rm(?=[\s,)}\]])", re.IGNORECASE)
 
 
 def _bngl_network_free_methods(actions_items):
@@ -1755,10 +1793,7 @@ def run_bngl_with_bngsim(
     Python. Unsupported BNGL requests keep the legacy subprocess route.
     """
     if not BNGSIM_AVAILABLE:
-        raise BNGSimError(
-            f"BNGsim is not usable: "
-            f"{BNGSIM_UNAVAILABLE_REASON or 'unknown reason'}."
-        )
+        raise BNGSimError(f"BNGsim is not usable: {BNGSIM_UNAVAILABLE_REASON or 'unknown reason'}.")
 
     output_dir = os.path.abspath(output_dir)
     os.makedirs(output_dir, exist_ok=True)
@@ -1806,7 +1841,8 @@ def run_bngl_with_bngsim(
     except OSError:
         _bngl_text = None
     scan_request = detect_inprocess_scan(
-        _load_bngl_actions_for_routing(bngl_path), bngl_text=_bngl_text,
+        _load_bngl_actions_for_routing(bngl_path),
+        bngl_text=_bngl_text,
     )
     if scan_request is not None:
         model_name = os.path.splitext(os.path.basename(bngl_path))[0]
@@ -1826,7 +1862,8 @@ def run_bngl_with_bngsim(
             logger.warning(
                 "%s in-process fast path failed (%s); falling back "
                 "to the BNG2.pl backend-hook route.",
-                scan_request.action, exc,
+                scan_request.action,
+                exc,
             )
 
     # ``rm`` (RuleMonkey) has no BNG2.pl method. Rewrite ``method=>"rm"`` to
@@ -1839,12 +1876,17 @@ def run_bngl_with_bngsim(
     if "rm" in nf_methods:
         if not BNGSIM_HAS_RULEMONKEY:
             logger.info(
-                "BNGL uses method=>\"rm\" but BNGsim RuleMonkey is unavailable; "
+                'BNGL uses method=>"rm" but BNGsim RuleMonkey is unavailable; '
                 "using subprocess route."
             )
             return _run_bngl_subprocess(
-                bngl_path, output_dir, bngpath,
-                suppress=suppress, log_file=log_file, timeout=timeout, app=app,
+                bngl_path,
+                output_dir,
+                bngpath,
+                suppress=suppress,
+                log_file=log_file,
+                timeout=timeout,
+                app=app,
             )
         if "nf" in nf_methods:
             logger.info(
@@ -1852,8 +1894,13 @@ def run_bngl_with_bngsim(
                 "override cannot disambiguate; using subprocess route."
             )
             return _run_bngl_subprocess(
-                bngl_path, output_dir, bngpath,
-                suppress=suppress, log_file=log_file, timeout=timeout, app=app,
+                bngl_path,
+                output_dir,
+                bngpath,
+                suppress=suppress,
+                log_file=log_file,
+                timeout=timeout,
+                app=app,
             )
         run_path, rm_temp_dir = _rewrite_rm_method_to_nf(bngl_path)
         backend_method = "rm"

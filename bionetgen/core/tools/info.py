@@ -42,9 +42,7 @@ class BNGInfo:
         self.logger.debug("BNG info", loc=f"{__file__} : BNGInfo.gatherInfo()")
         # Get BNG version
         with open(
-            os.path.join(
-                *[os.path.dirname(bionetgen.__file__), "assets", "BNGVERSION"]
-            ),
+            os.path.join(*[os.path.dirname(bionetgen.__file__), "assets", "BNGVERSION"]),
             "r",
         ) as f:
             read_data = f.read()
@@ -76,9 +74,7 @@ class BNGInfo:
         self.info["CLI version"] = read_data
 
         # Get pyBNG path
-        self.info["pyBNG path"] = (
-            os.path.dirname(bionetgen.__file__) + " (the PyBNG installation)"
-        )
+        self.info["pyBNG path"] = os.path.dirname(bionetgen.__file__) + " (the PyBNG installation)"
 
         self.logger.debug(
             "Info on installed python libraries",
@@ -105,14 +101,10 @@ class BNGInfo:
             BNGSIM_VERSION,
         )
 
-        self.info[
-            "\nThe following are optional high-performance simulation backends"
-        ] = ""
+        self.info["\nThe following are optional high-performance simulation backends"] = ""
         if BNGSIM_AVAILABLE:
             self.info["BNGsim version"] = f"{BNGSIM_VERSION} (installed)"
-            self.info["BNGsim NFsim support"] = (
-                "yes" if BNGSIM_HAS_NFSIM else "no"
-            )
+            self.info["BNGsim NFsim support"] = "yes" if BNGSIM_HAS_NFSIM else "no"
         else:
             self.info["BNGsim"] = "not installed (pip install bngsim)"
 
@@ -123,9 +115,7 @@ class BNGInfo:
         Takes the dictionary created by gatherInfo() and
         converts it to a string of text for printing.
         """
-        self.logger.debug(
-            "Generating message", loc=f"{__file__} : BNGInfo.messageGeneration()"
-        )
+        self.logger.debug("Generating message", loc=f"{__file__} : BNGInfo.messageGeneration()")
 
         self.message = " "
 

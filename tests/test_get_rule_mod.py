@@ -56,9 +56,7 @@ def test_get_rule_mod():
 
     xml_delete = {
         "@name": "test_rule",
-        "ListOfOperations": {
-            "Delete": [{"@DeleteMolecules": "1"}, {"@DeleteMolecules": "1"}]
-        },
+        "ListOfOperations": {"Delete": [{"@DeleteMolecules": "1"}, {"@DeleteMolecules": "1"}]},
     }
     mod2 = parser.get_rule_mod(xml_delete)
     assert mod2.type == "DeleteMolecules"

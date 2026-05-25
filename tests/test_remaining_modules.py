@@ -24,13 +24,16 @@ from bionetgen.core.exc import BNGError, BNGFileError
 # 1. sympy_odes.py — internal helpers and extract_odes_from_mexfile
 # ---------------------------------------------------------------------------
 
+
 class TestSympyOdes:
     """Test the sympy_odes module (internal helpers + full extract)."""
 
     def setup_method(self):
         import sympy as sp
+
         self.sp = sp
         from bionetgen.modelapi import sympy_odes as so
+
         self.so = so
 
     # -- helper: _normalize_expr --
@@ -119,9 +122,7 @@ class TestSympyOdes:
 
     # -- helper: _replace_indexed_symbols --
     def test_replace_indexed_symbols_species(self):
-        result = self.so._replace_indexed_symbols(
-            "NV_Ith_S(y, 0) + y[1]", ["A", "B"], ["k1"]
-        )
+        result = self.so._replace_indexed_symbols("NV_Ith_S(y, 0) + y[1]", ["A", "B"], ["k1"])
         assert "A" in result
         assert "B" in result
 
@@ -177,50 +178,62 @@ class TestSympyOdes:
     # -- helper: _replace_nv_ith_s --
     def test_replace_nv_ith_s_species(self):
         import sympy as sp
+
         result = self.so._replace_nv_ith_s(
-            "NV_Ith_S(species, 0)", ["A", "B"],
-            [sp.Symbol("e0")], [sp.Symbol("o0")], [sp.Symbol("r0")]
+            "NV_Ith_S(species, 0)",
+            ["A", "B"],
+            [sp.Symbol("e0")],
+            [sp.Symbol("o0")],
+            [sp.Symbol("r0")],
         )
         assert "A" in result
 
     def test_replace_nv_ith_s_expressions(self):
         import sympy as sp
+
         result = self.so._replace_nv_ith_s(
-            "NV_Ith_S(expressions, 0)", ["A"],
-            [sp.Symbol("e0")], [sp.Symbol("o0")], [sp.Symbol("r0")]
+            "NV_Ith_S(expressions, 0)",
+            ["A"],
+            [sp.Symbol("e0")],
+            [sp.Symbol("o0")],
+            [sp.Symbol("r0")],
         )
         assert "e0" in result
 
     def test_replace_nv_ith_s_observables(self):
         import sympy as sp
+
         result = self.so._replace_nv_ith_s(
-            "NV_Ith_S(observables, 0)", ["A"],
-            [sp.Symbol("e0")], [sp.Symbol("o0")], [sp.Symbol("r0")]
+            "NV_Ith_S(observables, 0)",
+            ["A"],
+            [sp.Symbol("e0")],
+            [sp.Symbol("o0")],
+            [sp.Symbol("r0")],
         )
         assert "o0" in result
 
     def test_replace_nv_ith_s_ratelaws(self):
         import sympy as sp
+
         result = self.so._replace_nv_ith_s(
-            "NV_Ith_S(ratelaws, 0)", ["A"],
-            [sp.Symbol("e0")], [sp.Symbol("o0")], [sp.Symbol("r0")]
+            "NV_Ith_S(ratelaws, 0)", ["A"], [sp.Symbol("e0")], [sp.Symbol("o0")], [sp.Symbol("r0")]
         )
         assert "r0" in result
 
     def test_replace_nv_ith_s_dspecies(self):
         import sympy as sp
+
         result = self.so._replace_nv_ith_s(
-            "NV_Ith_S(Dspecies, 0)", ["A"],
-            [sp.Symbol("e0")], [sp.Symbol("o0")], [sp.Symbol("r0")]
+            "NV_Ith_S(Dspecies, 0)", ["A"], [sp.Symbol("e0")], [sp.Symbol("o0")], [sp.Symbol("r0")]
         )
         assert "ds0" in result
 
     def test_replace_nv_ith_s_unknown(self):
         import sympy as sp
+
         original = "NV_Ith_S(unknown, 0)"
         result = self.so._replace_nv_ith_s(
-            original, ["A"],
-            [sp.Symbol("e0")], [sp.Symbol("o0")], [sp.Symbol("r0")]
+            original, ["A"], [sp.Symbol("e0")], [sp.Symbol("o0")], [sp.Symbol("r0")]
         )
         assert result == original
 
@@ -346,13 +359,20 @@ class TestSympyOdes:
         import sympy as sp
 
         from bionetgen.modelapi.sympy_odes import SympyOdes
+
         t = sp.Symbol("t")
         s = [sp.Symbol("s0")]
         p = [sp.Symbol("p0")]
         ode = [sp.Integer(0)]
-        obj = SympyOdes(t=t, species=s, params=p, odes=ode,
-                        species_names=["A"], param_names=["k1"],
-                        source_path="/tmp/test.c")
+        obj = SympyOdes(
+            t=t,
+            species=s,
+            params=p,
+            odes=ode,
+            species_names=["A"],
+            param_names=["k1"],
+            source_path="/tmp/test.c",
+        )
         assert obj.t == t
         assert obj.species == s
         assert obj.params == p
@@ -363,18 +383,26 @@ class TestSympyOdes:
         import sympy as sp
 
         from bionetgen.modelapi.sympy_odes import SympyOdes
+
         dummy_result = SympyOdes(
-            t=sp.Symbol("t"), species=[], params=[], odes=[],
-            species_names=[], param_names=[], source_path="/tmp/x.c"
+            t=sp.Symbol("t"),
+            species=[],
+            params=[],
+            odes=[],
+            species_names=[],
+            param_names=[],
+            source_path="/tmp/x.c",
         )
         mock_model = mock.MagicMock()
         mock_model.actions.items = []
         mock_model.actions.before_model = []
         # Patch bngmodel so isinstance check passes for our mock
-        with mock.patch("bionetgen.modelapi.model.bngmodel", new=type(mock_model)), \
-             mock.patch("bionetgen.modelapi.runner.run") as _mock_run, \
-             mock.patch.object(self.so, '_find_mex_c_file', return_value="/tmp/x.c"), \
-             mock.patch.object(self.so, 'extract_odes_from_mexfile', return_value=dummy_result):
+        with (
+            mock.patch("bionetgen.modelapi.model.bngmodel", new=type(mock_model)),
+            mock.patch("bionetgen.modelapi.runner.run") as _mock_run,
+            mock.patch.object(self.so, "_find_mex_c_file", return_value="/tmp/x.c"),
+            mock.patch.object(self.so, "extract_odes_from_mexfile", return_value=dummy_result),
+        ):
             result = self.so.export_sympy_odes(mock_model, out_dir="/tmp/test_out", keep_files=True)
             assert result == dummy_result
 
@@ -383,11 +411,13 @@ class TestSympyOdes:
 # 2. pattern_reader.py — BNGPatternReader
 # ---------------------------------------------------------------------------
 
+
 class TestPatternReader:
     """Test the pattern_reader module."""
 
     def test_simple_molecule(self):
         from bionetgen.modelapi.pattern_reader import BNGPatternReader
+
         reader = BNGPatternReader("A(b)")
         assert reader.pattern is not None
         assert len(reader.pattern.molecules) == 1
@@ -396,6 +426,7 @@ class TestPatternReader:
 
     def test_molecule_with_state(self):
         from bionetgen.modelapi.pattern_reader import BNGPatternReader
+
         reader = BNGPatternReader("A(b~0)")
         mol = reader.pattern.molecules[0]
         assert len(mol.components) == 1
@@ -405,6 +436,7 @@ class TestPatternReader:
 
     def test_molecule_with_bond(self):
         from bionetgen.modelapi.pattern_reader import BNGPatternReader
+
         reader = BNGPatternReader("A(b!1)")
         mol = reader.pattern.molecules[0]
         comp = mol.components[0]
@@ -412,6 +444,7 @@ class TestPatternReader:
 
     def test_two_molecules_with_bond(self):
         from bionetgen.modelapi.pattern_reader import BNGPatternReader
+
         reader = BNGPatternReader("A(b!1).B(a!1)")
         assert len(reader.pattern.molecules) == 2
         mol_names = [m.name for m in reader.pattern.molecules]
@@ -420,6 +453,7 @@ class TestPatternReader:
 
     def test_molecule_with_state_and_bond(self):
         from bionetgen.modelapi.pattern_reader import BNGPatternReader
+
         reader = BNGPatternReader("A(b~1!1)")
         mol = reader.pattern.molecules[0]
         comp = mol.components[0]
@@ -428,18 +462,21 @@ class TestPatternReader:
 
     def test_multiple_components(self):
         from bionetgen.modelapi.pattern_reader import BNGPatternReader
+
         reader = BNGPatternReader("A(b,c)")
         mol = reader.pattern.molecules[0]
         assert len(mol.components) == 2
 
     def test_zero_molecule(self):
         from bionetgen.modelapi.pattern_reader import BNGPatternReader
+
         reader = BNGPatternReader("0")
         assert reader.pattern is not None
         assert len(reader.pattern.molecules) == 1
 
     def test_wildcard_bond(self):
         from bionetgen.modelapi.pattern_reader import BNGPatternReader
+
         reader = BNGPatternReader("A(b!+)")
         mol = reader.pattern.molecules[0]
         comp = mol.components[0]
@@ -447,6 +484,7 @@ class TestPatternReader:
 
     def test_wildcard_state(self):
         from bionetgen.modelapi.pattern_reader import BNGPatternReader
+
         reader = BNGPatternReader("A(b~?)")
         mol = reader.pattern.molecules[0]
         comp = mol.components[0]
@@ -455,21 +493,25 @@ class TestPatternReader:
 
     def test_parsers_object(self):
         from bionetgen.modelapi.pattern_reader import BNGParsers
+
         p = BNGParsers()
         assert p is not None
 
     def test_fixed_pattern(self):
         from bionetgen.modelapi.pattern_reader import BNGPatternReader
+
         reader = BNGPatternReader("$A(b)")
         assert reader.pattern.fixed is True
 
     def test_compartment_pattern(self):
         from bionetgen.modelapi.pattern_reader import BNGPatternReader
+
         reader = BNGPatternReader("@EC:A(b)")
         assert reader.pattern.compartment == "EC"
 
     def test_three_molecules(self):
         from bionetgen.modelapi.pattern_reader import BNGPatternReader
+
         reader = BNGPatternReader("A(b!1).B(a!1,c!2).C(b!2)")
         assert len(reader.pattern.molecules) == 3
 
@@ -480,34 +522,34 @@ class TestPatternReader:
 
 # Fixture: a minimal .net file
 # Leading blank line is needed because networkparser checks pblock[0] > 0
-NET_FILE_CONTENT = "\n".join([
-    "",
-    "begin parameters",
-    "  1 k1 0.1",
-    "  2 k2 0.01",
-    "end parameters",
-    "begin species",
-    "  1 A(b) 100",
-    "  2 B(a) 200",
-    "end species",
-    "begin reactions",
-    "  1 1,2 3 k1 #Rule1",
-    "end reactions",
-    "begin groups",
-    "  1 Atot 1",
-    "  2 Btot 2",
-    "end groups",
-    "",
-])
+NET_FILE_CONTENT = "\n".join(
+    [
+        "",
+        "begin parameters",
+        "  1 k1 0.1",
+        "  2 k2 0.01",
+        "end parameters",
+        "begin species",
+        "  1 A(b) 100",
+        "  2 B(a) 200",
+        "end species",
+        "begin reactions",
+        "  1 1,2 3 k1 #Rule1",
+        "end reactions",
+        "begin groups",
+        "  1 Atot 1",
+        "  2 Btot 2",
+        "end groups",
+        "",
+    ]
+)
 
 
 class TestNetworkParserAndNetwork:
     """Test networkparser.py and network.py by creating a temp .net file."""
 
     def _write_net_file(self, content=NET_FILE_CONTENT):
-        f = tempfile.NamedTemporaryFile(
-            suffix=".net", mode="w", delete=False
-        )
+        f = tempfile.NamedTemporaryFile(suffix=".net", mode="w", delete=False)
         f.write(content)
         f.flush()
         f.close()
@@ -517,6 +559,7 @@ class TestNetworkParserAndNetwork:
         path = self._write_net_file()
         try:
             from bionetgen.network.network import Network
+
             net = Network(path)
             assert net.network_name is not None
             assert "parameters" in net.active_blocks
@@ -530,6 +573,7 @@ class TestNetworkParserAndNetwork:
         path = self._write_net_file()
         try:
             from bionetgen.network.network import Network
+
             net = Network(path)
             s = str(net)
             assert "parameters" in s or "species" in s or len(s) > 0
@@ -540,6 +584,7 @@ class TestNetworkParserAndNetwork:
         path = self._write_net_file()
         try:
             from bionetgen.network.network import Network
+
             net = Network(path)
             assert repr(net) == net.network_name
         finally:
@@ -549,6 +594,7 @@ class TestNetworkParserAndNetwork:
         path = self._write_net_file()
         try:
             from bionetgen.network.network import Network
+
             net = Network(path)
             blocks = list(iter(net))
             assert len(blocks) > 0
@@ -559,6 +605,7 @@ class TestNetworkParserAndNetwork:
         path = self._write_net_file()
         try:
             from bionetgen.network.network import Network
+
             net = Network(path)
             out_path = path + ".out"
             net.write_model(out_path)
@@ -580,6 +627,7 @@ end parameters
         path = self._write_net_file(content)
         try:
             from bionetgen.network.network import Network
+
             net = Network(path)
             assert hasattr(net, "species")
             assert hasattr(net, "reactions")
@@ -591,6 +639,7 @@ end parameters
         path = self._write_net_file()
         try:
             from bionetgen.network.networkparser import BNGNetworkParser
+
             parser = BNGNetworkParser(path)
             assert parser.network_name is not None
             assert len(parser.network_lines) > 0
@@ -602,6 +651,7 @@ end parameters
         path = self._write_net_file("")
         try:
             from bionetgen.network.network import Network
+
             net = Network(path)
             captured = capsys.readouterr()
             assert "WARNING" in captured.out or len(net.active_blocks) == 0
@@ -613,6 +663,7 @@ end parameters
         path = self._write_net_file(content)
         try:
             from bionetgen.network.network import Network
+
             net = Network(path)
             assert "parameters" in net.active_blocks
         finally:
@@ -623,11 +674,13 @@ end parameters
 # 4. visualize.py — VisResult and BNGVisualize
 # ---------------------------------------------------------------------------
 
+
 class TestVisualize:
     """Test the visualize module via mocking."""
 
     def test_bng_visualize_init_defaults(self):
         from bionetgen.core.tools.visualize import BNGVisualize
+
         viz = BNGVisualize("model.bngl")
         assert viz.input == "model.bngl"
         assert viz.vtype == "contactmap"
@@ -635,41 +688,49 @@ class TestVisualize:
 
     def test_bng_visualize_init_custom_type(self):
         from bionetgen.core.tools.visualize import BNGVisualize
+
         viz = BNGVisualize("model.bngl", vtype="regulatory")
         assert viz.vtype == "regulatory"
 
     def test_bng_visualize_init_all_types(self):
         from bionetgen.core.tools.visualize import BNGVisualize
+
         viz = BNGVisualize("model.bngl", vtype="all")
         assert viz.vtype == "all"
 
     def test_bng_visualize_init_atom_rule(self):
         from bionetgen.core.tools.visualize import BNGVisualize
+
         viz = BNGVisualize("model.bngl", vtype="atom_rule")
         assert viz.vtype == "atom_rule"
 
     def test_bng_visualize_invalid_type(self):
         from bionetgen.core.tools.visualize import BNGVisualize
+
         with pytest.raises(ValueError, match="not a valid visualization type"):
             BNGVisualize("model.bngl", vtype="invalid_type")
 
     def test_bng_visualize_empty_type_defaults(self):
         from bionetgen.core.tools.visualize import BNGVisualize
+
         viz = BNGVisualize("model.bngl", vtype="")
         assert viz.vtype == "contactmap"
 
     def test_bng_visualize_with_output(self):
         from bionetgen.core.tools.visualize import BNGVisualize
+
         viz = BNGVisualize("model.bngl", output="/tmp/out", vtype="contactmap")
         assert viz.output == "/tmp/out"
 
     def test_bng_visualize_with_bngpath(self):
         from bionetgen.core.tools.visualize import BNGVisualize
+
         viz = BNGVisualize("model.bngl", bngpath="/usr/local/bin/BNG2.pl")
         assert viz.bngpath == "/usr/local/bin/BNG2.pl"
 
     def test_vis_result_init(self):
         from bionetgen.core.tools.visualize import VisResult
+
         with tempfile.TemporaryDirectory() as td:
             vr = VisResult(td, name="test_model", vtype="contactmap")
             assert vr.input_folder == td
@@ -680,6 +741,7 @@ class TestVisualize:
 
     def test_vis_result_load_graphml(self):
         from bionetgen.core.tools.visualize import VisResult
+
         with tempfile.TemporaryDirectory() as td:
             gml_path = os.path.join(td, "test_model_contact.graphml")
             with open(gml_path, "w") as f:
@@ -696,6 +758,7 @@ class TestVisualize:
 
     def test_vis_result_dump_files(self):
         from bionetgen.core.tools.visualize import VisResult
+
         with tempfile.TemporaryDirectory() as td:
             gml_path = os.path.join(td, "model.graphml")
             with open(gml_path, "w") as f:
@@ -717,6 +780,7 @@ class TestVisualize:
 # 5. plot.py — BNGPlotter
 # ---------------------------------------------------------------------------
 
+
 class TestPlot:
     """Test the plot module via mocking."""
 
@@ -726,6 +790,7 @@ class TestPlot:
             mock_result.file_extension = ".gdat"
             MockResult.return_value = mock_result
             from bionetgen.core.tools.plot import BNGPlotter
+
             plotter = BNGPlotter("test.gdat", "test.png", legend=True)
             assert plotter.inp == "test.gdat"
             assert plotter.out == "test.png"
@@ -738,6 +803,7 @@ class TestPlot:
             mock_result.file_name = "test"
             MockResult.return_value = mock_result
             from bionetgen.core.tools.plot import BNGPlotter
+
             plotter = BNGPlotter("test.gdat", "test.png")
             with mock.patch.object(plotter, "_datplot") as mock_datplot:
                 plotter.plot()
@@ -749,6 +815,7 @@ class TestPlot:
             mock_result.file_extension = ".cdat"
             MockResult.return_value = mock_result
             from bionetgen.core.tools.plot import BNGPlotter
+
             plotter = BNGPlotter("test.cdat", "test.png")
             with mock.patch.object(plotter, "_datplot") as mock_datplot:
                 plotter.plot()
@@ -760,6 +827,7 @@ class TestPlot:
             mock_result.file_extension = ".scan"
             MockResult.return_value = mock_result
             from bionetgen.core.tools.plot import BNGPlotter
+
             plotter = BNGPlotter("test.scan", "test.png")
             with mock.patch.object(plotter, "_datplot") as mock_datplot:
                 plotter.plot()
@@ -771,6 +839,7 @@ class TestPlot:
             mock_result.file_extension = ".xyz"
             MockResult.return_value = mock_result
             from bionetgen.core.tools.plot import BNGPlotter
+
             plotter = BNGPlotter("test.xyz", "test.png")
             with pytest.raises(NotImplementedError):
                 plotter.plot()
@@ -780,11 +849,13 @@ class TestPlot:
 # 6. core/main.py — thin wrappers
 # ---------------------------------------------------------------------------
 
+
 class TestCoreMain:
     """Test the core/main.py convenience functions."""
 
     def test_runCLI(self):
         from bionetgen.core.main import runCLI
+
         mock_app = mock.MagicMock()
         mock_app.pargs.traceback_depth = 0
         mock_app.pargs.input = "model.bngl"
@@ -801,6 +872,7 @@ class TestCoreMain:
 
     def test_plotDAT(self):
         from bionetgen.core.main import plotDAT
+
         mock_app = mock.MagicMock()
         mock_app.pargs.input = "model.gdat"
         mock_app.pargs.output = "/tmp/out.png"
@@ -820,6 +892,7 @@ class TestCoreMain:
 
     def test_plotDAT_dot_output(self):
         from bionetgen.core.main import plotDAT
+
         mock_app = mock.MagicMock()
         mock_app.pargs.input = "/path/to/model.gdat"
         mock_app.pargs.output = "."
@@ -838,6 +911,7 @@ class TestCoreMain:
 
     def test_plotDAT_invalid_extension_raises(self):
         from bionetgen.core.main import plotDAT
+
         mock_app = mock.MagicMock()
         mock_app.pargs.input = "model.xyz"
         with pytest.raises(BNGFileError, match=r"\.gdat, \.cdat, or \.scan"):
@@ -845,6 +919,7 @@ class TestCoreMain:
 
     def test_printInfo(self):
         from bionetgen.core.main import printInfo
+
         mock_app = mock.MagicMock()
         with mock.patch("bionetgen.core.main.BNGInfo") as MockInfo:
             mock_info = mock.MagicMock()
@@ -857,6 +932,7 @@ class TestCoreMain:
 
     def test_visualizeModel(self):
         from bionetgen.core.main import visualizeModel
+
         mock_app = mock.MagicMock()
         mock_app.pargs.input = "model.bngl"
         mock_app.pargs.output = None
@@ -871,6 +947,7 @@ class TestCoreMain:
 
     def test_graphDiff(self):
         from bionetgen.core.main import graphDiff
+
         mock_app = mock.MagicMock()
         mock_app.pargs.input = "g1.graphml"
         mock_app.pargs.input2 = "g2.graphml"
@@ -887,19 +964,22 @@ class TestCoreMain:
 
     def test_generate_notebook_no_input(self):
         from bionetgen.core.main import generate_notebook
+
         mock_app = mock.MagicMock()
         mock_app.pargs.input = None
         mock_app.pargs.output = ""
         mock_app.pargs.open = False
-        mock_app.config = {"bionetgen": {
-            "notebook": {
-                "path": "/tmp/nb.ipynb",
-                "template": "/tmp/nb_tmpl.ipynb",
-                "name": "bng_notebook.ipynb",
-            },
-            "stdout": "DEVNULL",
-            "stderr": "DEVNULL",
-        }}
+        mock_app.config = {
+            "bionetgen": {
+                "notebook": {
+                    "path": "/tmp/nb.ipynb",
+                    "template": "/tmp/nb_tmpl.ipynb",
+                    "name": "bng_notebook.ipynb",
+                },
+                "stdout": "DEVNULL",
+                "stderr": "DEVNULL",
+            }
+        }
         with mock.patch("bionetgen.core.main.BNGNotebook") as MockNB:
             mock_nb = mock.MagicMock()
             MockNB.return_value = mock_nb
@@ -909,22 +989,27 @@ class TestCoreMain:
 
     def test_generate_notebook_with_input(self):
         from bionetgen.core.main import generate_notebook
+
         mock_app = mock.MagicMock()
         mock_app.pargs.input = "model.bngl"
         mock_app.pargs.output = ""
         mock_app.pargs.open = False
-        mock_app.config = {"bionetgen": {
-            "notebook": {
-                "path": "/tmp/nb.ipynb",
-                "template": "/tmp/nb_tmpl.ipynb",
-                "name": "bng_notebook.ipynb",
-            },
-            "stdout": "DEVNULL",
-            "stderr": "DEVNULL",
-        }}
+        mock_app.config = {
+            "bionetgen": {
+                "notebook": {
+                    "path": "/tmp/nb.ipynb",
+                    "template": "/tmp/nb_tmpl.ipynb",
+                    "name": "bng_notebook.ipynb",
+                },
+                "stdout": "DEVNULL",
+                "stderr": "DEVNULL",
+            }
+        }
         # bionetgen is imported locally inside generate_notebook; patch the bngmodel it uses
-        with mock.patch("bionetgen.core.main.BNGNotebook") as MockNB, \
-             mock.patch("bionetgen.bngmodel") as _mock_bngmodel:
+        with (
+            mock.patch("bionetgen.core.main.BNGNotebook") as MockNB,
+            mock.patch("bionetgen.bngmodel") as _mock_bngmodel,
+        ):
             mock_nb = mock.MagicMock()
             MockNB.return_value = mock_nb
             generate_notebook(mock_app)
@@ -936,11 +1021,13 @@ class TestCoreMain:
 # 7. main.py — CLI entry point
 # ---------------------------------------------------------------------------
 
+
 class TestMainCLI:
     """Test the main.py CLI module."""
 
     def test_bionetgen_app_creation(self):
         from bionetgen.main import BioNetGen
+
         app = BioNetGen()
         app.setup()
         assert app._meta.label == "bionetgen"
@@ -950,6 +1037,7 @@ class TestMainCLI:
 
     def test_bionetgen_test_app(self):
         from bionetgen.main import BioNetGenTest
+
         with BioNetGenTest() as app:
             app.run()
             assert app._meta.label == "bionetgen"
@@ -958,6 +1046,7 @@ class TestMainCLI:
         import argparse
 
         from bionetgen.main import requireAction
+
         parser = argparse.ArgumentParser()
         parser.add_argument("--require", action=requireAction, type=str, default=None)
         args = parser.parse_args([])
@@ -966,11 +1055,13 @@ class TestMainCLI:
     def test_require_action_nargs_raises(self):
 
         from bionetgen.main import requireAction
+
         with pytest.raises(ValueError, match="nargs not allowed"):
             requireAction(["--test"], "test", nargs="+")
 
     def test_bngbase_meta(self):
         from bionetgen.main import BNGBase
+
         assert BNGBase.Meta.label == "bionetgen"
 
     def test_main_function_logs_bng_error(self):
@@ -1008,11 +1099,13 @@ class TestMainCLI:
 # 8. csimulator.py — CSimWrapper and CSimulator (mocked)
 # ---------------------------------------------------------------------------
 
+
 class TestCSimulator:
     """Test the csimulator module via mocking."""
 
     def test_result_struct_fields(self):
         from bionetgen.simulator.csimulator import RESULT
+
         field_names = [f[0] for f in RESULT._fields_]
         assert "status" in field_names
         assert "n_observables" in field_names
@@ -1026,6 +1119,7 @@ class TestCSimulator:
         mock_lib = mock.MagicMock()
         with mock.patch("ctypes.CDLL", return_value=mock_lib):
             from bionetgen.simulator.csimulator import CSimWrapper
+
             wrapper = CSimWrapper("/fake/lib.so", num_params=3, num_spec_init=2)
             assert wrapper.num_params == 3
             assert wrapper.num_spec_init == 2
@@ -1035,6 +1129,7 @@ class TestCSimulator:
         mock_lib = mock.MagicMock()
         with mock.patch("ctypes.CDLL", return_value=mock_lib):
             from bionetgen.simulator.csimulator import CSimWrapper
+
             wrapper = CSimWrapper("/fake/lib.so", num_params=2, num_spec_init=3)
             wrapper.set_species_init([1.0, 2.0, 3.0])
             np.testing.assert_array_equal(wrapper.species_init, [1.0, 2.0, 3.0])
@@ -1043,6 +1138,7 @@ class TestCSimulator:
         mock_lib = mock.MagicMock()
         with mock.patch("ctypes.CDLL", return_value=mock_lib):
             from bionetgen.simulator.csimulator import CSimWrapper
+
             wrapper = CSimWrapper("/fake/lib.so", num_params=2, num_spec_init=3)
             with pytest.raises(ValueError, match="Expected 3 initial species values"):
                 wrapper.set_species_init([1.0, 2.0])
@@ -1051,6 +1147,7 @@ class TestCSimulator:
         mock_lib = mock.MagicMock()
         with mock.patch("ctypes.CDLL", return_value=mock_lib):
             from bionetgen.simulator.csimulator import CSimWrapper
+
             wrapper = CSimWrapper("/fake/lib.so", num_params=2, num_spec_init=3)
             wrapper.set_parameters([0.1, 0.2])
             np.testing.assert_array_equal(wrapper.parameters, [0.1, 0.2])
@@ -1059,6 +1156,7 @@ class TestCSimulator:
         mock_lib = mock.MagicMock()
         with mock.patch("ctypes.CDLL", return_value=mock_lib):
             from bionetgen.simulator.csimulator import CSimWrapper
+
             wrapper = CSimWrapper("/fake/lib.so", num_params=2, num_spec_init=3)
             with pytest.raises(ValueError, match="Expected 2 parameter values"):
                 wrapper.set_parameters([0.1])
@@ -1068,6 +1166,7 @@ class TestCSimulator:
         # CSimulator.__init__ does a lot (compiles, etc.), so we test
         # the methods by constructing a partial object
         from bionetgen.simulator.csimulator import CSimulator
+
         obj = CSimulator.__new__(CSimulator)
         obj.model = mock.MagicMock()
         obj.model.parameters = {"k1": mock.MagicMock(expr="0.1")}
@@ -1090,17 +1189,14 @@ class TestCSimulator:
         def fake_compile(self):
             self.lib_file = "/tmp/fake/libcsim.so"
 
-        with mock.patch.object(
-            csim_module, "get_conf", return_value=fake_conf
-        ), mock.patch.object(csim_module, "logger") as mock_logger, mock.patch.object(
-            csim_module.bionetgen, "bngmodel", return_value=fake_model
-        ), mock.patch.object(
-            csim_module, "_new_ccompiler", return_value=fake_compiler
-        ), mock.patch.object(
-            csim_module.CSimulator, "compile_shared_lib", fake_compile
-        ), mock.patch.object(
-            csim_module, "CSimWrapper"
-        ) as mock_wrapper:
+        with (
+            mock.patch.object(csim_module, "get_conf", return_value=fake_conf),
+            mock.patch.object(csim_module, "logger") as mock_logger,
+            mock.patch.object(csim_module.bionetgen, "bngmodel", return_value=fake_model),
+            mock.patch.object(csim_module, "_new_ccompiler", return_value=fake_compiler),
+            mock.patch.object(csim_module.CSimulator, "compile_shared_lib", fake_compile),
+            mock.patch.object(csim_module, "CSimWrapper") as mock_wrapper,
+        ):
             csim_module.CSimulator("/fake/model.bngl")
 
         mock_logger.warning.assert_called_once()
@@ -1131,9 +1227,10 @@ class TestCSimulator:
         fake_conf = mock.MagicMock()
         fake_conf.get = mock_conf_get
 
-        with mock.patch.object(
-            csim_module, "get_conf", return_value=fake_conf
-        ), mock.patch.object(csim_module, "logger") as mock_logger:
+        with (
+            mock.patch.object(csim_module, "get_conf", return_value=fake_conf),
+            mock.patch.object(csim_module, "logger") as mock_logger,
+        ):
             with pytest.raises(
                 BNGFormatError,
                 match="CSimulator model input must be a BNGL path or bngmodel instance",
@@ -1158,9 +1255,10 @@ class TestCSimulator:
         sim.model.parameters = {"k1": mock.MagicMock(expr="0.1")}
         sim.model.species = {"A": mock.MagicMock(count="1")}
 
-        with mock.patch.object(
-            csim_module, "CSimWrapper", side_effect=OSError("boom")
-        ), mock.patch.object(csim_module, "logger") as mock_logger:
+        with (
+            mock.patch.object(csim_module, "CSimWrapper", side_effect=OSError("boom")),
+            mock.patch.object(csim_module, "logger") as mock_logger,
+        ):
             with pytest.raises(BNGCompileError):
                 sim.simulator = "/fake/lib.so"
 

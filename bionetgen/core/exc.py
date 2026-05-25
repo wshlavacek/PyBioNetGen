@@ -2,7 +2,6 @@ class BNGError(Exception):
     """Base class for all PyBNG exceptions."""
 
 
-
 class BNGVersionError(BNGError):
     """Error related to mismatching required PyBNG."""
 
@@ -26,9 +25,7 @@ class BNGPerlError(BNGError):
 class BNGParseError(BNGError):
     """Error related to parsing a BNGL file."""
 
-    def __init__(
-        self, bngl_path=None, message="There was an issue with parsing your BNGL file"
-    ):
+    def __init__(self, bngl_path=None, message="There was an issue with parsing your BNGL file"):
         self.path = bngl_path
         full_msg = f"There was an issue parsing BNGL file: {bngl_path}"
         if message is not None:

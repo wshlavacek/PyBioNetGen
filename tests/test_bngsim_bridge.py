@@ -79,9 +79,7 @@ class TestFormatDetectionByExtension:
 
 class TestXMLSniffing:
     def _write_xml(self, content):
-        f = tempfile.NamedTemporaryFile(
-            suffix=".xml", mode="w", delete=False
-        )
+        f = tempfile.NamedTemporaryFile(suffix=".xml", mode="w", delete=False)
         f.write(content)
         f.close()
         return f.name
@@ -129,9 +127,7 @@ class TestXMLSniffing:
             os.unlink(path)
 
     def test_ambiguous_xml_raises(self):
-        path = self._write_xml(
-            '<?xml version="1.0"?>\n<root><data/></root>'
-        )
+        path = self._write_xml('<?xml version="1.0"?>\n<root><data/></root>')
         try:
             with pytest.raises(BNGFormatError, match="Could not determine"):
                 detect_input_format(path)
@@ -143,12 +139,7 @@ class TestXMLSniffing:
             detect_input_format("/nonexistent/path/model.xml")
 
     def test_bng_xml_with_observables(self):
-        path = self._write_xml(
-            '<?xml version="1.0"?>\n'
-            "<Model>\n"
-            "  <ListOfObservables/>\n"
-            "</Model>"
-        )
+        path = self._write_xml('<?xml version="1.0"?>\n<Model>\n  <ListOfObservables/>\n</Model>')
         try:
             assert _sniff_xml_format(path) == FORMAT_BNG_XML
         finally:
@@ -165,27 +156,18 @@ class TestExplicitFormat:
     def test_explicit_overrides_for_xml(self):
         """Explicit format for XML skips sniffing when file doesn't exist,
         but we test with a real SBML file."""
-        f = tempfile.NamedTemporaryFile(
-            suffix=".xml", mode="w", delete=False
-        )
+        f = tempfile.NamedTemporaryFile(suffix=".xml", mode="w", delete=False)
         f.write('<sbml xmlns="http://www.sbml.org/"><model/></sbml>')
         f.close()
         try:
-            assert (
-                detect_input_format(f.name, explicit_format="sbml") == FORMAT_SBML
-            )
+            assert detect_input_format(f.name, explicit_format="sbml") == FORMAT_SBML
         finally:
             os.unlink(f.name)
 
     def test_explicit_conflicts_with_autodetect(self):
         """Saying --format=bng-xml on an SBML file should raise."""
-        f = tempfile.NamedTemporaryFile(
-            suffix=".xml", mode="w", delete=False
-        )
-        f.write(
-            '<sbml xmlns="http://www.sbml.org/sbml/level3">'
-            "<model/></sbml>"
-        )
+        f = tempfile.NamedTemporaryFile(suffix=".xml", mode="w", delete=False)
+        f.write('<sbml xmlns="http://www.sbml.org/sbml/level3"><model/></sbml>')
         f.close()
         try:
             with pytest.raises(BNGFormatError, match="Format conflict"):
@@ -253,9 +235,8 @@ class TestRoutingWithoutBngsim:
     def test_sbml_without_bngsim_raises(self):
         """SBML format should raise if BNGsim is not available."""
         import unittest.mock as mock
-        f = tempfile.NamedTemporaryFile(
-            suffix=".xml", mode="w", delete=False
-        )
+
+        f = tempfile.NamedTemporaryFile(suffix=".xml", mode="w", delete=False)
         f.write('<sbml xmlns="http://www.sbml.org/"><model/></sbml>')
         f.close()
         try:
@@ -268,6 +249,7 @@ class TestRoutingWithoutBngsim:
     def test_antimony_without_bngsim_raises(self):
         """Antimony format should raise if BNGsim is not available."""
         import unittest.mock as mock
+
         with mock.patch("bionetgen.core.tools.bngsim_bridge.BNGSIM_AVAILABLE", False):
             with pytest.raises(BNGSimError, match="BNGsim is required"):
                 run_with_bngsim("model.ant", "/tmp/out", fmt=FORMAT_ANTIMONY)
@@ -318,6 +300,7 @@ class TestBngsimIntegration:
         """BNGsim version should be a non-empty string."""
         assert BNGSIM_VERSION is not None
         assert len(BNGSIM_VERSION) > 0
+
 
 # ─── Method normalization (SSA/PSA) ──────────────────────────────
 

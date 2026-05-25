@@ -89,9 +89,7 @@ class ActionList:
             "version",
             "setOption",
         ]
-        self.possible_types = (
-            self.normal_types + self.no_setter_syntax + self.square_braces
-        )
+        self.possible_types = self.normal_types + self.no_setter_syntax + self.square_braces
         # Use dictionary to keep track of all possible args (and types?) for each action
         self.arg_dict = {}
         # arg_dict["action"] = ["arg1", "arg2", "etc."]
@@ -494,9 +492,7 @@ class ActionList:
         parser emits and is what gen_string serializes back out.
         """
         if action_type not in self.possible_types:
-            raise BNGParseError(
-                message=f"Action type {action_type} not recognized!"
-            )
+            raise BNGParseError(message=f"Action type {action_type} not recognized!")
 
         if not isinstance(action_args, dict):
             raise BNGParseError(
@@ -510,11 +506,7 @@ class ActionList:
             valid = self.arg_dict.get(action_type)
             if valid is None:
                 if len(action_args) > 0:
-                    raise BNGParseError(
-                        message=(
-                            f"Action {action_type} does not take arguments"
-                        )
-                    )
+                    raise BNGParseError(message=(f"Action {action_type} does not take arguments"))
                 return
             if len(valid) > 0:
                 for arg_name in action_args:
@@ -550,8 +542,7 @@ class ActionList:
                 expected = f"between {mn} and {mx}"
             raise BNGParseError(
                 message=(
-                    f"Action {action_type} expects {expected} positional "
-                    f"argument(s); got {n}."
+                    f"Action {action_type} expects {expected} positional argument(s); got {n}."
                 )
             )
 
@@ -573,9 +564,7 @@ class ActionList:
         arg_type_bool = pp.Word("0") ^ pp.Word("1")
         arg_type_int = pp.Word(pp.nums)
         arg_type_float = pp.Word(pp.nums + ".")
-        arg_type_expr = pp.Word(
-            pp.nums + "." + "+" + "-" + "e" + "E" + "(" + ")" + "/" + "*" + "^"
-        )
+        arg_type_expr = pp.Word(pp.nums + "." + "+" + "-" + "e" + "E" + "(" + ")" + "/" + "*" + "^")
         arg_type_list = "[" + pp.DelimitedList(quote_word ^ arg_type_float) + "]"
         arg_type_string = quote_word
         #
@@ -603,9 +592,7 @@ class ActionList:
         #
         reg_arg_full = "{" + pp.Optional(pp.DelimitedList(single_arg)) + "}"
         #
-        reg_action_tk = (
-            action_name + "(" + reg_arg_full + ")" + pp.Optional(";") + pp.stringEnd
-        )
+        reg_action_tk = action_name + "(" + reg_arg_full + ")" + pp.Optional(";") + pp.stringEnd
         two_arg_action_tk = (
             action_name
             + "("
@@ -617,19 +604,10 @@ class ActionList:
             + pp.stringEnd
         )
         one_arg_action_tk = (
-            action_name
-            + "("
-            + pp.Optional(one_arg)
-            + ")"
-            + pp.Optional(";")
-            + pp.stringEnd
+            action_name + "(" + pp.Optional(one_arg) + ")" + pp.Optional(";") + pp.stringEnd
         )
-        list_arg_action_tk = (
-            action_name + "(" + list_arg + ")" + pp.Optional(";") + pp.stringEnd
-        )
-        full_action_tk = (
-            reg_action_tk ^ list_arg_action_tk ^ two_arg_action_tk ^ one_arg_action_tk
-        )
+        list_arg_action_tk = action_name + "(" + list_arg + ")" + pp.Optional(";") + pp.stringEnd
+        full_action_tk = reg_action_tk ^ list_arg_action_tk ^ two_arg_action_tk ^ one_arg_action_tk
         ## Action grammar done
         self.action_parser = full_action_tk
 

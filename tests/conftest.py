@@ -49,6 +49,4 @@ def require_atomizer():
 @pytest.fixture(scope="session")
 def require_bng2():
     if not _has_bng2():
-        pytest.skip(
-            "requires BNG2.pl via a vendored bundle, `BNGPATH`, or `PATH`"
-        )
+        pytest.skip("requires BNG2.pl via a vendored bundle, `BNGPATH`, or `PATH`")

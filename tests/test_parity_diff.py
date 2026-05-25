@@ -11,6 +11,7 @@ and stays out of the way of real divergences. Each test constructs a
 synthetic pair of arrays and exercises the helper directly — no real
 BNGL runs.
 """
+
 import sys
 from pathlib import Path
 
@@ -27,6 +28,7 @@ import parity_diff as pd  # noqa: E402
 # ---------------------------------------------------------------------------
 # _time_tol — scale-relative time-column tolerance
 # ---------------------------------------------------------------------------
+
 
 class TestTimeTol:
     def test_floor_for_subunit_trajectory(self):
@@ -69,6 +71,7 @@ class TestTimeTol:
 # ---------------------------------------------------------------------------
 # k-sample shift mask
 # ---------------------------------------------------------------------------
+
 
 def _all_fail(arr):
     return np.ones_like(arr, dtype=bool)
@@ -162,12 +165,11 @@ class TestShiftMaskKSample:
 # deterministic_compare end-to-end on synthetic .gdat pairs
 # ---------------------------------------------------------------------------
 
+
 def _write_gdat(path, arr, n_obs):
     """Write a minimal BNG-style .gdat: ``# time o0 o1 ...`` header + rows."""
     path = Path(path)
-    header = "#         time " + "".join(
-        f"   obs_{i:02d} " for i in range(n_obs)
-    )
+    header = "#         time " + "".join(f"   obs_{i:02d} " for i in range(n_obs))
     with open(path, "w") as f:
         f.write(header.rstrip() + "\n")
         for row in arr:
@@ -318,9 +320,9 @@ class TestDeterministicCompare:
         """
         sub_dir, bng_dir = tmp_pair
         t = np.linspace(0, 10, 801)
-        big = np.full_like(t, 500.0)          # file_scale = 500
+        big = np.full_like(t, 500.0)  # file_scale = 500
         tiny_sub = np.zeros_like(t)
-        tiny_sub[100] = 3e-3                   # column peak 3e-3 (sub-scale)
+        tiny_sub[100] = 3e-3  # column peak 3e-3 (sub-scale)
         tiny_bng = tiny_sub.copy()
         # Near-zero sign-flip noise on 3 rows: sub ~ +5e-8, bng ~ -5e-7.
         for r in (312, 313, 314):
@@ -347,7 +349,7 @@ class TestDeterministicCompare:
         tiny_sub[100] = 3e-3
         tiny_bng = tiny_sub.copy()
         # ~2% of the 801 rows get near-zero sign-flip noise (> 0.5% budget).
-        for r in range(0, 801, 50):           # 17 rows, 17/(801*2) ~ 1.06%
+        for r in range(0, 801, 50):  # 17 rows, 17/(801*2) ~ 1.06%
             tiny_sub[r] = 5e-8
             tiny_bng[r] = -5e-7
         sub_arr = np.column_stack([t, big, tiny_sub])
@@ -427,6 +429,7 @@ class TestDeterministicCompare:
 # NFsim is the buggy reference and bngsim is correct.
 # ---------------------------------------------------------------------------
 
+
 def _write_seg_gdat(seed_dir, stem, suffix, arr, n_obs):
     """Write <stem>_<suffix>.gdat into a seed dir."""
     seed_dir.mkdir(parents=True, exist_ok=True)
@@ -434,35 +437,30 @@ def _write_seg_gdat(seed_dir, stem, suffix, arr, n_obs):
 
 
 class TestOdeOracleRevalidation:
-    ENTRY = {"ode_suffix": "A_ODE", "nf_suffix": "B_NFsim",
-             "issue": "TEST#1", "reason": "test"}
+    ENTRY = {"ode_suffix": "A_ODE", "nf_suffix": "B_NFsim", "issue": "TEST#1", "reason": "test"}
 
     def _setup(self, tmp_path, ode_obs, nf_seed_obs):
         """ode_obs: (T,K) ODE oracle observable block.
         nf_seed_obs: list of (T,K) per-seed NF observable blocks."""
         t = np.linspace(0, 10, ode_obs.shape[0])
         sub_dir = tmp_path / "sub" / "seed1"
-        _write_seg_gdat(sub_dir, "m", "A_ODE",
-                        np.column_stack([t, ode_obs]), ode_obs.shape[1])
+        _write_seg_gdat(sub_dir, "m", "A_ODE", np.column_stack([t, ode_obs]), ode_obs.shape[1])
         bng_dirs = []
         for i, obs in enumerate(nf_seed_obs, 1):
             d = tmp_path / "bng" / f"seed{i}"
-            _write_seg_gdat(d, "m", "B_NFsim",
-                            np.column_stack([t, obs]), obs.shape[1])
+            _write_seg_gdat(d, "m", "B_NFsim", np.column_stack([t, obs]), obs.shape[1])
             bng_dirs.append(str(d))
         return [str(sub_dir)], bng_dirs
 
     def test_nf_tracking_ode_passes(self, tmp_path):
         rng = np.random.default_rng(0)
         T, K, N = 50, 2, 10
-        base = np.column_stack([100 * np.exp(-np.linspace(0, 3, T)),
-                                50 + np.linspace(0, 10, T)])
+        base = np.column_stack([100 * np.exp(-np.linspace(0, 3, T)), 50 + np.linspace(0, 10, T)])
         ode = base.copy()
         # NF ensemble = ODE + small per-seed noise -> mean tracks ODE.
         nf = [base + rng.normal(0, 1.0, base.shape) for _ in range(N)]
         sub_dirs, bng_dirs = self._setup(tmp_path, ode, nf)
-        status, details = pd.revalidate_nf_against_ode(
-            sub_dirs, bng_dirs, "m", self.ENTRY)
+        status, details = pd.revalidate_nf_against_ode(sub_dirs, bng_dirs, "m", self.ENTRY)
         assert status == "pass", details
         assert details["frac_pass"] >= pd.ENSEMBLE_PASS_FRAC
 
@@ -471,11 +469,9 @@ class TestOdeOracleRevalidation:
         # one observable. A divergence this large must never pass.
         T, K, N = 50, 2, 10
         ode = np.column_stack([np.full(T, 1.0), np.full(T, 5.0)])
-        nf = [np.column_stack([np.full(T, 50.0), np.full(T, 5.0)])
-              for _ in range(N)]
+        nf = [np.column_stack([np.full(T, 50.0), np.full(T, 5.0)]) for _ in range(N)]
         sub_dirs, bng_dirs = self._setup(tmp_path, ode, nf)
-        status, details = pd.revalidate_nf_against_ode(
-            sub_dirs, bng_dirs, "m", self.ENTRY)
+        status, details = pd.revalidate_nf_against_ode(sub_dirs, bng_dirs, "m", self.ENTRY)
         assert status == "diff", details
 
     def test_missing_ode_oracle_fails(self, tmp_path):
@@ -483,12 +479,12 @@ class TestOdeOracleRevalidation:
         T = 50
         t = np.linspace(0, 10, T)
         bng_dir = tmp_path / "bng" / "seed1"
-        _write_seg_gdat(bng_dir, "m", "B_NFsim",
-                        np.column_stack([t, np.ones((T, 2))]), 2)
+        _write_seg_gdat(bng_dir, "m", "B_NFsim", np.column_stack([t, np.ones((T, 2))]), 2)
         empty_sub = tmp_path / "sub" / "seed1"
         empty_sub.mkdir(parents=True)
         status, details = pd.revalidate_nf_against_ode(
-            [str(empty_sub)], [str(bng_dir)], "m", self.ENTRY)
+            [str(empty_sub)], [str(bng_dir)], "m", self.ENTRY
+        )
         assert status == "diff"
         assert "not found" in details.get("reason", "")
 
@@ -501,11 +497,12 @@ class TestOdeOracleRevalidation:
         rng = np.random.default_rng(3)
         T, N = 30, 50
         ode = np.column_stack([np.full(T, 0.67), np.full(T, 5.4)])
-        nf = [np.column_stack([0.5 + rng.normal(0, 0.02, T),
-                               5.4 + rng.normal(0, 0.05, T)]) for _ in range(N)]
+        nf = [
+            np.column_stack([0.5 + rng.normal(0, 0.02, T), 5.4 + rng.normal(0, 0.05, T)])
+            for _ in range(N)
+        ]
         sub_dirs, bng_dirs = self._setup(tmp_path, ode, nf)
-        status, details = pd.revalidate_nf_against_ode(
-            sub_dirs, bng_dirs, "m", self.ENTRY)
+        status, details = pd.revalidate_nf_against_ode(sub_dirs, bng_dirs, "m", self.ENTRY)
         assert status == "pass", details
         # The 0.67-vs-0.5 offset (~0.17) is forgiven by ODE_ORACLE_REL,
         # not by the sigma test (scatter is tiny here).
@@ -526,8 +523,12 @@ class TestRevalidateAgainstAnalytic:
     is wrong and which have no ODE segment (SUBPROCESS_NF_ANALYTIC). bngsim is
     accepted iff its ensemble-mean final row matches the documented values."""
 
-    ENTRY = {"suffix": "", "issue": "X", "reason": "y",
-             "expect": {"A_tot": [100.0, 5.0], "B_tot": [500.0, 60.0]}}
+    ENTRY = {
+        "suffix": "",
+        "issue": "X",
+        "reason": "y",
+        "expect": {"A_tot": [100.0, 5.0], "B_tot": [500.0, 60.0]},
+    }
 
     def _bng(self, tmp_path, final_A, final_B, n=10, jitter=0.0):
         rng = np.random.default_rng(0)
@@ -539,8 +540,7 @@ class TestRevalidateAgainstAnalytic:
             d.mkdir(parents=True)
             A = np.linspace(100, final_A, T) + rng.normal(0, jitter, T)
             B = np.linspace(0, final_B, T) + rng.normal(0, jitter, T)
-            _write_gdat_named(d / "m.gdat", ["time", "A_tot", "B_tot"],
-                              np.column_stack([t, A, B]))
+            _write_gdat_named(d / "m.gdat", ["time", "A_tot", "B_tot"], np.column_stack([t, A, B]))
             dirs.append(str(d))
         return dirs
 
@@ -561,9 +561,11 @@ class TestRevalidateAgainstAnalytic:
     def test_missing_column_fails(self, tmp_path):
         d = tmp_path / "bng" / "seed1"
         d.mkdir(parents=True)
-        _write_gdat_named(d / "m.gdat", ["time", "A_tot"],
-                          np.column_stack([np.linspace(0, 50, 5),
-                                           np.full(5, 100.0)]))
+        _write_gdat_named(
+            d / "m.gdat",
+            ["time", "A_tot"],
+            np.column_stack([np.linspace(0, 50, 5), np.full(5, 100.0)]),
+        )
         status, det = pd.revalidate_against_analytic([str(d)], "m", self.ENTRY)
         assert status == "diff"
         assert det["checks"]["B_tot"]["reason"] == "column not found"
@@ -589,6 +591,7 @@ class TestRevalidateAgainstAnalytic:
 # omitted _rateLaw<digits> columns (bngsim's method-independent schema).
 # See parity_diff._normalize_columns / _align_columns and PyBNF-Private#58.
 # ---------------------------------------------------------------------------
+
 
 def _write_gdat_named(path, names, arr):
     """Write a BNG-style .gdat with an explicit header token list."""
@@ -644,8 +647,7 @@ class TestColumnNormalizationUnits:
     def test_align_reorders_when_sets_equal(self):
         sub = np.array([[1.0, 2.0, 3.0]])
         bng = np.array([[1.0, 3.0, 2.0]])  # B and A swapped
-        s, b = pd._align_columns(sub, ["time", "A", "B"],
-                                 bng, ["time", "B", "A"])
+        s, b = pd._align_columns(sub, ["time", "A", "B"], bng, ["time", "B", "A"])
         np.testing.assert_array_equal(b, [[1.0, 2.0, 3.0]])
         np.testing.assert_array_equal(s, sub)
 
@@ -653,8 +655,7 @@ class TestColumnNormalizationUnits:
         sub = np.zeros((1, 3))
         bng = np.zeros((1, 3))
         # Different real column present -> left for shape/value check.
-        s, b = pd._align_columns(sub, ["time", "A", "B"],
-                                 bng, ["time", "A", "C"])
+        s, b = pd._align_columns(sub, ["time", "A", "B"], bng, ["time", "A", "C"])
         np.testing.assert_array_equal(b, bng)
 
 
@@ -667,13 +668,15 @@ class TestDeterministicCosmeticNormalization:
         t = np.linspace(0, 10, 101)
         a, b, kf = np.sin(t), np.cos(t), 0.5 * t
         # bngsim (sub): bare headers, no _rateLaw.
-        _write_gdat_named(sub_dir / "m.gdat",
-                          ["time", "A", "B", "kf"],
-                          np.column_stack([t, a, b, kf]))
+        _write_gdat_named(
+            sub_dir / "m.gdat", ["time", "A", "B", "kf"], np.column_stack([t, a, b, kf])
+        )
         # BNG2.pl (bng): () on function header + interspersed _rateLaw cols.
-        _write_gdat_named(bng_dir / "m.gdat",
-                          ["time", "A", "_rateLaw2", "B", "kf()", "_rateLaw3"],
-                          np.column_stack([t, a, 99 * t, b, kf, 7 * t]))
+        _write_gdat_named(
+            bng_dir / "m.gdat",
+            ["time", "A", "_rateLaw2", "B", "kf()", "_rateLaw3"],
+            np.column_stack([t, a, 99 * t, b, kf, 7 * t]),
+        )
         status, details = pd.deterministic_compare(sub_dir, bng_dir)
         assert status == "pass", details
 
@@ -681,11 +684,14 @@ class TestDeterministicCosmeticNormalization:
         """Normalization must not mask a genuine divergence in a kept col."""
         sub_dir, bng_dir = tmp_pair
         t = np.linspace(0, 10, 101)
-        _write_gdat_named(sub_dir / "m.gdat", ["time", "A", "kf"],
-                          np.column_stack([t, np.sin(t), 0.5 * t]))
-        _write_gdat_named(bng_dir / "m.gdat",
-                          ["time", "A", "kf()", "_rateLaw2"],
-                          np.column_stack([t, 1.1 * np.sin(t), 0.5 * t, t]))
+        _write_gdat_named(
+            sub_dir / "m.gdat", ["time", "A", "kf"], np.column_stack([t, np.sin(t), 0.5 * t])
+        )
+        _write_gdat_named(
+            bng_dir / "m.gdat",
+            ["time", "A", "kf()", "_rateLaw2"],
+            np.column_stack([t, 1.1 * np.sin(t), 0.5 * t, t]),
+        )
         status, _ = pd.deterministic_compare(sub_dir, bng_dir)
         assert status == "diff"
 
@@ -693,10 +699,10 @@ class TestDeterministicCosmeticNormalization:
         """A real (non-_rateLaw) extra column is a schema divergence: DIFF."""
         sub_dir, bng_dir = tmp_pair
         t = np.linspace(0, 10, 51)
-        _write_gdat_named(sub_dir / "m.gdat", ["time", "A"],
-                          np.column_stack([t, np.sin(t)]))
-        _write_gdat_named(bng_dir / "m.gdat", ["time", "A", "C"],
-                          np.column_stack([t, np.sin(t), np.cos(t)]))
+        _write_gdat_named(sub_dir / "m.gdat", ["time", "A"], np.column_stack([t, np.sin(t)]))
+        _write_gdat_named(
+            bng_dir / "m.gdat", ["time", "A", "C"], np.column_stack([t, np.sin(t), np.cos(t)])
+        )
         status, _ = pd.deterministic_compare(sub_dir, bng_dir)
         assert status == "diff"
 
@@ -711,16 +717,18 @@ class TestScanCosmeticNormalization:
 
     def test_scan_bare_vs_parens_and_ratelaw_passes(self, tmp_pair):
         sub_dir, bng_dir = tmp_pair
-        kf = np.linspace(0.1, 1.0, 25)          # swept parameter (col 0)
-        a, b, func = np.sqrt(kf), kf ** 2, 3 * kf
+        kf = np.linspace(0.1, 1.0, 25)  # swept parameter (col 0)
+        a, b, func = np.sqrt(kf), kf**2, 3 * kf
         # bngsim: bare headers, no _rateLaw, param col first.
-        _write_gdat_named(sub_dir / "m.scan",
-                          ["kf", "A", "B", "func"],
-                          np.column_stack([kf, a, b, func]))
+        _write_gdat_named(
+            sub_dir / "m.scan", ["kf", "A", "B", "func"], np.column_stack([kf, a, b, func])
+        )
         # BNG2.pl: ()-function header + interspersed _rateLaw cols.
-        _write_gdat_named(bng_dir / "m.scan",
-                          ["kf", "A", "_rateLaw2", "B", "func()"],
-                          np.column_stack([kf, a, 42 * kf, b, func]))
+        _write_gdat_named(
+            bng_dir / "m.scan",
+            ["kf", "A", "_rateLaw2", "B", "func()"],
+            np.column_stack([kf, a, 42 * kf, b, func]),
+        )
         status, details = pd.deterministic_compare(sub_dir, bng_dir)
         assert status == "pass", details
 
@@ -729,10 +737,13 @@ class TestScanCosmeticNormalization:
         # not be absorbed by normalization.
         sub_dir, bng_dir = tmp_pair
         kf = np.linspace(0.1, 1.0, 25)
-        _write_gdat_named(sub_dir / "m.scan", ["kf", "A", "func"],
-                          np.column_stack([kf, np.sqrt(kf), 3 * kf]))
-        _write_gdat_named(bng_dir / "m.scan",
-                          ["kf", "A", "func()", "_rateLaw2"],
-                          np.column_stack([1.5 * kf, np.sqrt(kf), 3 * kf, kf]))
+        _write_gdat_named(
+            sub_dir / "m.scan", ["kf", "A", "func"], np.column_stack([kf, np.sqrt(kf), 3 * kf])
+        )
+        _write_gdat_named(
+            bng_dir / "m.scan",
+            ["kf", "A", "func()", "_rateLaw2"],
+            np.column_stack([1.5 * kf, np.sqrt(kf), 3 * kf, kf]),
+        )
         status, _ = pd.deterministic_compare(sub_dir, bng_dir)
         assert status == "diff"

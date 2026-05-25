@@ -265,9 +265,7 @@ def vendor_release(
 
     with tempfile.TemporaryDirectory(prefix="pybng-release-download-") as temp_download_dir_name:
         effective_download_dir = (
-            download_dir.resolve()
-            if download_dir is not None
-            else Path(temp_download_dir_name)
+            download_dir.resolve() if download_dir is not None else Path(temp_download_dir_name)
         )
         targets: Dict[str, Path] = {}
         for platform_name, url in release_assets.items():

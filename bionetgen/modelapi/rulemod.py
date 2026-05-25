@@ -39,6 +39,4 @@ class RuleMod:
         if val in self.valid_mod_names or val is None:
             self._type = val
         else:
-            raise BNGParseError(
-                message=f": Rule modifier type {val} is not a valid type"
-            )
+            raise BNGParseError(message=f": Rule modifier type {val} is not a valid type")

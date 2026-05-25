@@ -105,9 +105,7 @@ class TestSimGetter:
         mock_CSim.return_value = sentinel
 
         result = sim_getter(model_file="/path/model.bngl", sim_type="cpy")
-        mock_CSim.assert_called_once_with(
-            model_file="/path/model.bngl", generate_network=True
-        )
+        mock_CSim.assert_called_once_with(model_file="/path/model.bngl", generate_network=True)
         assert result is sentinel
 
     @patch("bionetgen.simulator.simulators.CSimulator")
@@ -175,13 +173,16 @@ def _make_bngl(tmp_path):
 def _create_cli(inp_file, output, bngpath, **kwargs):
     """Import and create a BNGCLI instance."""
     from bionetgen.core.tools.cli import BNGCLI
+
     return BNGCLI(inp_file, output, bngpath, **kwargs)
 
 
 class TestBNGCLI:
     """Tests for bionetgen.core.tools.cli.BNGCLI."""
 
-    @patch("bionetgen.core.utils.utils.find_BNG_path", return_value=("/fake/bng", "/fake/bng/BNG2.pl"))
+    @patch(
+        "bionetgen.core.utils.utils.find_BNG_path", return_value=("/fake/bng", "/fake/bng/BNG2.pl")
+    )
     def test_init_sets_paths(self, mock_find, tmp_path):
         """__init__ sets up paths and creates output directory."""
         bngl = _make_bngl(tmp_path)
@@ -194,7 +195,9 @@ class TestBNGCLI:
         assert os.path.isdir(output_dir)
         assert cli.inp_path == os.path.abspath(bngl)
 
-    @patch("bionetgen.core.utils.utils.find_BNG_path", return_value=("/fake/bng", "/fake/bng/BNG2.pl"))
+    @patch(
+        "bionetgen.core.utils.utils.find_BNG_path", return_value=("/fake/bng", "/fake/bng/BNG2.pl")
+    )
     def test_set_output_creates_directory(self, mock_find, tmp_path):
         """_set_output creates the output directory."""
         bngl = _make_bngl(tmp_path)
@@ -223,7 +226,9 @@ class TestBNGCLI:
             assert cli.result.output == []
 
     @patch("bionetgen.core.utils.utils.run_command", return_value=(0, ["line1"]))
-    @patch("bionetgen.core.utils.utils.find_BNG_path", return_value=("/fake/bng", "/fake/bng/BNG2.pl"))
+    @patch(
+        "bionetgen.core.utils.utils.find_BNG_path", return_value=("/fake/bng", "/fake/bng/BNG2.pl")
+    )
     def test_run_success(self, mock_find, mock_run_cmd, tmp_path):
         """With bng_exec set, run() calls run_command and handles success."""
         bngl = _make_bngl(tmp_path)
@@ -242,7 +247,9 @@ class TestBNGCLI:
             assert cli.result.output == ["line1"]
 
     @patch("bionetgen.core.utils.utils.run_command", return_value=(1, []))
-    @patch("bionetgen.core.utils.utils.find_BNG_path", return_value=("/fake/bng", "/fake/bng/BNG2.pl"))
+    @patch(
+        "bionetgen.core.utils.utils.find_BNG_path", return_value=("/fake/bng", "/fake/bng/BNG2.pl")
+    )
     def test_run_failure_raises_bngrun_error(self, mock_find, mock_run_cmd, tmp_path):
         """run() raises BNGRunError when rc != 0."""
         from bionetgen.core.exc import BNGRunError
@@ -255,7 +262,9 @@ class TestBNGCLI:
         with pytest.raises(BNGRunError):
             cli.run()
 
-    @patch("bionetgen.core.utils.utils.find_BNG_path", return_value=("/fake/bng", "/fake/bng/BNG2.pl"))
+    @patch(
+        "bionetgen.core.utils.utils.find_BNG_path", return_value=("/fake/bng", "/fake/bng/BNG2.pl")
+    )
     def test_run_failure_surfaces_bng_stderr_in_error(self, mock_find, tmp_path):
         """B8: BNGRunError carries through BNG2.pl stdout/stderr captured by run_command.
 
@@ -290,7 +299,9 @@ class TestBNGCLI:
         assert "BNG2.pl progress" in msg
 
     @patch("bionetgen.core.utils.utils.run_command", return_value=(0, []))
-    @patch("bionetgen.core.utils.utils.find_BNG_path", return_value=("/fake/bng", "/fake/bng/BNG2.pl"))
+    @patch(
+        "bionetgen.core.utils.utils.find_BNG_path", return_value=("/fake/bng", "/fake/bng/BNG2.pl")
+    )
     def test_bngpath_env_restored_after_run(self, mock_find, mock_run_cmd, tmp_path):
         """BNGPATH environment variable is restored after run()."""
         bngl = _make_bngl(tmp_path)
