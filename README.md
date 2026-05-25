@@ -32,6 +32,8 @@ The library side provides a simple BNGL model runner as well as a model object t
 
 **BNGsim integration:** When [BNGsim](https://github.com/lanl/bngsim) is installed in the same environment (`pip install bngsim`), PyBioNetGen automatically uses it for high-performance in-process simulation, replacing the subprocess-based `run_network` and `NFsim` backends. BNGsim also enables direct simulation of SBML (`.xml`) and Antimony (`.ant`) files in addition to BNGL. BNGsim is optional — without it, PyBioNetGen works exactly as before. When BNGsim *is* installed, however, PyBioNetGen requires version **0.6.0 or newer** (older releases lack NFsim global-function output and `NfsimSession.save_species`/`relative_time` APIs); a runtime guard reports a precise reason and falls back to subprocess if an older BNGsim is detected.
 
+**Validation:** PyBioNetGen's two simulation backends — the BNG2.pl subprocess path and the in-process BNGsim path — are kept in lockstep by a parity harness that runs each model on both and compares the outputs: a direct numerical comparison for deterministic (ODE) models, and a seed-ensemble comparison for stochastic (SSA/NFsim) models. The suite spans **882 distinct BNGL models**, a mix of deterministic and stochastic. All differences are resolved — the backends either match, or a divergence is attributed to a confirmed, documented root cause: a legacy-NFsim reference bug (cross-checked against RuleMonkey or ODE), or a known stochastic-ensemble artifact (e.g. oscillatory or bistable SSA means).
+
 **Supported input formats:**
 - `.bngl` — BioNetGen Language (always processed by BNG2.pl, then simulated via BNGsim or `run_network`)
 - `.net` — BioNetGen network files (direct simulation via BNGsim or `run_network`)
