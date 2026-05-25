@@ -358,7 +358,11 @@ def serve(socket_path: str) -> int:
     """
     if os.path.exists(socket_path):
         os.unlink(socket_path)
-    srv = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    # AF_UNIX is POSIX-only and serve() is never reached on Windows (BNGCLI
+    # guards it); getattr keeps mypy happy on win32, where the attribute is
+    # absent, without an ignore that warn_unused_ignores would flag on POSIX.
+    af_unix = getattr(socket, "AF_UNIX")
+    srv = socket.socket(af_unix, socket.SOCK_STREAM)
     try:
         srv.bind(socket_path)
         # A readiness probe connects-then-closes before serve accepts it,
