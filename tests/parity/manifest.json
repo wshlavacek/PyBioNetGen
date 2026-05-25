@@ -4749,9 +4749,9 @@
       "expected": "PASS"
     },
     {
-      "id": "original/bngl_models/my_models/ode/AVdyn2_ok?.bngl",
-      "file": "models/original/bngl_models/my_models/ode/AVdyn2_ok?.bngl",
-      "basename": "AVdyn2_ok?.bngl",
+      "id": "original/bngl_models/my_models/ode/AVdyn2_ok.bngl",
+      "file": "models/original/bngl_models/my_models/ode/AVdyn2_ok.bngl",
+      "basename": "AVdyn2_ok.bngl",
       "source": "bngl_models",
       "license": "MIT",
       "provenance": {
