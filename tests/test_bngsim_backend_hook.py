@@ -12,7 +12,10 @@ from bionetgen.core.tools.bngsim_backend_helper import (
     direct_job_from_backend_job,
     load_backend_job,
 )
-from bionetgen.core.tools.bngsim_bridge import run_bngl_with_bngsim_backend_hook
+from bionetgen.core.tools.bngsim_bridge import (
+    BNGSIM_AVAILABLE,
+    run_bngl_with_bngsim_backend_hook,
+)
 from bionetgen.core.utils.utils import find_BNG_path
 
 
@@ -747,6 +750,12 @@ def test_bng2_owned_workflows_delegate_atomic_jobs_and_write_final_artifacts(
     assert (out_dir / final_artifact).is_file()
 
 
+@pytest.mark.skipif(
+    not BNGSIM_AVAILABLE,
+    reason="network-free scan points only dispatch to the backend hook when "
+    "bngsim is available (the routing classifier falls back otherwise), so "
+    "this asserts the bngsim path and can't run without it",
+)
 def test_nf_parameter_scan_clears_model_time_between_scan_points(
     tmp_path,
     real_bng_backend_runtime,
