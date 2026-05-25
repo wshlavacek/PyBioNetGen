@@ -151,9 +151,7 @@ def _normalize_artifact_format(raw_format: Any, artifact_path: str) -> str:
     ext = os.path.splitext(artifact_path)[1].lower()
     fmt = ARTIFACT_FORMAT_ALIASES.get(ext)
     if fmt is None:
-        raise BNGSimError(
-            f"Could not infer BNGsim backend artifact format from {artifact_path!r}"
-        )
+        raise BNGSimError(f"Could not infer BNGsim backend artifact format from {artifact_path!r}")
     return fmt
 
 
@@ -186,9 +184,7 @@ def load_backend_job(payload: dict[str, Any]) -> BackendHelperJob:
     # in BIONETGEN_BNGSIM_BACKEND_METHOD. Restore it here. The override
     # applies only to network-free jobs (the simulate_nf hook always sends
     # ``nf``); network jobs (ode/ssa/psa) in the same run are left alone.
-    method_override = os.environ.get(
-        "BIONETGEN_BNGSIM_BACKEND_METHOD", ""
-    ).strip().lower()
+    method_override = os.environ.get("BIONETGEN_BNGSIM_BACKEND_METHOD", "").strip().lower()
     if method_override == "rm" and method == "nf":
         method = "rm"
     artifact_format = _normalize_artifact_format(
@@ -197,11 +193,7 @@ def load_backend_job(payload: dict[str, Any]) -> BackendHelperJob:
     )
     output_dir, output_root = _output_dir_and_root(payload)
 
-    sim_options = dict(
-        payload.get("simulation_options")
-        or payload.get("options")
-        or {}
-    )
+    sim_options = dict(payload.get("simulation_options") or payload.get("options") or {})
     backend_flags = dict(payload.get("backend_flags") or {})
 
     return BackendHelperJob(
@@ -421,11 +413,13 @@ def main(argv: list[str] | None = None) -> int:
         socket_path = rest[1] if len(rest) == 2 and rest[0] == "--socket" else None
         if not socket_path:
             print(
-                json.dumps({
-                    "success": False,
-                    "error": "usage: python -m bionetgen.core.tools."
-                             "bngsim_backend_helper --serve --socket PATH",
-                }),
+                json.dumps(
+                    {
+                        "success": False,
+                        "error": "usage: python -m bionetgen.core.tools."
+                        "bngsim_backend_helper --serve --socket PATH",
+                    }
+                ),
                 file=sys.stderr,
             )
             return 2
@@ -433,22 +427,25 @@ def main(argv: list[str] | None = None) -> int:
             return serve(socket_path)
         except Exception as exc:
             print(
-                json.dumps({
-                    "success": False,
-                    "error": str(exc),
-                    "traceback": traceback.format_exc(),
-                }),
+                json.dumps(
+                    {
+                        "success": False,
+                        "error": str(exc),
+                        "traceback": traceback.format_exc(),
+                    }
+                ),
                 file=sys.stderr,
             )
             return 1
 
     if len(argv) != 1:
         print(
-            json.dumps({
-                "success": False,
-                "error": "usage: python -m bionetgen.core.tools."
-                         "bngsim_backend_helper JOB.json",
-            }),
+            json.dumps(
+                {
+                    "success": False,
+                    "error": "usage: python -m bionetgen.core.tools.bngsim_backend_helper JOB.json",
+                }
+            ),
             file=sys.stderr,
         )
         return 2

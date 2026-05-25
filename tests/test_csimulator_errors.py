@@ -16,17 +16,14 @@ def test_csimulator_init_logs_missing_cvode_paths():
     def fake_compile(self):
         self.lib_file = "/tmp/fake/libcsim.so"
 
-    with mock.patch.object(csim_module.conf, "get", mock_conf_get), mock.patch.object(
-        csim_module, "logger"
-    ) as mock_logger, mock.patch.object(
-        csim_module.bionetgen, "bngmodel", return_value=fake_model
-    ), mock.patch.object(
-        csim_module, "_new_ccompiler", return_value=fake_compiler
-    ), mock.patch.object(
-        csim_module.CSimulator, "compile_shared_lib", fake_compile
-    ), mock.patch.object(
-        csim_module, "CSimWrapper"
-    ) as mock_wrapper:
+    with (
+        mock.patch.object(csim_module.conf, "get", mock_conf_get),
+        mock.patch.object(csim_module, "logger") as mock_logger,
+        mock.patch.object(csim_module.bionetgen, "bngmodel", return_value=fake_model),
+        mock.patch.object(csim_module, "_new_ccompiler", return_value=fake_compiler),
+        mock.patch.object(csim_module.CSimulator, "compile_shared_lib", fake_compile),
+        mock.patch.object(csim_module, "CSimWrapper") as mock_wrapper,
+    ):
         csim_module.CSimulator("/fake/model.bngl")
 
     mock_logger.warning.assert_called_once()
@@ -56,9 +53,10 @@ def test_csimulator_init_invalid_model_type_raises_bng_format_error():
         }[key]
     )
 
-    with mock.patch.object(csim_module.conf, "get", mock_conf_get), mock.patch.object(
-        csim_module, "logger"
-    ) as mock_logger:
+    with (
+        mock.patch.object(csim_module.conf, "get", mock_conf_get),
+        mock.patch.object(csim_module, "logger") as mock_logger,
+    ):
         with pytest.raises(
             BNGFormatError,
             match="CSimulator model input must be a BNGL path or bngmodel instance",
@@ -84,9 +82,10 @@ def test_csimulator_simulator_setter_raises_bng_compile_error():
     sim.model.parameters = {"k1": mock.MagicMock(expr="0.1")}
     sim.model.species = {"A": mock.MagicMock(count="1")}
 
-    with mock.patch.object(
-        csim_module, "CSimWrapper", side_effect=OSError("boom")
-    ), mock.patch.object(csim_module, "logger") as mock_logger:
+    with (
+        mock.patch.object(csim_module, "CSimWrapper", side_effect=OSError("boom")),
+        mock.patch.object(csim_module, "logger") as mock_logger,
+    ):
         with pytest.raises(BNGCompileError):
             sim.simulator = "/fake/lib.so"
 
@@ -133,9 +132,7 @@ def test_csimulator_simulate_invalid_species_reference_raises_bng_sim_error():
     sim._simulator = mock.MagicMock()
 
     with mock.patch.object(csim_module, "logger") as mock_logger:
-        with pytest.raises(
-            BNGSimError, match="Could not resolve initial species value for 'A'"
-        ):
+        with pytest.raises(BNGSimError, match="Could not resolve initial species value for 'A'"):
             sim.simulate()
 
     mock_logger.error.assert_called_once()

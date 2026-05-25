@@ -126,16 +126,14 @@ class Network:
         if normalized_name not in block_adders:
             supported_names = ", ".join(block_adders)
             raise ValueError(
-                f"Unsupported block name '{block_name}'. "
-                f"Supported block names: {supported_names}"
+                f"Unsupported block name '{block_name}'. Supported block names: {supported_names}"
             )
         return block_adders[normalized_name]
 
     def _set_typed_block(self, block, expected_type, attr_name, active_name):
         if not isinstance(block, expected_type):
             raise TypeError(
-                f"{attr_name} block must be a {expected_type.__name__}, "
-                f"got {type(block).__name__}"
+                f"{attr_name} block must be a {expected_type.__name__}, got {type(block).__name__}"
             )
         setattr(self, attr_name, block)
         if active_name not in self.active_blocks:
@@ -143,9 +141,7 @@ class Network:
 
     def add_parameters_block(self, block=None):
         if block is not None:
-            self._set_typed_block(
-                block, NetworkParameterBlock, "parameters", "parameters"
-            )
+            self._set_typed_block(block, NetworkParameterBlock, "parameters", "parameters")
         else:
             self.parameters = NetworkParameterBlock()
 
@@ -172,9 +168,7 @@ class Network:
 
     def add_reactions_block(self, block=None):
         if block is not None:
-            self._set_typed_block(
-                block, NetworkReactionBlock, "reactions", "reactions"
-            )
+            self._set_typed_block(block, NetworkReactionBlock, "reactions", "reactions")
         else:
             self.reactions = NetworkReactionBlock()
 

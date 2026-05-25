@@ -85,6 +85,7 @@ def run(
         raise BNGSimError(route.reason)
 
     cur_dir = os.getcwd()
+
     def _run_with_output_dir(output_dir):
         try:
             if route.route == ROUTE_BNGL_BNGSIM and fmt == FORMAT_BNGL:
@@ -113,8 +114,11 @@ def run(
                 conf = get_conf()
                 # Subprocess path — only for .bngl, .net, .bng-xml
                 cli = BNGCLI(
-                    inp, output_dir, conf["bngpath"],
-                    suppress=suppress, timeout=timeout,
+                    inp,
+                    output_dir,
+                    conf["bngpath"],
+                    suppress=suppress,
+                    timeout=timeout,
                 )
                 cli.run()
                 result = cli.result

@@ -130,13 +130,17 @@ def test_run_job_file_executes_in_the_job_output_directory(tmp_path, monkeypatch
     out_dir = tmp_path / "run_out"
     out_dir.mkdir()
     job_path = tmp_path / "job.json"
-    job_path.write_text(json.dumps({
-        "artifact_path": str(tmp_path / "model.net"),
-        "artifact_format": "net",
-        "method": "ode",
-        "simulation_options": {},
-        "output_prefix": str(out_dir / "model"),
-    }))
+    job_path.write_text(
+        json.dumps(
+            {
+                "artifact_path": str(tmp_path / "model.net"),
+                "artifact_format": "net",
+                "method": "ode",
+                "simulation_options": {},
+                "output_prefix": str(out_dir / "model"),
+            }
+        )
+    )
 
     cwd_seen = {}
 

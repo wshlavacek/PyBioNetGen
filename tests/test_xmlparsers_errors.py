@@ -25,9 +25,7 @@ def _simple_pattern_xml(molecules, relation=None, quantity=None):
 
 def _make_rate_law_xml(rate_type, value="0.5"):
     if rate_type == "Function":
-        return OrderedDict(
-            [("@type", "Function"), ("@id", "rule1"), ("@name", "rate1")]
-        )
+        return OrderedDict([("@type", "Function"), ("@id", "rule1"), ("@name", "rate1")])
     return OrderedDict(
         [
             ("@type", rate_type),
@@ -77,15 +75,11 @@ def _make_population_map_xml(rate_type="Ele", value="0.5"):
             ("@id", "pm1"),
             (
                 "StructuredSpecies",
-                OrderedDict(
-                    [("Species", _simple_pattern_xml(_simple_molecule_xml("A")))]
-                ),
+                OrderedDict([("Species", _simple_pattern_xml(_simple_molecule_xml("A")))]),
             ),
             (
                 "PopulationSpecies",
-                OrderedDict(
-                    [("Species", _simple_pattern_xml(_simple_molecule_xml("Apop")))]
-                ),
+                OrderedDict([("Species", _simple_pattern_xml(_simple_molecule_xml("Apop")))]),
             ),
             ("RateLaw", _make_rate_law_xml(rate_type, value)),
         ]
@@ -93,9 +87,7 @@ def _make_population_map_xml(rate_type="Ele", value="0.5"):
 
 
 def test_pattern_quantity_non_integer_raises_parse_error():
-    pattern_xml = _simple_pattern_xml(
-        _simple_molecule_xml("A"), relation="==", quantity="1.5"
-    )
+    pattern_xml = _simple_pattern_xml(_simple_molecule_xml("A"), relation="==", quantity="1.5")
     with pytest.raises(BNGParseError, match="Pattern quantity must be an integer"):
         PatternXML(pattern_xml)
 

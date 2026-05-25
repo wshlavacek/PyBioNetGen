@@ -8,6 +8,7 @@ three V19xx endemic-infection models carry a parameter literally named
 ``frac`` (a scalar coefficient, never a .gdat observable), so renaming
 ``frac``->``fracsym`` is a semantically-null interim rescue (bngsim #64).
 """
+
 from __future__ import annotations
 
 import importlib.util
@@ -82,6 +83,9 @@ def test_registry_well_formed():
         for old, new in mapping.items():
             assert old and new and old != new
     # The three V19xx endemic models are the motivating entries.
-    for m in ("V1988a_endemic_infection.bngl", "V1990_cooke_endemic.bngl",
-              "V1990_kemper_endemic.bngl"):
+    for m in (
+        "V1988a_endemic_infection.bngl",
+        "V1990_cooke_endemic.bngl",
+        "V1990_kemper_endemic.bngl",
+    ):
         assert ps.SYMBOL_RENAMES[m] == {"frac": "fracsym"}

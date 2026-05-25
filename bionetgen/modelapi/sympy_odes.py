@@ -122,9 +122,7 @@ def extract_odes_from_mexfile(mex_c_path: str) -> SympyOdes:
     param_expected = None
     if max_param_idx is not None:
         param_expected = max(max_param_idx + 1, len(param_names))
-    param_symbol_names, param_names = _build_symbol_names(
-        param_names, param_expected, prefix="p"
-    )
+    param_symbol_names, param_names = _build_symbol_names(param_names, param_expected, prefix="p")
 
     species_symbols = [sp.Symbol(name) for name in species_symbol_names]
     param_symbols = [sp.Symbol(name) for name in param_symbol_names]
@@ -148,9 +146,7 @@ def extract_odes_from_mexfile(mex_c_path: str) -> SympyOdes:
     odes: list[sp.Expr] = [sp.Integer(0) for _ in range(max_idx + 1)]
     for idx, expr in eq_map.items():
         cleaned = _normalize_expr(expr)
-        cleaned = _replace_indexed_symbols(
-            cleaned, species_symbol_names, param_symbol_names
-        )
+        cleaned = _replace_indexed_symbols(cleaned, species_symbol_names, param_symbol_names)
         odes[idx] = parse_expr(
             cleaned, local_dict=local_dict, transformations=standard_transformations
         )
@@ -176,9 +172,7 @@ def _extract_odes_from_cvode_mex(text: str, mex_c_path: str) -> SympyOdes:
     obs_map = _extract_nv_assignments(
         _extract_function_body(text, "calc_observables"), "observables"
     )
-    rate_map = _extract_nv_assignments(
-        _extract_function_body(text, "calc_ratelaws"), "ratelaws"
-    )
+    rate_map = _extract_nv_assignments(_extract_function_body(text, "calc_ratelaws"), "ratelaws")
     deriv_map = _extract_nv_assignments(
         _extract_function_body(text, "calc_species_deriv"), "Dspecies"
     )
@@ -238,9 +232,7 @@ def _extract_odes_from_cvode_mex(text: str, mex_c_path: str) -> SympyOdes:
             raise NotImplementedError(rhs)
         cleaned = _normalize_expr(rhs)
         cleaned = _replace_parameters_brackets(cleaned, param_symbol_names)
-        cleaned = _replace_nv_ith_s(
-            cleaned, species_symbol_names, expr_syms, obs_syms, rate_syms
-        )
+        cleaned = _replace_nv_ith_s(cleaned, species_symbol_names, expr_syms, obs_syms, rate_syms)
         return cast(
             sp.Expr,
             parse_expr(
@@ -255,9 +247,7 @@ def _extract_odes_from_cvode_mex(text: str, mex_c_path: str) -> SympyOdes:
     for idx in sorted(expr_map.keys()):
         val = _parse_rhs(expr_map[idx])
         if idx > 0:
-            val = val.subs(
-                {expr_syms[j]: expr_exprs[j] for j in range(min(idx, len(expr_exprs)))}
-            )
+            val = val.subs({expr_syms[j]: expr_exprs[j] for j in range(min(idx, len(expr_exprs)))})
         expr_exprs[idx] = cast(sp.Expr, val)
 
     obs_exprs: list[sp.Expr] = [sp.Integer(0) for _ in range(n_obs)]
@@ -293,9 +283,7 @@ def _extract_odes_from_cvode_mex(text: str, mex_c_path: str) -> SympyOdes:
 
 
 def _extract_define_int(text: str, define_name: str) -> int | None:
-    m = re.search(
-        rf"^\s*#define\s+{re.escape(define_name)}\s+(\d+)\s*$", text, flags=re.M
-    )
+    m = re.search(rf"^\s*#define\s+{re.escape(define_name)}\s+(\d+)\s*$", text, flags=re.M)
     if not m:
         return None
     return int(m.group(1))
@@ -345,11 +333,7 @@ def _replace_nv_ith_s(
         var = match.group(1)
         idx = int(match.group(2))
         if var == "species":
-            return (
-                species_symbol_names[idx]
-                if idx < len(species_symbol_names)
-                else f"s{idx}"
-            )
+            return species_symbol_names[idx] if idx < len(species_symbol_names) else f"s{idx}"
         if var == "expressions":
             return str(expr_syms[idx].name) if idx < len(expr_syms) else f"e{idx}"
         if var == "observables":
@@ -406,9 +390,7 @@ def _normalize_expr(expr: str) -> str:
     return expr
 
 
-def _replace_indexed_symbols(
-    expr: str, species_names: list[str], param_names: list[str]
-) -> str:
+def _replace_indexed_symbols(expr: str, species_names: list[str], param_names: list[str]) -> str:
     def repl_species(match: re.Match[str]) -> str:
         idx = int(match.group(1))
         if idx >= len(species_names):

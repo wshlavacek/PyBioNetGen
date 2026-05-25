@@ -18,9 +18,7 @@ class VisResult:
     def __init__(self, input_folder, name=None, vtype=None, app=None) -> None:
         self.app = app
         self.logger = BNGLogger(app=self.app)
-        self.logger.debug(
-            "Setting up VisResult object", loc=f"{__file__} : VisResult.__init__()"
-        )
+        self.logger.debug("Setting up VisResult object", loc=f"{__file__} : VisResult.__init__()")
         self.input_folder = input_folder
         self.name = name
         self.vtype = vtype
@@ -32,9 +30,7 @@ class VisResult:
         self._load_files()
 
     def _load_files(self) -> None:
-        self.logger.debug(
-            "Loading graphml/gml files", loc=f"{__file__} : VisResult._load_files()"
-        )
+        self.logger.debug("Loading graphml/gml files", loc=f"{__file__} : VisResult._load_files()")
         # we need to assume some sort of GML output
         # at least for now
         # use the name, if given, search for GMLs if not
@@ -58,9 +54,7 @@ class VisResult:
                     self.file_strs[gfile] = content
 
     def _dump_files(self, folder) -> None:
-        self.logger.debug(
-            "Writing graphml/gml files", loc=f"{__file__} : VisResult._dump_files()"
-        )
+        self.logger.debug("Writing graphml/gml files", loc=f"{__file__} : VisResult._dump_files()")
         os.chdir(folder)
         for gfile in self.files:
             g_name = os.path.split(gfile)[-1]
@@ -158,9 +152,7 @@ class BNGVisualize:
                         },
                     )
                 else:
-                    model.add_action(
-                        "visualize", action_args={"type": f"'{valid_type}'"}
-                    )
+                    model.add_action("visualize", action_args={"type": f"'{valid_type}'"})
         else:
             if self.vtype == "atom_rule":
                 model.add_action(

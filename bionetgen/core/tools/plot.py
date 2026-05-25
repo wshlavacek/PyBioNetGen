@@ -29,9 +29,7 @@ class BNGPlotter:
     def __init__(self, inp, out, app=None, **kwargs):
         self.app = app
         self.logger = BNGLogger(app=self.app)
-        self.logger.debug(
-            "Setting up BNGPlotter object", loc=f"{__file__} : BNGPlotter.__init__()"
-        )
+        self.logger.debug("Setting up BNGPlotter object", loc=f"{__file__} : BNGPlotter.__init__()")
         # read input and output paths
         self.inp = inp
         self.out = out
@@ -45,18 +43,11 @@ class BNGPlotter:
 
     def plot(self):
         # let's determine the type of plot we are doing
-        if (
-            self.result.file_extension == ".gdat"
-            or self.result.file_extension == ".cdat"
-        ):
-            self.logger.debug(
-                "Input is a .gdat/.cdat file", loc=f"{__file__} : BNGPlotter.plot()"
-            )
+        if self.result.file_extension == ".gdat" or self.result.file_extension == ".cdat":
+            self.logger.debug("Input is a .gdat/.cdat file", loc=f"{__file__} : BNGPlotter.plot()")
             self._datplot()
         elif self.result.file_extension == ".scan":
-            self.logger.debug(
-                "Input is a .scan file", loc=f"{__file__} : BNGPlotter.plot()"
-            )
+            self.logger.debug("Input is a .scan file", loc=f"{__file__} : BNGPlotter.plot()")
             self._datplot()
         else:
             self.logger.error(
@@ -117,8 +108,6 @@ class BNGPlotter:
         _ = plt.ylabel(self.kwargs.get("ylabel") or "concentration")
         _ = plt.title(self.kwargs.get("title") or self.result.file_name)
 
-        self.logger.debug(
-            f"Saving figure to {self.out}", loc=f"{__file__} : BNGPlotter._datplot()"
-        )
+        self.logger.debug(f"Saving figure to {self.out}", loc=f"{__file__} : BNGPlotter._datplot()")
         # save the figure
         plt.savefig(self.out)

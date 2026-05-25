@@ -21,6 +21,7 @@ Inherits the gotcha-fixes from seeded_sweep.py:
   * Doesn't depend on bionetgen.bngmodel() — uses regex over raw text so
     parser-rejecting BNGL like prion2_YTLedits.bngl can still be classified.
 """
+
 import argparse
 import concurrent.futures as cf
 import json
@@ -55,7 +56,6 @@ TEND_OVERRIDES = {
     # within the timeout. The cap is a sweep-side workaround for a
     # documented bngsim codegen limitation; not a model-correctness change.
     "scaling_example.bngl": 50,
-
     # --- candidate-corpus glacial tier -------------------------------------
     # These 28 models are stochastic (nf/ssa) and time-integration-bound, so
     # wall scales ~linearly with t_end. Single-run wall was 12-65 s; tagged
@@ -63,35 +63,35 @@ TEND_OVERRIDES = {
     # 2 min). Caps target ~6-10 s/run (~60-100 s DIFF -> "slow" tier). Comment
     # = original t_end(s) and measured single-run wall. Two basenames cover two
     # models each (noted). Values were measured-and-tuned, not just estimated.
-    "jobs_tofit_gen48ind13.bngl": 100,                      # nf 1000,  ~65s
-    "jobs_tofit_gen34ind26.bngl": 100,                      # nf 1000,  ~65s
-    "jobs_tofit_iter44p17.bngl": 100,                       # nf 1000,  ~63s
-    "fceri_ji.bngl": 60,                                    # nf 500,   ~61s
-    "example2_fit.bngl": 16,                                # nf 126,   ~61s
-    "v21.bngl": 8,                                          # ode+ssa 100, ~56s (ssa-bound); cap 15 still ~14s
-    "tcr_iter28p4h2.bngl": 2.0,                             # equil 15.6 + main 0.94, ~59s
-    "tcr_iter9p44.bngl": 2.0,                               # equil 15.6 + main 0.94, ~51s
-    "egfr_nf_iter5p12h10.bngl": 9,                          # nf 60,    ~51s
-    "e6.bngl": 25,                                          # nf 200,   ~60s
-    "e5.bngl": 30,                                          # nf 200,   ~46s
-    "e4.bngl": 40,                                          # nf 200,   ~35s
-    "e3.bngl": 60,                                          # nf 200,   ~25s
+    "jobs_tofit_gen48ind13.bngl": 100,  # nf 1000,  ~65s
+    "jobs_tofit_gen34ind26.bngl": 100,  # nf 1000,  ~65s
+    "jobs_tofit_iter44p17.bngl": 100,  # nf 1000,  ~63s
+    "fceri_ji.bngl": 60,  # nf 500,   ~61s
+    "example2_fit.bngl": 16,  # nf 126,   ~61s
+    "v21.bngl": 8,  # ode+ssa 100, ~56s (ssa-bound); cap 15 still ~14s
+    "tcr_iter28p4h2.bngl": 2.0,  # equil 15.6 + main 0.94, ~59s
+    "tcr_iter9p44.bngl": 2.0,  # equil 15.6 + main 0.94, ~51s
+    "egfr_nf_iter5p12h10.bngl": 9,  # nf 60,    ~51s
+    "e6.bngl": 25,  # nf 200,   ~60s
+    "e5.bngl": 30,  # nf 200,   ~46s
+    "e4.bngl": 40,  # nf 200,   ~35s
+    "e3.bngl": 60,  # nf 200,   ~25s
     # e2 NOT capped: it's a noisy model that sits right on the ensemble-test
     # threshold — capped to 80 it marginally DIFFs (4/303 cells), but at full
     # t_end=200 (~20s) it PASSES. Run it full-horizon rather than paper over
     # the noise with extra seed replicates.
-    "e1.bngl": 110,                                         # nf 200,   ~14s
-    "egfr_net.bngl": 30,                                    # nf 120,   ~33s
-    "bench_blbr_rings_posner1995.bngl": 900,                # nf 3000,  ~27s
-    "PushPull.bngl": 1200,                                  # nf 4000,  ~25s
-    "tcr_gen20ind9.bngl": 1.0,                              # rulehub: equil 25.2 + main 1.5 (~61s); rulemonkey: main 1.5 (~12s)
-    "bench_blbr_dembo1978_monovalent_inhibitor.bngl": 1200, # nf 3000,  ~19s
-    "receptor_nf_iter91p28.bngl": 60,                       # equil 600 + main 60, ~19s
-    "example3_fit.bngl": 1800,                              # nf 5000; rulehub bench (~17s) + rulemonkey (~21s)
-    "tlbr_yang2008.bngl": 1800,                             # nf 3000,  ~13s
-    "BLBR.bngl": 5,                                         # nf 10 / n_steps 1000, ~16s
-    "example6_ground_truth.bngl": 60,                       # equil 600 + main 60, ~15s
-    "blbr_heterogeneity_goldstein1980.bngl": 5,             # nf parameter_scan, t_end 10 (also n_scan_pts cut below), ~28s
+    "e1.bngl": 110,  # nf 200,   ~14s
+    "egfr_net.bngl": 30,  # nf 120,   ~33s
+    "bench_blbr_rings_posner1995.bngl": 900,  # nf 3000,  ~27s
+    "PushPull.bngl": 1200,  # nf 4000,  ~25s
+    "tcr_gen20ind9.bngl": 1.0,  # rulehub: equil 25.2 + main 1.5 (~61s); rulemonkey: main 1.5 (~12s)
+    "bench_blbr_dembo1978_monovalent_inhibitor.bngl": 1200,  # nf 3000,  ~19s
+    "receptor_nf_iter91p28.bngl": 60,  # equil 600 + main 60, ~19s
+    "example3_fit.bngl": 1800,  # nf 5000; rulehub bench (~17s) + rulemonkey (~21s)
+    "tlbr_yang2008.bngl": 1800,  # nf 3000,  ~13s
+    "BLBR.bngl": 5,  # nf 10 / n_steps 1000, ~16s
+    "example6_ground_truth.bngl": 60,  # equil 600 + main 60, ~15s
+    "blbr_heterogeneity_goldstein1980.bngl": 5,  # nf parameter_scan, t_end 10 (also n_scan_pts cut below), ~28s
 }
 
 # Per-model n_scan_pts override, keyed by .bngl filename. Reduces the number of
@@ -185,7 +185,9 @@ def parse_simulate_methods(text):
         suffix = suffix_m.group(1) if suffix_m else None
         out.append((suffix, method))
     for m_method, blob in re.findall(
-        r"simulate_(\w+)\s*\(\s*\{([^}]*)\}", text, re.DOTALL,
+        r"simulate_(\w+)\s*\(\s*\{([^}]*)\}",
+        text,
+        re.DOTALL,
     ):
         suffix_m = re.search(r"suffix\s*=>\s*['\"]?([^'\",}\s]+)['\"]?", blob)
         suffix = suffix_m.group(1) if suffix_m else None
@@ -202,7 +204,9 @@ def parse_workflow_methods(text):
     text = re.sub(r"#.*", "", text)
     out = []
     for blob in re.findall(
-        r"(?:parameter_scan|bifurcate)\s*\(\s*\{([^}]*)\}", text, re.DOTALL,
+        r"(?:parameter_scan|bifurcate)\s*\(\s*\{([^}]*)\}",
+        text,
+        re.DOTALL,
     ):
         method_m = re.search(r"method\s*=>\s*['\"]?(\w+)['\"]?", blob)
         out.append((method_m.group(1) if method_m else "ode").lower())
@@ -217,9 +221,7 @@ def is_stochastic(text):
 
 TEND_RE = re.compile(r"(t_end\s*=>\s*)([0-9eE.+\-*/() ]+)")
 NSCANPTS_RE = re.compile(r"(n_scan_pts\s*=>\s*)(\d+)")
-SEED_INJECT_RE = re.compile(
-    r"((?:simulate(?:_\w+)?|parameter_scan|bifurcate)\s*\(\s*\{)"
-)
+SEED_INJECT_RE = re.compile(r"((?:simulate(?:_\w+)?|parameter_scan|bifurcate)\s*\(\s*\{)")
 
 
 def _cap_tend(line, cap):
@@ -286,8 +288,7 @@ def patch_bngl_tend_only(text, tend_override, nscanpts_override=None):
         if stripped.startswith("#"):
             out_lines.append(line)
             continue
-        out_lines.append(
-            _set_nscanpts(_cap_tend(line, tend_override), nscanpts_override))
+        out_lines.append(_set_nscanpts(_cap_tend(line, tend_override), nscanpts_override))
     return "".join(out_lines)
 
 
@@ -303,9 +304,7 @@ def inject_tol(text, tol_override):
         return text
     atol = tol_override["atol"]
     rtol = tol_override["rtol"]
-    action_open = re.compile(
-        r"((?:simulate(?:_\w+)?|parameter_scan|bifurcate)\s*\(\s*\{)"
-    )
+    action_open = re.compile(r"((?:simulate(?:_\w+)?|parameter_scan|bifurcate)\s*\(\s*\{)")
     strip_re = re.compile(r"[ar]tol\s*=>\s*[-+0-9.eE]+\s*,?\s*")
     out_lines = []
     for line in text.splitlines(keepends=True):
@@ -358,15 +357,19 @@ def run_one(simulator, bngl_path, run_path, out_dir, timeout):
     try:
         proc = subprocess.run(
             [sys.executable, "-c", inner],
-            capture_output=True, text=True,
+            capture_output=True,
+            text=True,
             timeout=timeout + 30,
             cwd=tempfile.gettempdir(),
         )
         elapsed = time.monotonic() - start
-        artifacts = sorted(
-            f.name for f in out_dir.iterdir()
-            if f.is_file() and f.suffix in OUTPUT_EXTENSIONS
-        ) if out_dir.exists() else []
+        artifacts = (
+            sorted(
+                f.name for f in out_dir.iterdir() if f.is_file() and f.suffix in OUTPUT_EXTENSIONS
+            )
+            if out_dir.exists()
+            else []
+        )
         if proc.returncode == 0:
             log_path.write_text(
                 f"# {bngl_path}\n# run={run_path}\n# simulator={simulator}\n"
@@ -440,21 +443,25 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--root", required=True, help="Directory tree with .bngl files")
     ap.add_argument("--out", required=True, help="Output root for patched copies + artifacts")
-    ap.add_argument("--simulator", required=True, choices=("subprocess", "bngsim"),
-                    help="Simulator to pass to bionetgen.run()")
-    ap.add_argument("--n-seeds", type=int, default=10,
-                    help="Seeds 1..N for stochastic models")
+    ap.add_argument(
+        "--simulator",
+        required=True,
+        choices=("subprocess", "bngsim"),
+        help="Simulator to pass to bionetgen.run()",
+    )
+    ap.add_argument("--n-seeds", type=int, default=10, help="Seeds 1..N for stochastic models")
     ap.add_argument("--workers", type=int, default=8)
     ap.add_argument("--timeout", type=int, default=180, help="Per-model timeout (s)")
     ap.add_argument("--limit", type=int, default=0, help="Max .bngl files (0=all)")
-    ap.add_argument("--include", default="",
-                    help="Substring filter on file path (debugging)")
-    ap.add_argument("--exclude", default="",
-                    help="Substring filter — drop matching file paths")
-    ap.add_argument("--models", default="",
-                    help="Comma-separated model basenames (.bngl optional); "
-                         "restrict the sweep to exactly these — for selective "
-                         "high-seed re-runs of models flagged DIFF")
+    ap.add_argument("--include", default="", help="Substring filter on file path (debugging)")
+    ap.add_argument("--exclude", default="", help="Substring filter — drop matching file paths")
+    ap.add_argument(
+        "--models",
+        default="",
+        help="Comma-separated model basenames (.bngl optional); "
+        "restrict the sweep to exactly these — for selective "
+        "high-seed re-runs of models flagged DIFF",
+    )
     args = ap.parse_args()
 
     root = Path(args.root).resolve()
@@ -475,7 +482,7 @@ def main():
 
     # For each model, decide regime + emit (run_path, out_dir, role) units.
     # role is "deterministic" or seed_K.
-    units = []     # list of dicts: bngl, run, out_dir, role, regime
+    units = []  # list of dicts: bngl, run, out_dir, role, regime
     n_det = 0
     n_stoch = 0
     n_unreadable = 0
@@ -509,39 +516,50 @@ def main():
                 patched_dir.mkdir(parents=True, exist_ok=True)
                 patched_path = patched_dir / rel.name
                 patched_path.write_text(
-                    inject_tol(patch_bngl(text, seed, tend_override,
-                                          nscanpts_override), tol_override))
+                    inject_tol(
+                        patch_bngl(text, seed, tend_override, nscanpts_override), tol_override
+                    )
+                )
                 out_dir = out_root / rel.parent / rel.stem / f"seed{seed}"
-                units.append({
-                    "bngl": str(src),
-                    "run": str(patched_path),
-                    "out_dir": str(out_dir),
-                    "role": f"seed{seed}",
-                    "regime": "stochastic",
-                })
+                units.append(
+                    {
+                        "bngl": str(src),
+                        "run": str(patched_path),
+                        "out_dir": str(out_dir),
+                        "role": f"seed{seed}",
+                        "regime": "stochastic",
+                    }
+                )
         else:
             n_det += 1
             # Write a patched copy if any override or rename applies.
-            if (tend_override is not None or nscanpts_override is not None
-                    or tol_override is not None or renames):
+            if (
+                tend_override is not None
+                or nscanpts_override is not None
+                or tol_override is not None
+                or renames
+            ):
                 patched_dir = patch_root / rel.parent
                 patched_dir.mkdir(parents=True, exist_ok=True)
                 patched_path = patched_dir / rel.name
                 patched_path.write_text(
-                    inject_tol(patch_bngl_tend_only(text, tend_override,
-                                                    nscanpts_override),
-                               tol_override))
+                    inject_tol(
+                        patch_bngl_tend_only(text, tend_override, nscanpts_override), tol_override
+                    )
+                )
                 run_path = patched_path
             else:
                 run_path = src
             out_dir = out_root / rel.parent / rel.stem / "det"
-            units.append({
-                "bngl": str(src),
-                "run": str(run_path),
-                "out_dir": str(out_dir),
-                "role": "det",
-                "regime": "deterministic",
-            })
+            units.append(
+                {
+                    "bngl": str(src),
+                    "run": str(run_path),
+                    "out_dir": str(out_dir),
+                    "role": "det",
+                    "regime": "deterministic",
+                }
+            )
 
     if args.limit:
         units = units[: args.limit]
@@ -558,18 +576,24 @@ def main():
     print(f"python:        {sys.executable}")
 
     probe = subprocess.run(
-        [sys.executable, "-c",
-         "import bionetgen; print(bionetgen.__file__)"],
-        capture_output=True, text=True, cwd=tempfile.gettempdir(),
+        [sys.executable, "-c", "import bionetgen; print(bionetgen.__file__)"],
+        capture_output=True,
+        text=True,
+        cwd=tempfile.gettempdir(),
     )
     bionetgen_path = (probe.stdout.strip().splitlines() or ["<unresolved>"])[-1]
     print(f"bionetgen:     {bionetgen_path}")
     bngsim_path = None
     if args.simulator == "bngsim":
         probe2 = subprocess.run(
-            [sys.executable, "-c",
-             "import bngsim; print(bngsim.__file__, getattr(bngsim, '__version__', '?'))"],
-            capture_output=True, text=True, cwd=tempfile.gettempdir(),
+            [
+                sys.executable,
+                "-c",
+                "import bngsim; print(bngsim.__file__, getattr(bngsim, '__version__', '?'))",
+            ],
+            capture_output=True,
+            text=True,
+            cwd=tempfile.gettempdir(),
         )
         bngsim_path = (probe2.stdout.strip().splitlines() or [""])[-1]
         print(f"bngsim:        {bngsim_path}")
@@ -581,9 +605,12 @@ def main():
             pool.submit(
                 run_one,
                 args.simulator,
-                u["bngl"], u["run"], u["out_dir"],
+                u["bngl"],
+                u["run"],
+                u["out_dir"],
                 args.timeout,
-            ): u for u in units
+            ): u
+            for u in units
         }
         done = 0
         for fut in cf.as_completed(futs):
@@ -594,8 +621,10 @@ def main():
             res["regime"] = u["regime"]
             summary.append(res)
             if done % 50 == 0 or done == len(units):
-                print(f"[{done}/{len(units)}] {res['status']:8s} "
-                      f"{res['wall_seconds']:6.1f}s  {u['role']:8s} {res['bngl']}")
+                print(
+                    f"[{done}/{len(units)}] {res['status']:8s} "
+                    f"{res['wall_seconds']:6.1f}s  {u['role']:8s} {res['bngl']}"
+                )
 
     elapsed_total = time.time() - started_at
     by_status = {}
@@ -604,27 +633,32 @@ def main():
         by_status[r["status"]] += 1
 
     summary_path = out_root / "_summary.json"
-    summary_path.write_text(json.dumps({
-        "root": str(root),
-        "out": str(out_root),
-        "python": sys.executable,
-        "bionetgen_path": bionetgen_path,
-        "bngsim_path": bngsim_path,
-        "simulator": args.simulator,
-        "n_seeds": args.n_seeds,
-        "tend_overrides": TEND_OVERRIDES,
-        "tol_overrides": TOL_OVERRIDES,
-        "symbol_renames": SYMBOL_RENAMES,
-        "timeout_overrides": TIMEOUT_OVERRIDES,
-        "n_deterministic_models": n_det,
-        "n_stochastic_models": n_stoch,
-        "n_units": len(units),
-        "elapsed_total_seconds": elapsed_total,
-        "by_status": by_status,
-        "results": sorted(summary, key=lambda r: (r["bngl"], r.get("role", ""))),
-    }, indent=2))
+    summary_path.write_text(
+        json.dumps(
+            {
+                "root": str(root),
+                "out": str(out_root),
+                "python": sys.executable,
+                "bionetgen_path": bionetgen_path,
+                "bngsim_path": bngsim_path,
+                "simulator": args.simulator,
+                "n_seeds": args.n_seeds,
+                "tend_overrides": TEND_OVERRIDES,
+                "tol_overrides": TOL_OVERRIDES,
+                "symbol_renames": SYMBOL_RENAMES,
+                "timeout_overrides": TIMEOUT_OVERRIDES,
+                "n_deterministic_models": n_det,
+                "n_stochastic_models": n_stoch,
+                "n_units": len(units),
+                "elapsed_total_seconds": elapsed_total,
+                "by_status": by_status,
+                "results": sorted(summary, key=lambda r: (r["bngl"], r.get("role", ""))),
+            },
+            indent=2,
+        )
+    )
 
-    print(f"\nDone in {elapsed_total/60:.1f}m. By status: {by_status}")
+    print(f"\nDone in {elapsed_total / 60:.1f}m. By status: {by_status}")
     print(f"Summary: {summary_path}")
 
 

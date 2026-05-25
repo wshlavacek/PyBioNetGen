@@ -277,9 +277,7 @@ class Pattern:
                         loc=loc,
                     )
                     # checking quantifiers
-                    if (other.relation == self.relation) and (
-                        other.quantity == self.quantity
-                    ):
+                    if (other.relation == self.relation) and (other.quantity == self.quantity):
                         logger.debug(
                             f"relation or quantity matches: {other.relation}, {other.quantity}",
                             loc=loc,
@@ -298,18 +296,13 @@ class Pattern:
                         # now we can check contents
                         for molecule in self:
                             if molecule not in other.molecules:
-                                logger.debug(
-                                    f"molecule doesn't match: {molecule}", loc=loc
-                                )
+                                logger.debug(f"molecule doesn't match: {molecule}", loc=loc)
                                 return False
                         # isomorphism check if we have the certificate
                         if (self.canonical_certificate is not None) and (
                             other.canonical_certificate is not None
                         ):
-                            if (
-                                self.canonical_certificate
-                                != other.canonical_certificate
-                            ):
+                            if self.canonical_certificate != other.canonical_certificate:
                                 return False
                         logger.debug("patterns match!", loc=loc)
                         return True
@@ -429,9 +422,7 @@ class Molecule:
                     f"name, compartment and labels match: {other.name}, {other.compartment}, {other.label}",
                     loc=loc,
                 )
-                if (self.canonical_label is not None) and (
-                    other.canonical_label is not None
-                ):
+                if (self.canonical_label is not None) and (other.canonical_label is not None):
                     # we can check canonical labels
                     if self.canonical_label != other.canonical_label:
                         return False
@@ -607,9 +598,7 @@ class Component:
             logger.debug(f"Comparison class matches: {other.__class__}", loc=loc)
             # check attributes
             if (other.name == self.name) and (other.label == self.label):
-                logger.debug(
-                    f"name and labels match: {other.name}, {other.label}", loc=loc
-                )
+                logger.debug(f"name and labels match: {other.name}, {other.label}", loc=loc)
                 # check states
                 if len(other.states) == len(self.states):
                     logger.debug(f"state lists match: {other.states}", loc=loc)

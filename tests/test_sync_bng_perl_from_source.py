@@ -61,20 +61,23 @@ def fake_source(tmp_path):
     """Build a minimal upstream source tree with a Perl module and BNG2.pl."""
     src = tmp_path / "src"
     (src / "Perl2").mkdir(parents=True)
-    (src / "BNG2.pl").write_text("#!/usr/bin/perl\nprint \"hello\\n\";\n")
-    (src / "Perl2" / "Expression.pm").write_text(
-        "package Expression;\n# stub for tests\n1;\n"
-    )
+    (src / "BNG2.pl").write_text('#!/usr/bin/perl\nprint "hello\\n";\n')
+    (src / "Perl2" / "Expression.pm").write_text("package Expression;\n# stub for tests\n1;\n")
     return src
 
 
 def test_refresh_writes_perl_into_each_bundle(script_module, fake_source):
     module, bundle_root = script_module
-    module.main([
-        "--source-dir", str(fake_source),
-        "--commit-sha", "deadbeef",
-        "--branch", "master",
-    ])
+    module.main(
+        [
+            "--source-dir",
+            str(fake_source),
+            "--commit-sha",
+            "deadbeef",
+            "--branch",
+            "master",
+        ]
+    )
 
     for name, eol in module.BUNDLE_LINE_ENDINGS.items():
         assert (bundle_root / name / "BNG2.pl").is_file()
@@ -94,11 +97,16 @@ def test_refresh_writes_perl_into_each_bundle(script_module, fake_source):
 
 def test_refresh_writes_marker(script_module, fake_source):
     module, bundle_root = script_module
-    module.main([
-        "--source-dir", str(fake_source),
-        "--commit-sha", "0123abc",
-        "--branch", "feature/tfun-fix",
-    ])
+    module.main(
+        [
+            "--source-dir",
+            str(fake_source),
+            "--commit-sha",
+            "0123abc",
+            "--branch",
+            "feature/tfun-fix",
+        ]
+    )
     marker = bundle_root / "assets" / "BNG_PERL_SOURCE"
     assert marker.is_file()
     text = marker.read_text()
@@ -111,11 +119,15 @@ def test_dry_run_does_not_modify(script_module, fake_source):
     module, bundle_root = script_module
     # Pre-populate the win bundle with a sentinel Perl file we can detect
     (bundle_root / "bng-win" / "BNG2.pl").write_text("ORIGINAL\n")
-    module.main([
-        "--source-dir", str(fake_source),
-        "--commit-sha", "deadbeef",
-        "--dry-run",
-    ])
+    module.main(
+        [
+            "--source-dir",
+            str(fake_source),
+            "--commit-sha",
+            "deadbeef",
+            "--dry-run",
+        ]
+    )
     assert (bundle_root / "bng-win" / "BNG2.pl").read_text() == "ORIGINAL\n"
     assert not (bundle_root / "assets" / "BNG_PERL_SOURCE").exists()
 
@@ -126,7 +138,11 @@ def test_missing_source_paths_raise(script_module, tmp_path):
     bad.mkdir()
     # No BNG2.pl, no Perl2/
     with pytest.raises(FileNotFoundError):
-        module.main([
-            "--source-dir", str(bad),
-            "--commit-sha", "x",
-        ])
+        module.main(
+            [
+                "--source-dir",
+                str(bad),
+                "--commit-sha",
+                "x",
+            ]
+        )

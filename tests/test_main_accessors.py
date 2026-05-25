@@ -39,7 +39,5 @@ def test_get_conf_uses_cached_default_app():
 def test_get_default_bng_path_reads_bngpath_from_config():
     from bionetgen import main as main_module
 
-    with patch.object(
-        main_module, "get_conf", return_value={"bngpath": "/tmp/BNG2.pl"}
-    ):
+    with patch.object(main_module, "get_conf", return_value={"bngpath": "/tmp/BNG2.pl"}):
         assert main_module.get_default_bng_path() == "/tmp/BNG2.pl"

@@ -1,4 +1,5 @@
 """Tests for bionetgen/modelapi/pattern_reader.py"""
+
 from bionetgen.modelapi.pattern_reader import BNGParsers, BNGPatternReader
 
 

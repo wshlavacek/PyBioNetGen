@@ -31,9 +31,7 @@ class BNGResult:
     def __init__(self, path=None, direct_path=None, app=None):
         self.app = app
         self.logger = BNGLogger(app=self.app)
-        self.logger.debug(
-            "Setting up BNGResult object", loc=f"{__file__} : BNGResult.__init__()"
-        )
+        self.logger.debug("Setting up BNGResult object", loc=f"{__file__} : BNGResult.__init__()")
         # defaults
         self.process_return = None
         self.output = None
@@ -192,6 +190,4 @@ class BNGResult:
         formats = tuple([dformat for i in range(len(names))])
         # return the loadtxt result as a record array
         # which is similar to pandas data format without the helper functions
-        return np.rec.array(
-            np.loadtxt(path, dtype={"names": names, "formats": formats})
-        )
+        return np.rec.array(np.loadtxt(path, dtype={"names": names, "formats": formats}))

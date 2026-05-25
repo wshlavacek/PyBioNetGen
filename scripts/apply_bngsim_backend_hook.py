@@ -45,7 +45,7 @@ _LEGACY_MARKER = "    # PyBioNetGen/BNGsim backend hook."
 _NETWORK_NEEDLE = "    # Determine index of last rule iteration\n"
 
 # ── Network hook (ode/ssa/psa) — in sub simulate ───────────────────
-_NETWORK_BODY = r'''    # BNG2.pl has already normalized model state, artifact, method, options.
+_NETWORK_BODY = r"""    # BNG2.pl has already normalized model state, artifact, method, options.
     if ($ENV{'BIONETGEN_BNGSIM_BACKEND'} && $method =~ /^(cvode|ssa|psa)$/)
     {
         my @helper_command;
@@ -173,11 +173,11 @@ _NETWORK_BODY = r'''    # BNG2.pl has already normalized model state, artifact, 
         $model->Time($t_end);
         return '';
     }
-'''
+"""
 
 # ── Network-free hook (nf/rm) — in sub simulate_nf ─────────────────
 _NF_NEEDLE = '        push @command, "-sim", ($t_end-$t_start), "-oSteps", $n_steps;\n'
-_NF_BODY = r'''        # BNG2.pl has written the BNG XML and normalized the run. Delegate the
+_NF_BODY = r"""        # BNG2.pl has written the BNG XML and normalized the run. Delegate the
         # network-free simulation (nf, or rm via the helper's method override).
         if ($ENV{'BIONETGEN_BNGSIM_BACKEND'})
         {
@@ -303,7 +303,7 @@ _NF_BODY = r'''        # BNG2.pl has written the BNG XML and normalized the run.
             $model->Time(undef);
             return '';
         }
-'''
+"""
 
 
 def _bracket(name: str, body: str) -> str:

@@ -1,4 +1,5 @@
 """Tests for plot.py, visualize.py, csimulator.py, and other remaining gaps."""
+
 import os
 from contextlib import contextmanager
 from unittest import mock
@@ -18,19 +19,22 @@ def _patched_plot_modules(mock_sbrn, mock_plt):
     not enough on a polluted interpreter. Patching the attribute on the
     matplotlib package as well makes the mock survive earlier real imports.
     """
-    with mock.patch.dict(
-        "sys.modules", {"seaborn": mock_sbrn, "matplotlib.pyplot": mock_plt}
-    ), mock.patch.object(matplotlib, "pyplot", mock_plt, create=True):
+    with (
+        mock.patch.dict("sys.modules", {"seaborn": mock_sbrn, "matplotlib.pyplot": mock_plt}),
+        mock.patch.object(matplotlib, "pyplot", mock_plt, create=True),
+    ):
         yield
 
 
 # ── BNGPlotter tests ──────────────────────────────────────────────
+
 
 class TestBNGPlotter:
     def test_init(self, tmp_path):
         gdat = tmp_path / "test.gdat"
         gdat.write_text("# time A B\n0.0 1.0 2.0\n1.0 3.0 4.0\n")
         from bionetgen.core.tools.plot import BNGPlotter
+
         p = BNGPlotter(str(gdat), str(tmp_path / "out.png"))
         assert p.inp == str(gdat)
         assert p.result is not None
@@ -40,6 +44,7 @@ class TestBNGPlotter:
         gdat.write_text("# time A B\n0.0 1.0 2.0\n1.0 3.0 4.0\n")
         out = tmp_path / "out.png"
         from bionetgen.core.tools.plot import BNGPlotter
+
         p = BNGPlotter(str(gdat), str(out))
         mock_sbrn = mock.MagicMock()
         mock_plt = mock.MagicMock()
@@ -61,6 +66,7 @@ class TestBNGPlotter:
         scan.write_text("# param A\n0.1 1.0\n0.2 2.0\n")
         out = tmp_path / "out.png"
         from bionetgen.core.tools.plot import BNGPlotter
+
         p = BNGPlotter(str(scan), str(out))
         mock_sbrn = mock.MagicMock()
         mock_plt = mock.MagicMock()
@@ -81,6 +87,7 @@ class TestBNGPlotter:
         dat = tmp_path / "test.xyz"
         dat.write_text("# a b\n1 2\n")
         from bionetgen.core.tools.plot import BNGPlotter
+
         p = BNGPlotter.__new__(BNGPlotter)
         p.logger = mock.MagicMock()
         p.result = mock.MagicMock()
@@ -93,6 +100,7 @@ class TestBNGPlotter:
         gdat.write_text("# time A\n0.0 1.0\n1.0 3.0\n")
         out = tmp_path / "out.png"
         from bionetgen.core.tools.plot import BNGPlotter
+
         p = BNGPlotter(str(gdat), str(out), legend=True, xlabel="Time", ylabel="Conc", title="Test")
         mock_sbrn = mock.MagicMock()
         mock_plt = mock.MagicMock()
@@ -116,6 +124,7 @@ class TestBNGPlotter:
         gdat.write_text("# time\n0.0\n1.0\n")
         out = tmp_path / "out.png"
         from bionetgen.core.tools.plot import BNGPlotter
+
         p = BNGPlotter(str(gdat), str(out))
         mock_sbrn = mock.MagicMock()
         mock_plt = mock.MagicMock()
@@ -128,6 +137,7 @@ class TestBNGPlotter:
         gdat.write_text("# time A\n0.0 1.0\n1.0 3.0\n")
         out = tmp_path / "out.png"
         from bionetgen.core.tools.plot import BNGPlotter
+
         p = BNGPlotter(str(gdat), str(out), xmin=2, xmax=1)
         mock_sbrn = mock.MagicMock()
         mock_plt = mock.MagicMock()
@@ -149,6 +159,7 @@ class TestBNGPlotter:
         gdat.write_text("# time A\n0.0 1.0\n1.0 3.0\n")
         out = tmp_path / "out.png"
         from bionetgen.core.tools.plot import BNGPlotter
+
         p = BNGPlotter(str(gdat), str(out), ymin=4, ymax=1)
         mock_sbrn = mock.MagicMock()
         mock_plt = mock.MagicMock()
@@ -168,49 +179,55 @@ class TestBNGPlotter:
 
 # ── BNGVisualize tests ──────────────────────────────────────────────
 
+
 class TestBNGVisualize:
     def test_init_default_vtype(self):
         from bionetgen.core.tools.visualize import BNGVisualize
+
         v = BNGVisualize("test.bngl")
         assert v.vtype == "contactmap"
         assert v.input == "test.bngl"
 
     def test_init_custom_vtype(self):
         from bionetgen.core.tools.visualize import BNGVisualize
+
         v = BNGVisualize("test.bngl", vtype="regulatory")
         assert v.vtype == "regulatory"
 
     def test_init_all_vtype(self):
         from bionetgen.core.tools.visualize import BNGVisualize
+
         v = BNGVisualize("test.bngl", vtype="all")
         assert v.vtype == "all"
 
     def test_init_invalid_vtype_raises(self):
         from bionetgen.core.tools.visualize import BNGVisualize
+
         with pytest.raises(ValueError):
             BNGVisualize("test.bngl", vtype="invalid_type")
 
     def test_init_empty_vtype(self):
         from bionetgen.core.tools.visualize import BNGVisualize
+
         v = BNGVisualize("test.bngl", vtype="")
         assert v.vtype == "contactmap"
 
     def test_init_with_output(self):
         from bionetgen.core.tools.visualize import BNGVisualize
+
         v = BNGVisualize("test.bngl", output="/tmp/out")
         assert v.output == "/tmp/out"
 
     def test_run_calls_normal_mode(self):
         from bionetgen.core.tools.visualize import BNGVisualize
+
         v = BNGVisualize("test.bngl")
         with mock.patch.object(v, "_normal_mode", return_value=mock.MagicMock()) as m:
             v.run()
             m.assert_called_once()
 
     @pytest.mark.parametrize("use_output", [False, True])
-    def test_normal_mode_logs_and_reraises_cli_failures(
-        self, tmp_path, capsys, use_output
-    ):
+    def test_normal_mode_logs_and_reraises_cli_failures(self, tmp_path, capsys, use_output):
         from bionetgen.core.tools.visualize import BNGVisualize
 
         fake_model = mock.MagicMock()
@@ -219,10 +236,13 @@ class TestBNGVisualize:
         v = BNGVisualize("test.bngl", output=output)
         v.logger = mock.MagicMock()
 
-        with mock.patch(
-            "bionetgen.core.tools.visualize.bionetgen.modelapi.bngmodel",
-            return_value=fake_model,
-        ), mock.patch("bionetgen.core.main.BNGCLI") as mock_cli_cls:
+        with (
+            mock.patch(
+                "bionetgen.core.tools.visualize.bionetgen.modelapi.bngmodel",
+                return_value=fake_model,
+            ),
+            mock.patch("bionetgen.core.main.BNGCLI") as mock_cli_cls,
+        ):
             mock_cli_cls.return_value.run.side_effect = BNGRunError(
                 ["perl", "BNG2.pl", "test.bngl"],
                 message="boom",
@@ -249,12 +269,16 @@ class TestBNGVisualize:
         v = BNGVisualize("test.bngl")
         v.logger = mock.MagicMock()
 
-        with mock.patch(
-            "bionetgen.core.tools.visualize.bionetgen.modelapi.bngmodel",
-            return_value=fake_model,
-        ), mock.patch("bionetgen.core.main.BNGCLI"), mock.patch(
-            "bionetgen.core.tools.visualize.VisResult",
-            return_value=fake_vis_result,
+        with (
+            mock.patch(
+                "bionetgen.core.tools.visualize.bionetgen.modelapi.bngmodel",
+                return_value=fake_model,
+            ),
+            mock.patch("bionetgen.core.main.BNGCLI"),
+            mock.patch(
+                "bionetgen.core.tools.visualize.VisResult",
+                return_value=fake_vis_result,
+            ),
         ):
             with pytest.raises(
                 BNGFileError, match="Failed to generate visualization files: disk full"
@@ -274,9 +298,11 @@ class TestBNGVisualize:
 
 # ── VisResult tests ──────────────────────────────────────────────
 
+
 class TestVisResult:
     def test_init(self, tmp_path):
         from bionetgen.core.tools.visualize import VisResult
+
         # Create a graphml file in tmp_path
         gml = tmp_path / "test.graphml"
         gml.write_text("<graphml></graphml>")
@@ -291,6 +317,7 @@ class TestVisResult:
 
     def test_dump_files(self, tmp_path):
         from bionetgen.core.tools.visualize import VisResult
+
         gml = tmp_path / "test.graphml"
         gml.write_text("<graphml>data</graphml>")
         old_cwd = os.getcwd()
@@ -308,10 +335,12 @@ class TestVisResult:
 
 # ── CSimWrapper tests ──────────────────────────────────────────────
 
+
 class TestCSimWrapper:
     def test_result_struct_fields(self):
 
         from bionetgen.simulator.csimulator import RESULT
+
         # Verify struct fields exist
         field_names = [f[0] for f in RESULT._fields_]
         assert "status" in field_names
@@ -324,6 +353,7 @@ class TestCSimWrapper:
 
 # ── runner.py tests ──────────────────────────────────────────────
 
+
 class TestRunner:
     # runner.run() has complex import-time dependencies; tested via integration tests
     pass
@@ -331,15 +361,18 @@ class TestRunner:
 
 # ── main.py (BNGBase / CLI) tests ──────────────────────────────────
 
+
 class TestBioNetGenApp:
     def test_app_import(self):
         from bionetgen.main import BioNetGen
+
         app = BioNetGen()
         app.setup()
         assert app.config is not None
 
     def test_app_config_has_bngpath(self):
         from bionetgen.main import BioNetGen
+
         app = BioNetGen()
         app.setup()
         assert "bngpath" in app.config["bionetgen"]
@@ -347,9 +380,11 @@ class TestBioNetGenApp:
 
 # ── librrsimulator tests ──────────────────────────────────────────
 
+
 class TestLibRRSimulator:
     def test_simulator_setter(self):
         from bionetgen.simulator.librrsimulator import libRRSimulator
+
         sim = libRRSimulator.__new__(libRRSimulator)
         mock_rr = mock.MagicMock()
         mock_rr_sim = mock.MagicMock()
@@ -361,6 +396,7 @@ class TestLibRRSimulator:
     def test_simulator_setter_no_roadrunner(self):
         from bionetgen.core.exc import BNGSimError
         from bionetgen.simulator.librrsimulator import libRRSimulator
+
         sim = libRRSimulator.__new__(libRRSimulator)
         # Simulate ImportError for roadrunner
         with mock.patch.dict("sys.modules", {"roadrunner": None}):
@@ -369,6 +405,7 @@ class TestLibRRSimulator:
 
     def test_simulate(self):
         from bionetgen.simulator.librrsimulator import libRRSimulator
+
         sim = libRRSimulator.__new__(libRRSimulator)
         sim._simulator = mock.MagicMock()
         sim._simulator.simulate.return_value = "result"
@@ -377,6 +414,7 @@ class TestLibRRSimulator:
 
     def test_sbml_property(self):
         from bionetgen.simulator.librrsimulator import libRRSimulator
+
         sim = libRRSimulator.__new__(libRRSimulator)
         sim._simulator = mock.MagicMock()
         sim._simulator.getCurrentSBML.return_value = "<sbml/>"
@@ -384,12 +422,14 @@ class TestLibRRSimulator:
 
     def test_sbml_setter(self):
         from bionetgen.simulator.librrsimulator import libRRSimulator
+
         sim = libRRSimulator.__new__(libRRSimulator)
         sim.sbml = "<custom_sbml/>"
         assert sim._sbml == "<custom_sbml/>"
 
     def test_init_with_model_file(self):
         from bionetgen.simulator.librrsimulator import libRRSimulator
+
         mock_rr = mock.MagicMock()
         with mock.patch.dict("sys.modules", {"roadrunner": mock_rr}):
             _sim = libRRSimulator(model_file="/fake/model.bngl")

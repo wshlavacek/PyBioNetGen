@@ -168,11 +168,14 @@ def _make_gdiff(p1, p2, **kwargs):
     obj.output = kwargs.get("out")
     obj.output2 = kwargs.get("out2")
 
-    colors = kwargs.get("colors", {
-        "g1": ["#dadbfd", "#e6e7fe", "#f3f3ff"],
-        "g2": ["#ff9e81", "#ffbfaa", "#ffdfd4"],
-        "intersect": ["#c4ed9e", "#d9f4be", "#ecf9df"],
-    })
+    colors = kwargs.get(
+        "colors",
+        {
+            "g1": ["#dadbfd", "#e6e7fe", "#f3f3ff"],
+            "g2": ["#ff9e81", "#ffbfaa", "#ffdfd4"],
+            "intersect": ["#c4ed9e", "#d9f4be", "#ecf9df"],
+        },
+    )
     if isinstance(colors, dict):
         obj.colors = colors
     elif isinstance(colors, str):
@@ -294,9 +297,7 @@ class TestHelpers:
 
     def test_get_color_id_unknown_raises(self, gdiff_obj):
         node = _make_shape_node("x", "#123456", "n0")
-        with pytest.raises(
-            BNGFileError, match="doesn't match known BioNetGen contact-map colors"
-        ):
+        with pytest.raises(BNGFileError, match="doesn't match known BioNetGen contact-map colors"):
             gdiff_obj._get_color_id(node)
 
     def test_color_node(self, gdiff_obj):
@@ -366,25 +367,17 @@ class TestHelpers:
         props = gdiff_obj._get_node_properties(node)
         assert props["y:NodeLabel"]["#text"] == "G"
 
-    def test_get_node_properties_shape_without_supported_node_type_raises(
-        self, gdiff_obj
-    ):
+    def test_get_node_properties_shape_without_supported_node_type_raises(self, gdiff_obj):
         node = {"@id": "n0", "data": {"@key": "d6", "y:UnsupportedNode": {}}}
-        with pytest.raises(
-            BNGFileError, match="Could not find supported yEd properties"
-        ):
+        with pytest.raises(BNGFileError, match="Could not find supported yEd properties"):
             gdiff_obj._get_node_properties(node)
 
-    def test_get_node_properties_list_without_supported_node_type_raises(
-        self, gdiff_obj
-    ):
+    def test_get_node_properties_list_without_supported_node_type_raises(self, gdiff_obj):
         node = {
             "@id": "n0",
             "data": [{"@key": "d4"}, {"@key": "d6", "y:UnsupportedNode": {}}],
         }
-        with pytest.raises(
-            BNGFileError, match="Could not find supported yEd properties"
-        ):
+        with pytest.raises(BNGFileError, match="Could not find supported yEd properties"):
             gdiff_obj._get_node_properties(node)
 
     def test_get_node_fill(self, gdiff_obj):
@@ -399,9 +392,7 @@ class TestHelpers:
     def test_color_node_logs_and_raises_for_invalid_node(self, gdiff_obj):
         node = {"@id": "n0", "data": {"@key": "d6", "y:UnsupportedNode": {}}}
         with mock.patch.object(gdiff_obj.logger, "error") as mock_error:
-            with pytest.raises(
-                BNGFileError, match="Could not find supported yEd properties"
-            ):
+            with pytest.raises(BNGFileError, match="Could not find supported yEd properties"):
                 gdiff_obj._color_node(node, "#AABBCC")
         mock_error.assert_called_once()
         assert "Couldn't color GraphML node n0" in mock_error.call_args.args[0]
@@ -722,9 +713,14 @@ class TestAddNodeToGraph:
         obj = _make_gdiff(p1, p2, mode="union")
         dg = copy.deepcopy(obj.gdict_1)
         original_count = len(dg["graphml"]["graph"]["node"])
-        new_node = _make_group_node("NewMol", "#D2D2D2", "n99", [
-            _make_shape_node("nc1", "#FFFFFF", "n99::n0"),
-        ])
+        new_node = _make_group_node(
+            "NewMol",
+            "#D2D2D2",
+            "n99",
+            [
+                _make_shape_node("nc1", "#FFFFFF", "n99::n0"),
+            ],
+        )
         obj._add_node_to_graph(new_node, dg, ["NewMol"])
         new_count = len(dg["graphml"]["graph"]["node"])
         assert new_count == original_count + 1

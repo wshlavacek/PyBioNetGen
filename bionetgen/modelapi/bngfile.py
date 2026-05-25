@@ -39,9 +39,7 @@ class BNGFile:
         given a bngl file or a string, writes an SBML or BNG-XML from it
     """
 
-    def __init__(
-        self, path, BNGPATH=None, generate_network=False, suppress=True
-    ) -> None:
+    def __init__(self, path, BNGPATH=None, generate_network=False, suppress=True) -> None:
         if BNGPATH is None:
             BNGPATH = get_default_bng_path()
         self.path = path
@@ -101,9 +99,7 @@ class BNGFile:
                 candidates = glob.glob(os.path.join(temp_folder, "*.xml"))
                 if candidates:
                     preferred = [
-                        c
-                        for c in candidates
-                        if os.path.basename(c).startswith(model_name)
+                        c for c in candidates if os.path.basename(c).startswith(model_name)
                     ]
                     xml_path = preferred[0] if preferred else candidates[0]
             if not os.path.exists(xml_path):
@@ -185,7 +181,10 @@ class BNGFile:
             # naive collapse turned the live definition into part of
             # the comment, so bngsim's .net was missing two functions.
             mstr = re.sub(
-                r"^([^#\n]*)\\[ \t]*\n", r"\1", mstr, flags=re.MULTILINE,
+                r"^([^#\n]*)\\[ \t]*\n",
+                r"\1",
+                mstr,
+                flags=re.MULTILINE,
             )
             mlines = mstr.split("\n")
             self.parsed_actions = []
@@ -221,9 +220,7 @@ class BNGFile:
                 if remove_to < 0:
                     msg = f'There is a "begin actions" statement at line {remove_from} without a matching "end actions" statement'
                     raise BNGFileError(model_path, message=msg)
-                stripped_lines = (
-                    stripped_lines[:remove_from] + stripped_lines[remove_to + 1 :]
-                )
+                stripped_lines = stripped_lines[:remove_from] + stripped_lines[remove_to + 1 :]
             if remove_to > 0:
                 if remove_from < 0:
                     msg = f'There is an "end actions" statement at line {remove_to} without a matching "begin actions" statement'
@@ -267,24 +264,18 @@ class BNGFile:
             if xml_type == "bngxml":
                 if self.bngexec is None:
                     msg = "BNG-XML generation requires BNG2.pl (BioNetGen) to be installed."
-                    self._raise_file_error(
-                        msg, loc=f"{__file__} : BNGFile.write_xml()"
-                    )
+                    self._raise_file_error(msg, loc=f"{__file__} : BNGFile.write_xml()")
                 rc, _ = run_command(
                     ["perl", self.bngexec, "--xml", "temp.bngl"], suppress=self.suppress
                 )
                 if rc != 0:
                     msg = f"BNG-XML generation failed for {self.path}"
-                    self._raise_file_error(
-                        msg, loc=f"{__file__} : BNGFile.write_xml()"
-                    )
+                    self._raise_file_error(msg, loc=f"{__file__} : BNGFile.write_xml()")
                 else:
                     # we should now have the XML file
                     if not os.path.exists("temp.xml"):
                         msg = "BNG-XML generation did not produce temp.xml"
-                        self._raise_file_error(
-                            msg, loc=f"{__file__} : BNGFile.write_xml()"
-                        )
+                        self._raise_file_error(msg, loc=f"{__file__} : BNGFile.write_xml()")
                     with open("temp.xml", "r", encoding="UTF-8") as f:
                         content = f.read()
                         open_file.write(content)
@@ -294,23 +285,17 @@ class BNGFile:
             elif xml_type == "sbml":
                 if self.bngexec is None:
                     msg = "SBML generation requires BNG2.pl (BioNetGen) to be installed."
-                    self._raise_file_error(
-                        msg, loc=f"{__file__} : BNGFile.write_xml()"
-                    )
+                    self._raise_file_error(msg, loc=f"{__file__} : BNGFile.write_xml()")
                 command = ["perl", self.bngexec, "temp.bngl"]
                 rc, _ = run_command(command, suppress=self.suppress)
                 if rc != 0:
                     msg = f"SBML generation failed for {self.path}"
-                    self._raise_file_error(
-                        msg, loc=f"{__file__} : BNGFile.write_xml()"
-                    )
+                    self._raise_file_error(msg, loc=f"{__file__} : BNGFile.write_xml()")
                 else:
                     # we should now have the SBML file
                     if not os.path.exists("temp_sbml.xml"):
                         msg = "SBML generation did not produce temp_sbml.xml"
-                        self._raise_file_error(
-                            msg, loc=f"{__file__} : BNGFile.write_xml()"
-                        )
+                        self._raise_file_error(msg, loc=f"{__file__} : BNGFile.write_xml()")
                     with open("temp_sbml.xml", "r", encoding="UTF-8") as f:
                         content = f.read()
                         open_file.write(content)

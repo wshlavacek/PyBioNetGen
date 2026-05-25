@@ -42,9 +42,7 @@ class BNGCLI:
     ):
         self.app = app
         self.logger = BNGLogger(app=self.app)
-        self.logger.debug(
-            "Setting up BNGCLI object", loc=f"{__file__} : BNGCLI.__init__()"
-        )
+        self.logger.debug("Setting up BNGCLI object", loc=f"{__file__} : BNGCLI.__init__()")
         self.inp_file = inp_file
         import bionetgen.modelapi.model as mdl
 
@@ -263,9 +261,7 @@ class BNGCLI:
         self._helper_dir = None
 
     def _set_output(self, output):
-        self.logger.debug(
-            "Setting up output path", loc=f"{__file__} : BNGCLI._set_output()"
-        )
+        self.logger.debug("Setting up output path", loc=f"{__file__} : BNGCLI._set_output()")
         # setting up output area
         self.output = os.path.abspath(output)
         if not os.path.isdir(self.output):
@@ -305,9 +301,7 @@ class BNGCLI:
             self.logger.debug(
                 "The given model is a bngmodel object", loc=f"{__file__} : BNGCLI.run()"
             )
-            self.logger.debug(
-                "Writing the model to a file", loc=f"{__file__} : BNGCLI.run()"
-            )
+            self.logger.debug("Writing the model to a file", loc=f"{__file__} : BNGCLI.run()")
             write_to = os.path.join(self.output, self.inp_file.model_name + ".bngl")
             write_to = os.path.abspath(write_to)
             if os.path.isfile(write_to):
@@ -318,9 +312,7 @@ class BNGCLI:
                 tfile.write(str(self.inp_file))
             command = ["perl", self.bng_exec, write_to]
         else:
-            self.logger.debug(
-                "The given model is a file", loc=f"{__file__} : BNGCLI.run()"
-            )
+            self.logger.debug("The given model is a file", loc=f"{__file__} : BNGCLI.run()")
             fname = os.path.basename(self.inp_path)
             fname = fname.replace(".bngl", "")
             command = ["perl", self.bng_exec, self.inp_path]
@@ -353,9 +345,7 @@ class BNGCLI:
             with open(full_log_path, "w") as f:
                 f.write("\n".join(out))
         if rc == 0:
-            self.logger.debug(
-                "Command ran successfully", loc=f"{__file__} : BNGCLI.run()"
-            )
+            self.logger.debug("Command ran successfully", loc=f"{__file__} : BNGCLI.run()")
             from bionetgen.core.tools import BNGResult
 
             # load in the result

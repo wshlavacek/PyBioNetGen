@@ -26,28 +26,31 @@ This script makes it a usable fixture without changing what it tests:
 Output is committed at tests/models/Creamer_2012.bngl and the parity corpus
 symlinks to it. Re-run this script if the source or POP_SCALE changes.
 """
+
 import math
 import re
 from pathlib import Path
 
 SRC = Path("/Users/wish/Code/RuleHub/Tutorials/NativeTutorials/Creamer2012/Creamer_2012.bngl")
 DST = Path(__file__).resolve().parent.parent / "tests" / "models" / "Creamer_2012.bngl"
-POP_SCALE = 0.01      # 1/100: ~48k molecules, ~40 s/run, cleaner ensemble stats
+POP_SCALE = 0.01  # 1/100: ~48k molecules, ~40 s/run, cleaner ensemble stats
 TEND = 10
 NSTEPS = 20
-GML = 2147483647      # 2**31 - 1, NFsim global molecule limit (32-bit)
+GML = 2147483647  # 2**31 - 1, NFsim global molecule limit (32-bit)
 
 # Only arithmetic + these names are ever eval'd; no builtins are exposed.
-SAFE_ENV = {k: getattr(math, k) for k in
-            ("exp", "log", "log10", "log2", "sqrt", "sin", "cos", "tan", "pi", "e")}
+SAFE_ENV = {
+    k: getattr(math, k)
+    for k in ("exp", "log", "log10", "log2", "sqrt", "sin", "cos", "tan", "pi", "e")
+}
 
 
 def fold_parameters(lines):
     """Return (new_lines, n_folded). Replace each parameter RHS with its value."""
     b = next(i for i, l in enumerate(lines) if re.match(r"\s*begin parameters", l))
     e = next(i for i, l in enumerate(lines) if re.match(r"\s*end parameters", l))
-    defs = []          # (line_idx, name)
-    pending = {}       # name -> rhs expression
+    defs = []  # (line_idx, name)
+    pending = {}  # name -> rhs expression
     for i in range(b + 1, e):
         code = lines[i].split("#", 1)[0].strip()
         if not code:
@@ -59,7 +62,7 @@ def fold_parameters(lines):
         pending[m.group(1)] = m.group(2).strip()
 
     vals = {}
-    for _ in range(100):                       # iterate the dependency DAG to fixpoint
+    for _ in range(100):  # iterate the dependency DAG to fixpoint
         progressed = False
         for name, rhs in list(pending.items()):
             try:

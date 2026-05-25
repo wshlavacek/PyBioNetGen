@@ -73,6 +73,7 @@ Overlay merge (--overlay-subprocess / --overlay-bngsim):
   so the model is judged at the escalated seed count. Pass an overlay
   --out pair per escalation re-run; ``parity_run.py`` automates this.
 """
+
 import argparse
 import json
 import re
@@ -212,9 +213,9 @@ KNOWN_DETERMINISTIC_ARTIFACTS = {
     "proliferation": {
         "max_abs_bound": 1.0,
         "reason": "stiff relaxation-oscillator phase wander across "
-                  "sharp tanh() switches (<=4e-3 time units over 9 "
-                  "cycles); period, amplitude and cycle count match "
-                  "both sides. Verified 2026-05-17.",
+        "sharp tanh() switches (<=4e-3 time units over 9 "
+        "cycles); period, amplitude and cycle count match "
+        "both sides. Verified 2026-05-17.",
     },
     # NOTE: Post / erlang / residence_time were here (exponential-decay-
     # tail relative-error blow-up) but are now handled generally by the
@@ -235,10 +236,10 @@ KNOWN_DETERMINISTIC_ARTIFACTS = {
     "ATG_model_v16": {
         "max_abs_bound": 100.0,
         "reason": "discontinuous staircase function (APdat_*) sampled "
-                  "exactly on its t=230 breakpoint; a ~1-ULP output-time "
-                  "difference flips one bucket on a single row. Species "
-                  "and all non-staircase columns agree to 12 sig figs. "
-                  "Verified 2026-05-17.",
+        "exactly on its t=230 breakpoint; a ~1-ULP output-time "
+        "difference flips one bucket on a single row. Species "
+        "and all non-staircase columns agree to 12 sig figs. "
+        "Verified 2026-05-17.",
     },
     # Lotka-Volterra predator-prey, a neutrally-stable conservative
     # oscillator integrated over ~112 cycles (period ~8.9, t_end 1000).
@@ -252,10 +253,10 @@ KNOWN_DETERMINISTIC_ARTIFACTS = {
     "predator-prey-dynamics": {
         "max_abs_bound": 5.0,
         "reason": "neutrally-stable Lotka-Volterra oscillator over ~112 "
-                  "cycles; the two integrators' conserved quantity drifts "
-                  "into a tiny phase/amplitude offset (max_abs 0.395 on a "
-                  "peak-3503 oscillation, rel 2.7e-4). Both stacks bounded "
-                  "and positive, agree to ~4 sig figs. Verified 2026-05-24.",
+        "cycles; the two integrators' conserved quantity drifts "
+        "into a tiny phase/amplitude offset (max_abs 0.395 on a "
+        "peak-3503 oscillation, rel 2.7e-4). Both stacks bounded "
+        "and positive, agree to ~4 sig figs. Verified 2026-05-24.",
     },
 }
 
@@ -278,42 +279,47 @@ KNOWN_DETERMINISTIC_ARTIFACTS = {
 # Each entry names the model's ODE-segment and nf-segment suffixes.
 SUBPROCESS_NF_UNRELIABLE = {
     "ode_vs_nf_discrepancy": {
-        "ode_suffix": "A_ODE", "nf_suffix": "B_NFsim",
+        "ode_suffix": "A_ODE",
+        "nf_suffix": "B_NFsim",
         "issue": "PyBNF-Private#54",
         "reason": "subprocess NFsim v1.14.3 lacks -bscb; applies a "
-                  "2-product dissociation to a bond inside a 5-molecule "
-                  "ring that doesn't dissociate. bngsim (bscb on) + "
-                  "RuleMonkey + ODE all agree; subprocess nf is the "
-                  "outlier. Validated against the ODE oracle.",
+        "2-product dissociation to a bond inside a 5-molecule "
+        "ring that doesn't dissociate. bngsim (bscb on) + "
+        "RuleMonkey + ODE all agree; subprocess nf is the "
+        "outlier. Validated against the ODE oracle.",
     },
     "debug": {
-        "ode_suffix": "A_ODE", "nf_suffix": "B_NFsim",
+        "ode_suffix": "A_ODE",
+        "nf_suffix": "B_NFsim",
         "issue": "PyBNF-Private#54",
         "reason": "same -bscb root cause as ode_vs_nf_discrepancy "
-                  "(MTOR/RPTOR pre-assembled complex). bngsim nf tracks "
-                  "ODE; subprocess nf is the outlier.",
+        "(MTOR/RPTOR pre-assembled complex). bngsim nf tracks "
+        "ODE; subprocess nf is the outlier.",
     },
     "debug_v3": {
-        "ode_suffix": "A_ODE", "nf_suffix": "B_NFsim",
+        "ode_suffix": "A_ODE",
+        "nf_suffix": "B_NFsim",
         "issue": "PyBNF-Private#54",
         "reason": "same -bscb root cause as ode_vs_nf_discrepancy "
-                  "(simplified MTOR/RPTOR complex). bngsim nf tracks "
-                  "ODE; subprocess nf is the outlier.",
+        "(simplified MTOR/RPTOR complex). bngsim nf tracks "
+        "ODE; subprocess nf is the outlier.",
     },
     "overlap_rules2": {
-        "ode_suffix": "BNG", "nf_suffix": "NFS",
+        "ode_suffix": "BNG",
+        "nf_suffix": "NFS",
         "issue": "PyBNF-Private#54 (filed #55, corrected)",
         "reason": "same -bscb root cause: a 2-product dissociation on a "
-                  "bond inside a size-2 ring. ODE keeps the rings (the "
-                  "ring-opening reaction violates molecularity and is "
-                  "dropped); bngsim nf agrees, subprocess nf wrongly "
-                  "breaks them.",
+        "bond inside a size-2 ring. ODE keeps the rings (the "
+        "ring-opening reaction violates molecularity and is "
+        "dropped); bngsim nf agrees, subprocess nf wrongly "
+        "breaks them.",
     },
     "testrings_wsh": {
-        "ode_suffix": "ode", "nf_suffix": "nf",
+        "ode_suffix": "ode",
+        "nf_suffix": "nf",
         "issue": "PyBNF-Private#54",
         "reason": "same -bscb root cause (ring complex). bngsim nf "
-                  "tracks ODE; subprocess nf is the outlier.",
+        "tracks ODE; subprocess nf is the outlier.",
     },
 }
 
@@ -330,15 +336,15 @@ SUBPROCESS_NF_ANALYTIC = {
         "suffix": "",
         "issue": "legacy NFsim v1.14.3 ignores $-Fixed (clamped) species",
         "reason": "Fixed-species ($A) feature test. The model documents the "
-                  "exact answer: A_tot kept at 100 (clamped, non-catalytic "
-                  "rule must not deplete it), B_tot grows at k*A0=10/s to "
-                  "~500 at t=50. bngsim NFsim enforces the $ clamp "
-                  "(A_tot=100, B_tot=496); subprocess's vendored NFsim "
-                  "v1.14.3 silently ignores it (A_tot->0.8, B_tot->99.2, the "
-                  "documented '$ ignored' failure). bngsim is correct; the "
-                  "subprocess reference is the wrong oracle. There is no ODE "
-                  "segment, so bngsim is validated against the documented "
-                  "analytic answer. Verified 2026-05-24.",
+        "exact answer: A_tot kept at 100 (clamped, non-catalytic "
+        "rule must not deplete it), B_tot grows at k*A0=10/s to "
+        "~500 at t=50. bngsim NFsim enforces the $ clamp "
+        "(A_tot=100, B_tot=496); subprocess's vendored NFsim "
+        "v1.14.3 silently ignores it (A_tot->0.8, B_tot->99.2, the "
+        "documented '$ ignored' failure). bngsim is correct; the "
+        "subprocess reference is the wrong oracle. There is no ODE "
+        "segment, so bngsim is validated against the documented "
+        "analytic answer. Verified 2026-05-24.",
         "expect": {"A_tot": [100.0, 5.0], "B_tot": [500.0, 60.0]},
     },
 }
@@ -360,32 +366,32 @@ SUBPROCESS_NF_RULEMONKEY = {
     "bench_blbr_rings_posner1995": {
         "issue": "legacy NFsim v1.14.3 ring-closure (no -bscb)",
         "reason": "BLBR cyclic-aggregate model. bngsim NFsim disagrees with "
-                  "the legacy subprocess NFsim catastrophically on Obs_Cyclic_"
-                  "Dimer / bond observables (~37% cell pass). Revalidated "
-                  "against bngsim RuleMonkey (exact network-free): bngsim NF "
-                  "and RuleMonkey agree to 99.9%, so legacy NFsim is the buggy "
-                  "reference. Verified 2026-05-24.",
+        "the legacy subprocess NFsim catastrophically on Obs_Cyclic_"
+        "Dimer / bond observables (~37% cell pass). Revalidated "
+        "against bngsim RuleMonkey (exact network-free): bngsim NF "
+        "and RuleMonkey agree to 99.9%, so legacy NFsim is the buggy "
+        "reference. Verified 2026-05-24.",
     },
     "bench_blbr_dembo1978_monovalent_inhibitor": {
         "issue": "legacy NFsim v1.14.3 aggregate handling",
         "reason": "BLBR monovalent-inhibitor model. bngsim NF vs legacy "
-                  "subprocess NF DIFFs (~97% pass, persists at full horizon); "
-                  "bngsim NF vs bngsim RuleMonkey agree to 99.7%. Legacy NFsim "
-                  "is the outlier. Verified 2026-05-24.",
+        "subprocess NF DIFFs (~97% pass, persists at full horizon); "
+        "bngsim NF vs bngsim RuleMonkey agree to 99.7%. Legacy NFsim "
+        "is the outlier. Verified 2026-05-24.",
     },
     "ft_cooperative_binding": {
         "issue": "legacy NFsim v1.14.3 cooperative-binding feature",
         "reason": "Cooperative-binding feature test. bngsim NF vs legacy "
-                  "subprocess NF DIFFs catastrophically (14% cell pass); "
-                  "bngsim NF vs bngsim RuleMonkey agree (~99%). Legacy NFsim "
-                  "mishandles the cooperative rate; bngsim is correct. "
-                  "Verified 2026-05-24.",
+        "subprocess NF DIFFs catastrophically (14% cell pass); "
+        "bngsim NF vs bngsim RuleMonkey agree (~99%). Legacy NFsim "
+        "mishandles the cooperative rate; bngsim is correct. "
+        "Verified 2026-05-24.",
     },
     "Tutorial_Example": {
         "issue": "legacy NFsim v1.14.3 nf segment",
         "reason": "bngsim NF vs legacy subprocess NF DIFFs (72% cell pass); "
-                  "bngsim NF vs bngsim RuleMonkey agree exactly (100%). Legacy "
-                  "NFsim is the outlier. Verified 2026-05-24.",
+        "bngsim NF vs bngsim RuleMonkey agree exactly (100%). Legacy "
+        "NFsim is the outlier. Verified 2026-05-24.",
     },
 }
 
@@ -405,27 +411,31 @@ KNOWN_STOCHASTIC_ARTIFACTS = {
         "artifact_files": {"Kholodenko2000_ssa.gdat", "Kholodenko2000_ssa.cdat"},
         "issue": "SSA ensemble-mean of an oscillator",
         "reason": "MAPK cascade with negative feedback (sustained oscillations). "
-                  "SSA trajectories decohere in phase, so the ensemble mean is a "
-                  "high-variance target; bngsim-SSA vs subprocess-SSA means "
-                  "differ (~88% cell pass) while the ODE segment matches exactly "
-                  "and more seeds widen the gap. Not an engine bug.",
+        "SSA trajectories decohere in phase, so the ensemble mean is a "
+        "high-variance target; bngsim-SSA vs subprocess-SSA means "
+        "differ (~88% cell pass) while the ODE segment matches exactly "
+        "and more seeds widen the gap. Not an engine bug.",
     },
     "V2005_bistable_gene": {
         "artifact_files": {"V2005_bistable_gene_ssa.gdat", "V2005_bistable_gene_ssa.cdat"},
         "issue": "SSA ensemble-mean of a bistable switch",
         "reason": "Bistable gene circuit. SSA trajectories split between the two "
-                  "stable states, so the ensemble mean is bimodal and seed-"
-                  "sensitive (cell pass 1.00 early -> 0.84 late as states "
-                  "separate); the ODE segment matches exactly. Not an engine bug.",
+        "stable states, so the ensemble mean is bimodal and seed-"
+        "sensitive (cell pass 1.00 early -> 0.84 late as states "
+        "separate); the ODE segment matches exactly. Not an engine bug.",
     },
     "Krishna2006": {
-        "artifact_files": {"Krishna2006_ssa.gdat", "Krishna2006_ssa.cdat",
-                           "Krishna2006_nfr.gdat", "Krishna2006_nfr.cdat"},
+        "artifact_files": {
+            "Krishna2006_ssa.gdat",
+            "Krishna2006_ssa.cdat",
+            "Krishna2006_nfr.gdat",
+            "Krishna2006_nfr.cdat",
+        },
         "issue": "SSA/NF ensemble-mean of an oscillator",
         "reason": "NF-kB oscillation model. Both stochastic segments sit just "
-                  "under the 0.99 ensemble-pass threshold (ssa 0.985, nfr 0.989) "
-                  "— near-threshold noise on an oscillatory system; the ODE "
-                  "segment matches exactly. Not an engine bug.",
+        "under the 0.99 ensemble-pass threshold (ssa 0.985, nfr 0.989) "
+        "— near-threshold noise on an oscillatory system; the ODE "
+        "segment matches exactly. Not an engine bug.",
     },
 }
 
@@ -619,8 +629,7 @@ def _align_columns(sub, sub_names, bng, bng_names):
     """
     if sub_names is None or bng_names is None or sub_names == bng_names:
         return sub, bng
-    if (set(sub_names) == set(bng_names)
-            and len(sub_names) == len(set(sub_names))):
+    if set(sub_names) == set(bng_names) and len(sub_names) == len(set(sub_names)):
         bidx = {n: i for i, n in enumerate(bng_names)}
         return sub, bng[:, [bidx[n] for n in sub_names]]
     return sub, bng
@@ -734,19 +743,24 @@ def deterministic_compare(sub_dir, bng_dir):
     sub_files = {}
     bng_files = {}
     if Path(sub_dir).is_dir():
-        sub_files = {p.name: p for p in Path(sub_dir).iterdir()
-                     if p.is_file() and p.suffix in NUM_EXTENSIONS}
+        sub_files = {
+            p.name: p for p in Path(sub_dir).iterdir() if p.is_file() and p.suffix in NUM_EXTENSIONS
+        }
     if Path(bng_dir).is_dir():
-        bng_files = {p.name: p for p in Path(bng_dir).iterdir()
-                     if p.is_file() and p.suffix in NUM_EXTENSIONS}
+        bng_files = {
+            p.name: p for p in Path(bng_dir).iterdir() if p.is_file() and p.suffix in NUM_EXTENSIONS
+        }
     common = sorted(set(sub_files) & set(bng_files))
     only_sub = sorted(set(sub_files) - set(bng_files))
     only_bng = sorted(set(bng_files) - set(sub_files))
     # Both sides ran ok with no comparable outputs: model has no
     # observables / no simulate actions. PASS by definition.
     if not sub_files and not bng_files:
-        return "pass", {"note": "no .gdat/.cdat outputs on either side",
-                        "only_sub": only_sub, "only_bng": only_bng}
+        return "pass", {
+            "note": "no .gdat/.cdat outputs on either side",
+            "only_sub": only_sub,
+            "only_bng": only_bng,
+        }
     # Cross-extension match by basename when only_sub is .gdat and
     # only_bng is .cdat (or vice versa) for the same stem. Subprocess
     # NF writes .gdat (observables only), bngsim NF writes .cdat
@@ -768,15 +782,15 @@ def deterministic_compare(sub_dir, bng_dir):
             sub, e1 = safe_load(sp)
             bng, e2 = safe_load(bp)
             if e1 or e2:
-                per_file[f"{stem}.{sp.suffix}|{bp.suffix}"] = {
-                    "load_error": e1 or e2}
+                per_file[f"{stem}.{sp.suffix}|{bp.suffix}"] = {"load_error": e1 or e2}
                 overall_pass = False
                 continue
             if sub.shape != bng.shape:
                 per_file[f"{stem}.{sp.suffix}|{bp.suffix}"] = {
                     "note": "cross-ext naming mismatch with shape mismatch",
                     "shape_sub": list(sub.shape),
-                    "shape_bng": list(bng.shape)}
+                    "shape_bng": list(bng.shape),
+                }
                 overall_pass = False
                 continue
             time_diff = float(np.max(np.abs(sub[:, 0] - bng[:, 0])))
@@ -813,8 +827,7 @@ def deterministic_compare(sub_dir, bng_dir):
             continue
         sub, bng = _align_columns(sub, sub_names, bng, bng_names)
         if sub.shape != bng.shape:
-            per_file[name] = {"shape_sub": list(sub.shape),
-                              "shape_bng": list(bng.shape)}
+            per_file[name] = {"shape_sub": list(sub.shape), "shape_bng": list(bng.shape)}
             overall_pass = False
             continue
         # Time column (col 0): scale-relative tolerance, see `_time_tol`.
@@ -828,8 +841,7 @@ def deterministic_compare(sub_dir, bng_dir):
         # Replace nan-vs-nan with 0
         absd = np.where(both_nan, 0.0, absd)
         # File-peak scale → near-zero backstop floor (see module docstring).
-        finite_mag = np.concatenate([np.abs(sub_data).ravel(),
-                                     np.abs(bng_data).ravel()])
+        finite_mag = np.concatenate([np.abs(sub_data).ravel(), np.abs(bng_data).ravel()])
         finite_mag = finite_mag[np.isfinite(finite_mag)]
         scale = float(finite_mag.max()) if finite_mag.size else 1.0
         zero_floor = max(1e-12, scale * NEAR_ZERO_FLOOR_REL)
@@ -850,9 +862,7 @@ def deterministic_compare(sub_dir, bng_dir):
         # both a column-relative piece (forgives decay tails) and a
         # file-relative piece (forgives sub-scale columns); see the
         # ABS_TOL_COL / ABS_TOL_FILE constants.
-        cell_tol = (ABS_TOL_FILE * scale
-                    + ABS_TOL_COL * col_peak[np.newaxis, :]
-                    + REL_TOL * colmag)
+        cell_tol = ABS_TOL_FILE * scale + ABS_TOL_COL * col_peak[np.newaxis, :] + REL_TOL * colmag
         fail_mask = absd_clean > cell_tol
         n_fail = int(np.sum(fail_mask))
         # Forgive single-sample step-discontinuity shifts: roundoff in a
@@ -900,10 +910,8 @@ def deterministic_compare(sub_dir, bng_dir):
         # file passes); raw figures over all cells kept for visibility.
         max_abs_raw = float(np.max(absd_clean)) if absd_clean.size else 0.0
         max_rel_raw = float(np.max(reld_clean)) if reld_clean.size else 0.0
-        max_abs = (float(np.max(absd_clean[remaining_fail]))
-                   if n_remaining else 0.0)
-        max_rel = (float(np.max(reld_clean[remaining_fail]))
-                   if n_remaining else 0.0)
+        max_abs = float(np.max(absd_clean[remaining_fail])) if n_remaining else 0.0
+        max_rel = float(np.max(reld_clean[remaining_fail])) if n_remaining else 0.0
         per_file[name] = {
             "shape": list(sub.shape),
             "time_diff": time_diff,
@@ -919,10 +927,8 @@ def deterministic_compare(sub_dir, bng_dir):
             per_file[name]["budget_forgiven"] = n_budget_forgiven
             per_file[name]["frac_soft_fail"] = frac_soft_fail
         if n_shift or n_near_zero or n_budget_forgiven:
-            per_file[name]["max_rel_raw"] = (
-                max_rel_raw if np.isfinite(max_rel_raw) else "inf")
-            per_file[name]["max_abs_raw"] = (
-                max_abs_raw if np.isfinite(max_abs_raw) else "inf")
+            per_file[name]["max_rel_raw"] = max_rel_raw if np.isfinite(max_rel_raw) else "inf"
+            per_file[name]["max_abs_raw"] = max_abs_raw if np.isfinite(max_abs_raw) else "inf"
         overall_max_abs = max(overall_max_abs, max_abs if np.isfinite(max_abs) else float("inf"))
         overall_max_rel = max(overall_max_rel, max_rel if np.isfinite(max_rel) else float("inf"))
         if time_diff > time_tol:
@@ -950,6 +956,7 @@ def stochastic_compare(sub_seed_dirs, bng_seed_dirs):
 
     Returns: (status, details)
     """
+
     # Index per-seed artifacts.
     def index(seed_dirs):
         per_name = defaultdict(list)
@@ -967,8 +974,11 @@ def stochastic_compare(sub_seed_dirs, bng_seed_dirs):
     only_sub = sorted(set(sub_per_name) - set(bng_per_name))
     only_bng = sorted(set(bng_per_name) - set(sub_per_name))
     if not sub_per_name and not bng_per_name:
-        return "pass", {"note": "no .gdat/.cdat outputs on either side",
-                        "only_sub": only_sub, "only_bng": only_bng}
+        return "pass", {
+            "note": "no .gdat/.cdat outputs on either side",
+            "only_sub": only_sub,
+            "only_bng": only_bng,
+        }
     if not common:
         # Cross-extension basename match (subprocess .gdat <-> bngsim .cdat).
         sub_by_stem = {}
@@ -990,38 +1000,49 @@ def stochastic_compare(sub_seed_dirs, bng_seed_dirs):
             for _n, p in sub_pairs:
                 a, e = safe_load(p)
                 if e:
-                    load_err = e; break
+                    load_err = e
+                    break
                 sub_arrs.append(a)
             if load_err:
                 per_file[stem] = {"load_error": load_err}
-                overall_pass = False; continue
+                overall_pass = False
+                continue
             for _n, p in bng_pairs:
                 a, e = safe_load(p)
                 if e:
-                    load_err = e; break
+                    load_err = e
+                    break
                 bng_arrs.append(a)
             if load_err:
                 per_file[stem] = {"load_error": load_err}
-                overall_pass = False; continue
+                overall_pass = False
+                continue
             sub_shapes = {a.shape for a in sub_arrs}
             bng_shapes = {a.shape for a in bng_arrs}
-            if len(sub_shapes) != 1 or len(bng_shapes) != 1 \
-                    or next(iter(sub_shapes)) != next(iter(bng_shapes)):
-                per_file[stem] = {"note": "cross-ext naming, shape mismatch",
-                                  "shape_sub": [list(s) for s in sub_shapes],
-                                  "shape_bng": [list(s) for s in bng_shapes]}
-                overall_pass = False; continue
+            if (
+                len(sub_shapes) != 1
+                or len(bng_shapes) != 1
+                or next(iter(sub_shapes)) != next(iter(bng_shapes))
+            ):
+                per_file[stem] = {
+                    "note": "cross-ext naming, shape mismatch",
+                    "shape_sub": [list(s) for s in sub_shapes],
+                    "shape_bng": [list(s) for s in bng_shapes],
+                }
+                overall_pass = False
+                continue
             sub_stack = np.stack(sub_arrs)
             bng_stack = np.stack(bng_arrs)
             sub_t_mean = np.mean(sub_stack[:, :, 0], axis=0)
             bng_t_mean = np.mean(bng_stack[:, :, 0], axis=0)
             time_diff = float(np.max(np.abs(sub_t_mean - bng_t_mean)))
             t_tol = _time_tol(np.concatenate([sub_t_mean, bng_t_mean]))
-            per_file[stem] = {"note": "cross-ext name match (NF empty observables)",
-                              "shape_seeds": [sub_stack.shape[0],
-                                              *list(sub_stack.shape[1:])],
-                              "time_diff": time_diff,
-                              "time_tol": t_tol}
+            per_file[stem] = {
+                "note": "cross-ext name match (NF empty observables)",
+                "shape_seeds": [sub_stack.shape[0], *list(sub_stack.shape[1:])],
+                "time_diff": time_diff,
+                "time_tol": t_tol,
+            }
             if time_diff > t_tol:
                 overall_pass = False
         return ("pass" if overall_pass else "diff"), {
@@ -1063,24 +1084,27 @@ def stochastic_compare(sub_seed_dirs, bng_seed_dirs):
         # columns to sub's order (matched by name) so the cosmetic
         # ()/_rateLaw normalization carries through the ensemble compare.
         if sub_arrs and bng_arrs:
-            bng_arrs = [_align_columns(sub_arrs[0], sub_names, b, bng_names)[1]
-                        for b in bng_arrs]
+            bng_arrs = [_align_columns(sub_arrs[0], sub_names, b, bng_names)[1] for b in bng_arrs]
         # Need seeds to align in shape on each side; if any seed has a
         # different shape, treat as shape-mismatch (real signal).
         sub_shapes = {a.shape for a in sub_arrs}
         bng_shapes = {a.shape for a in bng_arrs}
         if len(sub_shapes) != 1 or len(bng_shapes) != 1:
-            per_file[name] = {"shape_sub": [list(s) for s in sub_shapes],
-                              "shape_bng": [list(s) for s in bng_shapes],
-                              "fail": "shape_inconsistent_across_seeds"}
+            per_file[name] = {
+                "shape_sub": [list(s) for s in sub_shapes],
+                "shape_bng": [list(s) for s in bng_shapes],
+                "fail": "shape_inconsistent_across_seeds",
+            }
             overall_pass = False
             continue
         s_shape = next(iter(sub_shapes))
         b_shape = next(iter(bng_shapes))
         if s_shape != b_shape:
-            per_file[name] = {"shape_sub": list(s_shape),
-                              "shape_bng": list(b_shape),
-                              "fail": "shape_mismatch"}
+            per_file[name] = {
+                "shape_sub": list(s_shape),
+                "shape_bng": list(b_shape),
+                "fail": "shape_mismatch",
+            }
             overall_pass = False
             continue
         sub_stack = np.stack(sub_arrs)  # (N_seeds, T, K)
@@ -1103,8 +1127,11 @@ def stochastic_compare(sub_seed_dirs, bng_seed_dirs):
         # isn't a common file; it surfaces when both sides are bngsim, as in the
         # RuleMonkey-oracle revalidation.)
         if sub_obs.shape[2] == 0 or bng_obs.shape[2] == 0:
-            per_file[name] = {"note": "no observable columns; nothing to compare",
-                              "n_cols": int(sub_obs.shape[2]), "pass": True}
+            per_file[name] = {
+                "note": "no observable columns; nothing to compare",
+                "n_cols": int(sub_obs.shape[2]),
+                "pass": True,
+            }
             continue
         N_sub = sub_obs.shape[0]
         N_bng = bng_obs.shape[0]
@@ -1117,8 +1144,7 @@ def stochastic_compare(sub_seed_dirs, bng_seed_dirs):
         # Threshold cells where both ensembles are near-zero relative to
         # the file's overall scale — NFsim noise blows the test up there.
         scale = max(np.nanmax(np.abs(mu_s)), np.nanmax(np.abs(mu_b)), 1e-12)
-        near_zero = (np.maximum(np.abs(mu_s), np.abs(mu_b))
-                     < NEAR_ZERO_REL * scale)
+        near_zero = np.maximum(np.abs(mu_s), np.abs(mu_b)) < NEAR_ZERO_REL * scale
         # Add a small absolute floor so cells with 0 std (e.g. constant
         # observable that *should* match) still get a chance to pass.
         # Use 1e-12 * scale.
@@ -1133,9 +1159,7 @@ def stochastic_compare(sub_seed_dirs, bng_seed_dirs):
         # cell whose two means agree to within the deterministic REL_TOL
         # is consistent regardless of the sigma test (a genuinely
         # stochastic cell almost never agrees that closely by chance).
-        rel_floor = np.maximum(
-            np.maximum(np.abs(mu_s), np.abs(mu_b)), scale * NEAR_ZERO_FLOOR_REL
-        )
+        rel_floor = np.maximum(np.maximum(np.abs(mu_s), np.abs(mu_b)), scale * NEAR_ZERO_FLOOR_REL)
         rel_ok = diff <= REL_TOL * rel_floor
         # NaN handling: both-NaN cell is a pass; one-side-NaN is a fail.
         both_nan = np.isnan(mu_s) & np.isnan(mu_b)
@@ -1195,8 +1219,10 @@ def revalidate_nf_against_ode(sub_dirs, bng_dirs, model_stem, entry):
                 break
             ode_arr = None
     if ode_arr is None:
-        return "diff", {"oracle": "ode", "reason": f"ODE oracle "
-                        f"{model_stem}_{ode_suffix}.gdat not found in subprocess"}
+        return "diff", {
+            "oracle": "ode",
+            "reason": f"ODE oracle {model_stem}_{ode_suffix}.gdat not found in subprocess",
+        }
 
     # bngsim nf ensemble across seeds.
     nf_arrs = []
@@ -1207,11 +1233,12 @@ def revalidate_nf_against_ode(sub_dirs, bng_dirs, model_stem, entry):
             if e is None and a is not None:
                 nf_arrs.append(a)
     if not nf_arrs:
-        return "diff", {"oracle": "ode", "reason": f"no bngsim nf outputs "
-                        f"{model_stem}_{nf_suffix}.gdat"}
+        return "diff", {
+            "oracle": "ode",
+            "reason": f"no bngsim nf outputs {model_stem}_{nf_suffix}.gdat",
+        }
     if len({a.shape for a in nf_arrs}) != 1:
-        return "diff", {"oracle": "ode",
-                        "reason": "bngsim nf seed shapes inconsistent"}
+        return "diff", {"oracle": "ode", "reason": "bngsim nf seed shapes inconsistent"}
 
     nf_stack = np.stack(nf_arrs)
     # Compare the leading common columns (time + observables + any shared
@@ -1232,13 +1259,15 @@ def revalidate_nf_against_ode(sub_dirs, bng_dirs, model_stem, entry):
     mu = np.mean(nf_obs, axis=0)
     sd = np.std(nf_obs, axis=0, ddof=1) if N > 1 else np.zeros_like(mu)
     se = sd / np.sqrt(N)
-    scale = max(float(np.nanmax(np.abs(ode_obs))) if ode_obs.size else 0.0,
-                float(np.nanmax(np.abs(mu))) if mu.size else 0.0, 1e-12)
+    scale = max(
+        float(np.nanmax(np.abs(ode_obs))) if ode_obs.size else 0.0,
+        float(np.nanmax(np.abs(mu))) if mu.size else 0.0,
+        1e-12,
+    )
     diff = np.abs(mu - ode_obs)
     floor = 1e-12 * scale
     threshold = ENSEMBLE_K * np.maximum(se, floor)
-    rel_floor = np.maximum(np.maximum(np.abs(ode_obs), np.abs(mu)),
-                           scale * NEAR_ZERO_FLOOR_REL)
+    rel_floor = np.maximum(np.maximum(np.abs(ode_obs), np.abs(mu)), scale * NEAR_ZERO_FLOOR_REL)
     rel_ok = diff <= ODE_ORACLE_REL * rel_floor
     near_zero = np.maximum(np.abs(ode_obs), np.abs(mu)) < NEAR_ZERO_REL * scale
     cell_pass = (diff <= threshold) | rel_ok | near_zero
@@ -1284,14 +1313,11 @@ def revalidate_against_analytic(bng_dirs, model_stem, entry):
                 if names is None:
                     names = _read_columns(p)
     if not arrs:
-        return "diff", {"oracle": "analytic",
-                        "reason": f"no bngsim outputs {fname}"}
+        return "diff", {"oracle": "analytic", "reason": f"no bngsim outputs {fname}"}
     if names is None:
-        return "diff", {"oracle": "analytic",
-                        "reason": f"{fname} has no column header"}
+        return "diff", {"oracle": "analytic", "reason": f"{fname} has no column header"}
     if len({a.shape for a in arrs}) != 1:
-        return "diff", {"oracle": "analytic",
-                        "reason": "bngsim seed shapes inconsistent"}
+        return "diff", {"oracle": "analytic", "reason": "bngsim seed shapes inconsistent"}
     final = np.stack(arrs).mean(axis=0)[-1]
     checks, ok = {}, True
     for col, (exp, tol) in entry["expect"].items():
@@ -1304,8 +1330,11 @@ def revalidate_against_analytic(bng_dirs, model_stem, entry):
         ok = ok and passed
         checks[col] = {"expected": exp, "tol": tol, "got": got, "pass": passed}
     return ("pass" if ok else "diff"), {
-        "oracle": "analytic", "n_seeds": len(arrs), "checks": checks,
-        "issue": entry.get("issue"), "reason": entry.get("reason"),
+        "oracle": "analytic",
+        "n_seeds": len(arrs),
+        "checks": checks,
+        "issue": entry.get("issue"),
+        "reason": entry.get("reason"),
     }
 
 
@@ -1315,6 +1344,7 @@ _NF_METHOD_RE = re.compile(r"method\s*=>\s*['\"]nf['\"]")
 def _load_parity_sweep():
     """Lazy-import the sibling parity_sweep module (for run_one) on demand."""
     import importlib.util
+
     p = Path(__file__).resolve().parent / "parity_sweep.py"
     spec = importlib.util.spec_from_file_location("parity_sweep", p)
     mod = importlib.util.module_from_spec(spec)
@@ -1323,8 +1353,7 @@ def _load_parity_sweep():
     return mod
 
 
-def revalidate_against_rulemonkey(bng_ok, bng_dirs, model_stem, entry,
-                                  timeout=120):
+def revalidate_against_rulemonkey(bng_ok, bng_dirs, model_stem, entry, timeout=120):
     """Validate a bngsim NFsim ensemble against bngsim's RuleMonkey ensemble.
 
     For nf-only aggregation/ring models in SUBPROCESS_NF_RULEMONKEY where the
@@ -1338,6 +1367,7 @@ def revalidate_against_rulemonkey(bng_ok, bng_dirs, model_stem, entry,
     Returns ('pass'|'diff', details).
     """
     import tempfile
+
     try:
         ps = _load_parity_sweep()
     except Exception as exc:  # pragma: no cover - env-dependent
@@ -1361,8 +1391,11 @@ def revalidate_against_rulemonkey(bng_ok, bng_dirs, model_stem, entry,
         if res.get("status") == "ok":
             rm_dirs.append(str(out_dir))
     if len(rm_dirs) < 2:
-        return "diff", {"oracle": "rulemonkey", "n_rm_ok": len(rm_dirs),
-                        "reason": "RuleMonkey produced too few seed outputs"}
+        return "diff", {
+            "oracle": "rulemonkey",
+            "n_rm_ok": len(rm_dirs),
+            "reason": "RuleMonkey produced too few seed outputs",
+        }
     # Reuse the standard ensemble comparison: bngsim-NF vs bngsim-RM.
     status, details = stochastic_compare(bng_dirs, rm_dirs)
     details["oracle"] = "rulemonkey"
@@ -1378,17 +1411,27 @@ def main():
     ap.add_argument("--bngsim", required=True, help="bngsim sweep --out")
     ap.add_argument("--out", default="-", help="Markdown report path")
     ap.add_argument("--json-out", default="", help="Optional JSON dump")
-    ap.add_argument("--overlay-subprocess", action="append", default=[],
-                    help="Additional subprocess sweep --out whose models "
-                         "override the base run (e.g. a high-seed escalation "
-                         "re-run). Pair 1:1 with --overlay-bngsim, in order.")
-    ap.add_argument("--overlay-bngsim", action="append", default=[],
-                    help="Additional bngsim sweep --out; see --overlay-subprocess.")
+    ap.add_argument(
+        "--overlay-subprocess",
+        action="append",
+        default=[],
+        help="Additional subprocess sweep --out whose models "
+        "override the base run (e.g. a high-seed escalation "
+        "re-run). Pair 1:1 with --overlay-bngsim, in order.",
+    )
+    ap.add_argument(
+        "--overlay-bngsim",
+        action="append",
+        default=[],
+        help="Additional bngsim sweep --out; see --overlay-subprocess.",
+    )
     args = ap.parse_args()
 
     if len(args.overlay_subprocess) != len(args.overlay_bngsim):
-        ap.error("--overlay-subprocess and --overlay-bngsim must be given "
-                 "the same number of times (they pair 1:1)")
+        ap.error(
+            "--overlay-subprocess and --overlay-bngsim must be given "
+            "the same number of times (they pair 1:1)"
+        )
 
     sub_summary = json.loads(Path(args.subprocess, "_summary.json").read_text())
     bng_summary = json.loads(Path(args.bngsim, "_summary.json").read_text())
@@ -1404,12 +1447,15 @@ def main():
     for ov_sub, ov_bng in zip(args.overlay_subprocess, args.overlay_bngsim):
         ov_sub_summary = json.loads(Path(ov_sub, "_summary.json").read_text())
         ov_bng_summary = json.loads(Path(ov_bng, "_summary.json").read_text())
-        ov_models = ({r["bngl"] for r in ov_sub_summary["results"]} |
-                     {r["bngl"] for r in ov_bng_summary["results"]})
-        sub_results = ([r for r in sub_results if r["bngl"] not in ov_models]
-                       + ov_sub_summary["results"])
-        bng_results = ([r for r in bng_results if r["bngl"] not in ov_models]
-                       + ov_bng_summary["results"])
+        ov_models = {r["bngl"] for r in ov_sub_summary["results"]} | {
+            r["bngl"] for r in ov_bng_summary["results"]
+        }
+        sub_results = [r for r in sub_results if r["bngl"] not in ov_models] + ov_sub_summary[
+            "results"
+        ]
+        bng_results = [r for r in bng_results if r["bngl"] not in ov_models] + ov_bng_summary[
+            "results"
+        ]
         ov_seeds = ov_bng_summary.get("n_seeds")
         for m in ov_models:
             escalated[m] = ov_seeds
@@ -1417,7 +1463,7 @@ def main():
     # Group results by (bngl, regime). For deterministic, one row per side.
     # For stochastic, one row per (bngl, seed) per side.
     def index(results):
-        det = {}            # bngl -> result
+        det = {}  # bngl -> result
         stoch = defaultdict(list)  # bngl -> list of result (per seed)
         for r in results:
             if r.get("regime") == "deterministic":
@@ -1429,11 +1475,16 @@ def main():
     sub_det, sub_stoch = index(sub_results)
     bng_det, bng_stoch = index(bng_results)
 
-    all_models = sorted(set(sub_det) | set(sub_stoch) |
-                        set(bng_det) | set(bng_stoch))
+    all_models = sorted(set(sub_det) | set(sub_stoch) | set(bng_det) | set(bng_stoch))
 
-    buckets = {"PASS": [], "PASS_REF_BUG": [], "DIFF": [], "KNOWN_ARTIFACT": [],
-               "NOT_SUPPORTED": [], "ERROR": []}
+    buckets = {
+        "PASS": [],
+        "PASS_REF_BUG": [],
+        "DIFF": [],
+        "KNOWN_ARTIFACT": [],
+        "NOT_SUPPORTED": [],
+        "ERROR": [],
+    }
     per_model = {}
 
     for bngl in all_models:
@@ -1445,8 +1496,7 @@ def main():
         # If sides disagree on regime, that's an unexpected mismatch.
         if (in_sub_det and in_bng_stoch) or (in_sub_stoch and in_bng_det):
             buckets["ERROR"].append(bngl)
-            per_model[bngl] = {"bucket": "ERROR",
-                               "reason": "regime classification disagreement"}
+            per_model[bngl] = {"bucket": "ERROR", "reason": "regime classification disagreement"}
             continue
         if in_sub_det:
             sub_r = sub_det[bngl]
@@ -1455,47 +1505,59 @@ def main():
             if sub_r["status"] != "ok" and bng_r["status"] != "ok":
                 # Both failed identically — informational
                 buckets["ERROR"].append(bngl)
-                per_model[bngl] = {"bucket": "ERROR",
-                                   "regime": "deterministic",
-                                   "sub_status": sub_r["status"],
-                                   "bng_status": bng_r["status"],
-                                   "sub_error": sub_r.get("error", ""),
-                                   "bng_error": bng_r.get("error", ""),
-                                   "reason": "both sides failed (may be pre-existing)"}
+                per_model[bngl] = {
+                    "bucket": "ERROR",
+                    "regime": "deterministic",
+                    "sub_status": sub_r["status"],
+                    "bng_status": bng_r["status"],
+                    "sub_error": sub_r.get("error", ""),
+                    "bng_error": bng_r.get("error", ""),
+                    "reason": "both sides failed (may be pre-existing)",
+                }
                 continue
             if bng_r["status"] != "ok":
-                if is_not_supported(bng_r.get("error", ""), bng_r.get("out_dir"), bng_r.get("status")):
+                if is_not_supported(
+                    bng_r.get("error", ""), bng_r.get("out_dir"), bng_r.get("status")
+                ):
                     buckets["NOT_SUPPORTED"].append(bngl)
-                    per_model[bngl] = {"bucket": "NOT_SUPPORTED",
-                                       "regime": "deterministic",
-                                       "bng_status": bng_r["status"],
-                                       "bng_error": bng_r.get("error", "")}
+                    per_model[bngl] = {
+                        "bucket": "NOT_SUPPORTED",
+                        "regime": "deterministic",
+                        "bng_status": bng_r["status"],
+                        "bng_error": bng_r.get("error", ""),
+                    }
                 else:
                     buckets["ERROR"].append(bngl)
-                    per_model[bngl] = {"bucket": "ERROR",
-                                       "regime": "deterministic",
-                                       "bng_status": bng_r["status"],
-                                       "bng_error": bng_r.get("error", "")}
+                    per_model[bngl] = {
+                        "bucket": "ERROR",
+                        "regime": "deterministic",
+                        "bng_status": bng_r["status"],
+                        "bng_error": bng_r.get("error", ""),
+                    }
                 continue
             if sub_r["status"] != "ok":
                 # subprocess failed but bngsim succeeded — call ERROR
                 buckets["ERROR"].append(bngl)
-                per_model[bngl] = {"bucket": "ERROR",
-                                   "regime": "deterministic",
-                                   "sub_status": sub_r["status"],
-                                   "sub_error": sub_r.get("error", ""),
-                                   "reason": "subprocess failed; bngsim succeeded"}
+                per_model[bngl] = {
+                    "bucket": "ERROR",
+                    "regime": "deterministic",
+                    "sub_status": sub_r["status"],
+                    "sub_error": sub_r.get("error", ""),
+                    "reason": "subprocess failed; bngsim succeeded",
+                }
                 continue
             status, details = deterministic_compare(sub_r["out_dir"], bng_r["out_dir"])
             if status == "pass":
                 buckets["PASS"].append(bngl)
-                per_model[bngl] = {"bucket": "PASS", "regime": "deterministic",
-                                   "details": details}
+                per_model[bngl] = {"bucket": "PASS", "regime": "deterministic", "details": details}
             elif status == "no_artifacts":
                 buckets["ERROR"].append(bngl)
-                per_model[bngl] = {"bucket": "ERROR", "regime": "deterministic",
-                                   "reason": "no common artifacts to diff",
-                                   "details": details}
+                per_model[bngl] = {
+                    "bucket": "ERROR",
+                    "regime": "deterministic",
+                    "reason": "no common artifacts to diff",
+                    "details": details,
+                }
             else:
                 # A model whose DIFF is a confirmed comparison artifact
                 # is reclassified out of DIFF — but only while its
@@ -1510,14 +1572,19 @@ def main():
                 )
                 if excused:
                     buckets["KNOWN_ARTIFACT"].append(bngl)
-                    per_model[bngl] = {"bucket": "KNOWN_ARTIFACT",
-                                       "regime": "deterministic",
-                                       "reason": artifact["reason"],
-                                       "details": details}
+                    per_model[bngl] = {
+                        "bucket": "KNOWN_ARTIFACT",
+                        "regime": "deterministic",
+                        "reason": artifact["reason"],
+                        "details": details,
+                    }
                 else:
                     buckets["DIFF"].append(bngl)
-                    per_model[bngl] = {"bucket": "DIFF", "regime": "deterministic",
-                                       "details": details}
+                    per_model[bngl] = {
+                        "bucket": "DIFF",
+                        "regime": "deterministic",
+                        "details": details,
+                    }
         else:
             # Stochastic regime
             sub_rs = sub_stoch.get(bngl, [])
@@ -1531,23 +1598,29 @@ def main():
                 err = bng_bad[0].get("error", "")
                 if is_not_supported(err, bng_bad[0].get("out_dir"), bng_bad[0].get("status")):
                     buckets["NOT_SUPPORTED"].append(bngl)
-                    per_model[bngl] = {"bucket": "NOT_SUPPORTED",
-                                       "regime": "stochastic",
-                                       "bng_error": err}
+                    per_model[bngl] = {
+                        "bucket": "NOT_SUPPORTED",
+                        "regime": "stochastic",
+                        "bng_error": err,
+                    }
                 else:
                     buckets["ERROR"].append(bngl)
-                    per_model[bngl] = {"bucket": "ERROR",
-                                       "regime": "stochastic",
-                                       "bng_error": err,
-                                       "n_bng_failed": len(bng_bad)}
+                    per_model[bngl] = {
+                        "bucket": "ERROR",
+                        "regime": "stochastic",
+                        "bng_error": err,
+                        "n_bng_failed": len(bng_bad),
+                    }
                 continue
             if not sub_ok and sub_bad:
                 # subprocess all failed — informational error
                 buckets["ERROR"].append(bngl)
-                per_model[bngl] = {"bucket": "ERROR",
-                                   "regime": "stochastic",
-                                   "sub_error": sub_bad[0].get("error", ""),
-                                   "reason": "subprocess all seeds failed"}
+                per_model[bngl] = {
+                    "bucket": "ERROR",
+                    "regime": "stochastic",
+                    "sub_error": sub_bad[0].get("error", ""),
+                    "reason": "subprocess all seeds failed",
+                }
                 continue
             # We have at least one OK on each side; ensemble compare.
             sub_dirs = [r["out_dir"] for r in sub_ok]
@@ -1559,13 +1632,15 @@ def main():
             details["n_bng_failed"] = len(bng_bad)
             if status == "pass":
                 buckets["PASS"].append(bngl)
-                per_model[bngl] = {"bucket": "PASS", "regime": "stochastic",
-                                   "details": details}
+                per_model[bngl] = {"bucket": "PASS", "regime": "stochastic", "details": details}
             elif status == "no_artifacts":
                 buckets["ERROR"].append(bngl)
-                per_model[bngl] = {"bucket": "ERROR", "regime": "stochastic",
-                                   "reason": "no common artifacts to diff",
-                                   "details": details}
+                per_model[bngl] = {
+                    "bucket": "ERROR",
+                    "regime": "stochastic",
+                    "reason": "no common artifacts to diff",
+                    "details": details,
+                }
             else:
                 # A model whose subprocess nf reference is known-buggy
                 # (NFsim v1.14.3, no -bscb) is revalidated against the ODE
@@ -1579,14 +1654,17 @@ def main():
                 oracle_status, oracle_details, oracle_field = (None, None, "ode_oracle")
                 if ref_bug is not None:
                     oracle_status, oracle_details = revalidate_nf_against_ode(
-                        sub_dirs, bng_dirs, stem, ref_bug)
+                        sub_dirs, bng_dirs, stem, ref_bug
+                    )
                 elif analytic is not None:
                     oracle_status, oracle_details = revalidate_against_analytic(
-                        bng_dirs, stem, analytic)
+                        bng_dirs, stem, analytic
+                    )
                     ref_bug = analytic  # reason/issue come from the entry
                 elif rulemonkey is not None:
                     oracle_status, oracle_details = revalidate_against_rulemonkey(
-                        bng_ok, bng_dirs, stem, rulemonkey)
+                        bng_ok, bng_dirs, stem, rulemonkey
+                    )
                     ref_bug = rulemonkey
                     oracle_field = "rulemonkey_oracle"
                 # Segment-scoped known stochastic artifact: reclassify out of
@@ -1595,14 +1673,13 @@ def main():
                 # non-artifact segment (e.g. the ode .gdat) is a regression and
                 # stays DIFF.
                 art = KNOWN_STOCHASTIC_ARTIFACTS.get(stem)
-                failing = {fn for fn, pf in details.get("per_file", {}).items()
-                           if pf.get("fail")}
-                stoch_artifact = (art is not None and failing
-                                  and failing <= art["artifact_files"])
+                failing = {fn for fn, pf in details.get("per_file", {}).items() if pf.get("fail")}
+                stoch_artifact = art is not None and failing and failing <= art["artifact_files"]
                 if ref_bug is not None and oracle_status == "pass":
                     buckets["PASS_REF_BUG"].append(bngl)
                     per_model[bngl] = {
-                        "bucket": "PASS_REF_BUG", "regime": "stochastic",
+                        "bucket": "PASS_REF_BUG",
+                        "regime": "stochastic",
                         "reason": ref_bug["reason"],
                         "issue": ref_bug.get("issue"),
                         "details": details,
@@ -1611,13 +1688,15 @@ def main():
                 elif stoch_artifact:
                     buckets["KNOWN_ARTIFACT"].append(bngl)
                     per_model[bngl] = {
-                        "bucket": "KNOWN_ARTIFACT", "regime": "stochastic",
-                        "reason": art["reason"], "issue": art.get("issue"),
-                        "artifact_files": sorted(failing), "details": details,
+                        "bucket": "KNOWN_ARTIFACT",
+                        "regime": "stochastic",
+                        "reason": art["reason"],
+                        "issue": art.get("issue"),
+                        "artifact_files": sorted(failing),
+                        "details": details,
                     }
                 else:
-                    per_model[bngl] = {"bucket": "DIFF", "regime": "stochastic",
-                                       "details": details}
+                    per_model[bngl] = {"bucket": "DIFF", "regime": "stochastic", "details": details}
                     if oracle_details is not None:
                         per_model[bngl][oracle_field] = oracle_details
                     buckets["DIFF"].append(bngl)
@@ -1631,46 +1710,57 @@ def main():
     lines = []
     lines.append("# BNGsim parity sweep — diff report")
     lines.append("")
-    lines.append(f"- subprocess sweep: `{args.subprocess}` (n={sub_summary.get('n_units')}, by_status={sub_summary.get('by_status')})")
-    lines.append(f"  - simulator={sub_summary.get('simulator')}, n_seeds={sub_summary.get('n_seeds')}")
-    lines.append(f"- bngsim sweep:     `{args.bngsim}` (n={bng_summary.get('n_units')}, by_status={bng_summary.get('by_status')})")
-    lines.append(f"  - simulator={bng_summary.get('simulator')}, n_seeds={bng_summary.get('n_seeds')}")
-    lines.append(f"- tolerance: deterministic rel={REL_TOL}, "
-                 f"time=max({TIME_TOL_FLOOR},{TIME_TOL_REL}*t_max), "
-                 f"fail-frac budget<={FAIL_FRAC_BUDGET} (ceilings "
-                 f"rel<={HARD_REL_CEILING}, abs<={HARD_ABS_CEILING_FILE}*file_scale); "
-                 f"stochastic K={ENSEMBLE_K} sigma over N={sub_summary.get('n_seeds')}, "
-                 f"pass>={ENSEMBLE_PASS_FRAC}")
+    lines.append(
+        f"- subprocess sweep: `{args.subprocess}` (n={sub_summary.get('n_units')}, by_status={sub_summary.get('by_status')})"
+    )
+    lines.append(
+        f"  - simulator={sub_summary.get('simulator')}, n_seeds={sub_summary.get('n_seeds')}"
+    )
+    lines.append(
+        f"- bngsim sweep:     `{args.bngsim}` (n={bng_summary.get('n_units')}, by_status={bng_summary.get('by_status')})"
+    )
+    lines.append(
+        f"  - simulator={bng_summary.get('simulator')}, n_seeds={bng_summary.get('n_seeds')}"
+    )
+    lines.append(
+        f"- tolerance: deterministic rel={REL_TOL}, "
+        f"time=max({TIME_TOL_FLOOR},{TIME_TOL_REL}*t_max), "
+        f"fail-frac budget<={FAIL_FRAC_BUDGET} (ceilings "
+        f"rel<={HARD_REL_CEILING}, abs<={HARD_ABS_CEILING_FILE}*file_scale); "
+        f"stochastic K={ENSEMBLE_K} sigma over N={sub_summary.get('n_seeds')}, "
+        f"pass>={ENSEMBLE_PASS_FRAC}"
+    )
     if escalated:
         seed_counts = sorted({s for s in escalated.values() if s})
         lines.append(
             f"- escalated: {len(escalated)} stochastic model(s) flagged DIFF "
             f"at the base seed count were re-run and re-judged at "
-            f"{', '.join(str(s) for s in seed_counts)} seeds (overlay merge)")
+            f"{', '.join(str(s) for s in seed_counts)} seeds (overlay merge)"
+        )
     lines.append("")
     lines.append("## Headline")
     lines.append("")
     lines.append(f"| Bucket | Count |")
     lines.append(f"|---|---:|")
-    for b in ("PASS", "PASS_REF_BUG", "DIFF", "KNOWN_ARTIFACT",
-              "NOT_SUPPORTED", "ERROR"):
+    for b in ("PASS", "PASS_REF_BUG", "DIFF", "KNOWN_ARTIFACT", "NOT_SUPPORTED", "ERROR"):
         lines.append(f"| {b} | {len(buckets[b])} |")
     lines.append(f"| **TOTAL** | **{len(all_models)}** |")
     lines.append("")
     if escalated:
         lines.append("## Escalated stochastic models")
         lines.append("")
-        lines.append("Stochastic models re-judged at a higher seed count to "
-                     "separate genuine divergence from small-sample noise. "
-                     "A DIFF here survived the escalation and is real; any "
-                     "not listed as DIFF were small-sample noise.")
+        lines.append(
+            "Stochastic models re-judged at a higher seed count to "
+            "separate genuine divergence from small-sample noise. "
+            "A DIFF here survived the escalation and is real; any "
+            "not listed as DIFF were small-sample noise."
+        )
         lines.append("")
         lines.append("| model | escalated seeds | final bucket |")
         lines.append("|---|---:|---|")
         for bngl in sorted(escalated):
             info = per_model.get(bngl, {})
-            lines.append(f"| `{Path(bngl).name}` | {escalated[bngl]} | "
-                         f"{info.get('bucket', '?')} |")
+            lines.append(f"| `{Path(bngl).name}` | {escalated[bngl]} | {info.get('bucket', '?')} |")
         lines.append("")
     for b in ("PASS_REF_BUG", "DIFF", "KNOWN_ARTIFACT", "NOT_SUPPORTED", "ERROR"):
         if not buckets[b]:
@@ -1683,48 +1773,61 @@ def main():
             lines.append("")
             lines.append(f"- regime: {info.get('regime')}")
             if "escalated_seeds" in info:
-                lines.append(f"- escalated: re-judged at "
-                             f"{info['escalated_seeds']} seeds")
+                lines.append(f"- escalated: re-judged at {info['escalated_seeds']} seeds")
             if "reason" in info:
                 lines.append(f"- reason: {info['reason']}")
             if "issue" in info and info["issue"]:
                 lines.append(f"- issue: {info['issue']}")
             if "ode_oracle" in info and info["ode_oracle"]:
                 oo = info["ode_oracle"]
-                lines.append(f"- ODE-oracle revalidation: "
-                             f"frac_pass={oo.get('frac_pass')}, "
-                             f"n_pass={oo.get('n_pass')}/{oo.get('n_cells')}, "
-                             f"max_abs_nf_vs_ode={oo.get('max_abs_nf_vs_ode')}, "
-                             f"n_seeds={oo.get('n_seeds')}")
+                lines.append(
+                    f"- ODE-oracle revalidation: "
+                    f"frac_pass={oo.get('frac_pass')}, "
+                    f"n_pass={oo.get('n_pass')}/{oo.get('n_cells')}, "
+                    f"max_abs_nf_vs_ode={oo.get('max_abs_nf_vs_ode')}, "
+                    f"n_seeds={oo.get('n_seeds')}"
+                )
             if "rulemonkey_oracle" in info and info["rulemonkey_oracle"]:
                 ro = info["rulemonkey_oracle"]
                 # pick a file that actually carries a comparison (skip the
                 # time-only .cdat whose entry has no frac_pass)
-                pf = next((v for v in ro.get("per_file", {}).values()
-                           if "frac_pass" in v),
-                          next(iter(ro.get("per_file", {}).values()), {}))
-                lines.append(f"- RuleMonkey-oracle revalidation (bngsim NF vs "
-                             f"bngsim RM): frac_pass={pf.get('frac_pass')}, "
-                             f"max_abs_mean_diff={pf.get('max_abs_mean_diff')}, "
-                             f"n_rm_seeds_ok={ro.get('n_rm_ok')}")
-            for k in ("sub_status", "bng_status", "sub_error", "bng_error",
-                      "n_bng_failed", "n_sub_failed"):
+                pf = next(
+                    (v for v in ro.get("per_file", {}).values() if "frac_pass" in v),
+                    next(iter(ro.get("per_file", {}).values()), {}),
+                )
+                lines.append(
+                    f"- RuleMonkey-oracle revalidation (bngsim NF vs "
+                    f"bngsim RM): frac_pass={pf.get('frac_pass')}, "
+                    f"max_abs_mean_diff={pf.get('max_abs_mean_diff')}, "
+                    f"n_rm_seeds_ok={ro.get('n_rm_ok')}"
+                )
+            for k in (
+                "sub_status",
+                "bng_status",
+                "sub_error",
+                "bng_error",
+                "n_bng_failed",
+                "n_sub_failed",
+            ):
                 if k in info and info[k] not in ("", 0):
                     lines.append(f"- {k}: `{info[k]}`")
             details = info.get("details")
             if details:
                 if "max_abs" in details:
-                    lines.append(f"- max_abs={details.get('max_abs')}, "
-                                 f"max_rel={details.get('max_rel')}")
+                    lines.append(
+                        f"- max_abs={details.get('max_abs')}, max_rel={details.get('max_rel')}"
+                    )
                 if "only_sub" in details and details["only_sub"]:
                     lines.append(f"- only_subprocess: {details['only_sub']}")
                 if "only_bng" in details and details["only_bng"]:
                     lines.append(f"- only_bngsim: {details['only_bng']}")
                 if "n_sub_ok" in details:
-                    lines.append(f"- n_sub_ok={details['n_sub_ok']}, "
-                                 f"n_bng_ok={details['n_bng_ok']}, "
-                                 f"n_sub_failed={details['n_sub_failed']}, "
-                                 f"n_bng_failed={details['n_bng_failed']}")
+                    lines.append(
+                        f"- n_sub_ok={details['n_sub_ok']}, "
+                        f"n_bng_ok={details['n_bng_ok']}, "
+                        f"n_sub_failed={details['n_sub_failed']}, "
+                        f"n_bng_failed={details['n_bng_failed']}"
+                    )
                 pf = details.get("per_file", {})
                 for name, stats in pf.items():
                     parts = [f"`{name}`"]
@@ -1741,11 +1844,17 @@ def main():
         print(f"Report written to {args.out}")
         print(text)
     if args.json_out:
-        Path(args.json_out).write_text(json.dumps({
-            "buckets": {b: sorted(v) for b, v in buckets.items()},
-            "per_model": per_model,
-            "escalated": escalated,
-        }, indent=2, default=str))
+        Path(args.json_out).write_text(
+            json.dumps(
+                {
+                    "buckets": {b: sorted(v) for b, v in buckets.items()},
+                    "per_model": per_model,
+                    "escalated": escalated,
+                },
+                indent=2,
+                default=str,
+            )
+        )
         print(f"JSON written to {args.json_out}")
 
 

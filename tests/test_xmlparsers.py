@@ -36,6 +36,7 @@ from bionetgen.modelapi.xmlparsers import (
 
 # ---- Helpers to build XML-like OrderedDicts ----
 
+
 def _simple_molecule_xml(name, comp_list=None, compartment=None, label=None):
     """Build a Molecule OrderedDict with optional components."""
     mol = OrderedDict([("@id", "M1"), ("@name", name)])
@@ -57,8 +58,16 @@ def _simple_component_xml(cid, name, num_bonds="0", state=None, label=None):
     return c
 
 
-def _simple_pattern_xml(molecules, bonds=None, compartment=None, label=None,
-                         fixed=None, match_once=None, relation=None, quantity=None):
+def _simple_pattern_xml(
+    molecules,
+    bonds=None,
+    compartment=None,
+    label=None,
+    fixed=None,
+    match_once=None,
+    relation=None,
+    quantity=None,
+):
     """Build a pattern-level OrderedDict."""
     pat = OrderedDict()
     if compartment:
@@ -81,6 +90,7 @@ def _simple_pattern_xml(molecules, bonds=None, compartment=None, label=None,
 
 # ---- XMLObj base class ----
 
+
 class TestXMLObj:
     def test_parse_xml_raises_not_implemented(self):
         with pytest.raises(NotImplementedError):
@@ -89,17 +99,20 @@ class TestXMLObj:
 
 # ---- BondsXML ----
 
+
 class TestBondsXML:
     def test_no_bonds(self):
         b = BondsXML()
         assert b.bonds_dict == {}
 
     def test_single_bond(self):
-        bond = OrderedDict([
-            ("@id", "B1"),
-            ("@site1", "O1_P1_M1_C1"),
-            ("@site2", "O1_P1_M2_C1"),
-        ])
+        bond = OrderedDict(
+            [
+                ("@id", "B1"),
+                ("@site1", "O1_P1_M1_C1"),
+                ("@site2", "O1_P1_M2_C1"),
+            ]
+        )
         b = BondsXML(bond)
         assert ("O1", "P1", "M1", "C1") in b.bonds_dict
         assert ("O1", "P1", "M2", "C1") in b.bonds_dict
@@ -120,11 +133,13 @@ class TestBondsXML:
     def test_set_xml(self):
         b = BondsXML()
         assert b.bonds_dict == {}
-        bond = OrderedDict([
-            ("@id", "B1"),
-            ("@site1", "O1_P1_M1_C1"),
-            ("@site2", "O1_P1_M2_C1"),
-        ])
+        bond = OrderedDict(
+            [
+                ("@id", "B1"),
+                ("@site1", "O1_P1_M1_C1"),
+                ("@site2", "O1_P1_M2_C1"),
+            ]
+        )
         b.set_xml(bond)
         assert len(b.bonds_dict) == 2
 
@@ -135,21 +150,25 @@ class TestBondsXML:
 
     def test_tpls_from_bond(self):
         b = BondsXML()
-        bond = OrderedDict([
-            ("@id", "B1"),
-            ("@site1", "O1_P1_M1_C1"),
-            ("@site2", "O1_P1_M2_C1"),
-        ])
+        bond = OrderedDict(
+            [
+                ("@id", "B1"),
+                ("@site1", "O1_P1_M1_C1"),
+                ("@site2", "O1_P1_M2_C1"),
+            ]
+        )
         t1, t2 = b.tpls_from_bond(bond)
         assert t1 == ("O1", "P1", "M1", "C1")
         assert t2 == ("O1", "P1", "M2", "C1")
 
     def test_get_bond_id_numeric(self):
-        bond = OrderedDict([
-            ("@id", "B1"),
-            ("@site1", "O1_P1_M1_C1"),
-            ("@site2", "O1_P1_M2_C1"),
-        ])
+        bond = OrderedDict(
+            [
+                ("@id", "B1"),
+                ("@site1", "O1_P1_M1_C1"),
+                ("@site2", "O1_P1_M2_C1"),
+            ]
+        )
         b = BondsXML(bond)
         comp = OrderedDict([("@id", "O1_P1_M1_C1"), ("@numberOfBonds", "1")])
         result = b.get_bond_id(comp)
@@ -202,6 +221,7 @@ class TestBondsXML:
 
 
 # ---- PatternXML ----
+
 
 class TestPatternXML:
     def test_single_molecule_no_components(self):
@@ -301,11 +321,13 @@ class TestPatternXML:
         assert m.label == "m1"
 
     def test_pattern_with_bonds(self):
-        bond = OrderedDict([
-            ("@id", "B1"),
-            ("@site1", "O1_P1_M1_C1"),
-            ("@site2", "O1_P1_M2_C1"),
-        ])
+        bond = OrderedDict(
+            [
+                ("@id", "B1"),
+                ("@site1", "O1_P1_M1_C1"),
+                ("@site2", "O1_P1_M2_C1"),
+            ]
+        )
         comp_a = _simple_component_xml("O1_P1_M1_C1", "x", num_bonds="1")
         comp_b = _simple_component_xml("O1_P1_M2_C1", "y", num_bonds="1")
         m1 = _simple_molecule_xml("A", comp_list=comp_a)
@@ -357,7 +379,12 @@ class TestPatternXML:
         ]
         hub_x = _simple_component_xml("O1_P1_M1_C1", "x", num_bonds="3")
         spokes = [
-            (_simple_molecule_xml("spoke", comp_list=_simple_component_xml(f"O1_P1_M{i}_C1", "y", num_bonds="1")), f"M{i}")
+            (
+                _simple_molecule_xml(
+                    "spoke", comp_list=_simple_component_xml(f"O1_P1_M{i}_C1", "y", num_bonds="1")
+                ),
+                f"M{i}",
+            )
             for i in (2, 3, 4)
         ]
         hub = _simple_molecule_xml("hub", comp_list=hub_x)
@@ -380,6 +407,7 @@ class TestPatternXML:
 
 
 # ---- PatternListXML ----
+
 
 class TestPatternListXML:
     def test_single_pattern(self):
@@ -405,6 +433,7 @@ class TestPatternListXML:
 
 # ---- ParameterBlockXML ----
 
+
 class TestParameterBlockXML:
     def test_list_of_parameters(self):
         xml = [
@@ -422,12 +451,14 @@ class TestParameterBlockXML:
         assert "kf" in pb.parsed_obj.items
 
     def test_parameter_with_expr(self):
-        xml = OrderedDict([
-            ("@id", "kf"),
-            ("@type", "Constant"),
-            ("@value", "0.5"),
-            ("@expr", "k1*k2"),
-        ])
+        xml = OrderedDict(
+            [
+                ("@id", "kf"),
+                ("@type", "Constant"),
+                ("@value", "0.5"),
+                ("@expr", "k1*k2"),
+            ]
+        )
         pb = ParameterBlockXML(xml)
         # expr should override value
         param_str = str(pb.parsed_obj.items["kf"])
@@ -442,13 +473,16 @@ class TestParameterBlockXML:
 
 # ---- CompartmentBlockXML ----
 
+
 class TestCompartmentBlockXML:
     def test_single_compartment(self):
-        xml = OrderedDict([
-            ("@id", "EC"),
-            ("@spatialDimensions", "3"),
-            ("@size", "1e-6"),
-        ])
+        xml = OrderedDict(
+            [
+                ("@id", "EC"),
+                ("@spatialDimensions", "3"),
+                ("@size", "1e-6"),
+            ]
+        )
         cb = CompartmentBlockXML(xml)
         assert isinstance(cb.parsed_obj, CompartmentBlock)
         assert "EC" in cb.parsed_obj.items
@@ -456,34 +490,41 @@ class TestCompartmentBlockXML:
     def test_list_of_compartments(self):
         xml = [
             OrderedDict([("@id", "EC"), ("@spatialDimensions", "3"), ("@size", "1e-6")]),
-            OrderedDict([("@id", "PM"), ("@spatialDimensions", "2"), ("@size", "1e-8"), ("@outside", "EC")]),
+            OrderedDict(
+                [("@id", "PM"), ("@spatialDimensions", "2"), ("@size", "1e-8"), ("@outside", "EC")]
+            ),
         ]
         cb = CompartmentBlockXML(xml)
         assert "EC" in cb.parsed_obj.items
         assert "PM" in cb.parsed_obj.items
 
     def test_compartment_with_outside(self):
-        xml = OrderedDict([
-            ("@id", "CP"),
-            ("@spatialDimensions", "3"),
-            ("@size", "1e-12"),
-            ("@outside", "PM"),
-        ])
+        xml = OrderedDict(
+            [
+                ("@id", "CP"),
+                ("@spatialDimensions", "3"),
+                ("@size", "1e-12"),
+                ("@outside", "PM"),
+            ]
+        )
         cb = CompartmentBlockXML(xml)
         assert "CP" in cb.parsed_obj.items
 
 
 # ---- ObservableBlockXML ----
 
+
 class TestObservableBlockXML:
     def _obs_xml(self, name, otype, mol_name):
         mol = _simple_molecule_xml(mol_name)
         pat = _simple_pattern_xml(mol)
-        return OrderedDict([
-            ("@name", name),
-            ("@type", otype),
-            ("ListOfPatterns", OrderedDict([("Pattern", pat)])),
-        ])
+        return OrderedDict(
+            [
+                ("@name", name),
+                ("@type", otype),
+                ("ListOfPatterns", OrderedDict([("Pattern", pat)])),
+            ]
+        )
 
     def test_single_observable(self):
         xml = self._obs_xml("Atot", "Molecules", "A")
@@ -505,16 +546,19 @@ class TestObservableBlockXML:
         mol_b = _simple_molecule_xml("B")
         pat_a = _simple_pattern_xml(mol_a)
         pat_b = _simple_pattern_xml(mol_b)
-        xml = OrderedDict([
-            ("@name", "ABtot"),
-            ("@type", "Molecules"),
-            ("ListOfPatterns", OrderedDict([("Pattern", [pat_a, pat_b])])),
-        ])
+        xml = OrderedDict(
+            [
+                ("@name", "ABtot"),
+                ("@type", "Molecules"),
+                ("ListOfPatterns", OrderedDict([("Pattern", [pat_a, pat_b])])),
+            ]
+        )
         ob = ObservableBlockXML(xml)
         assert "ABtot" in ob.parsed_obj.items
 
 
 # ---- SpeciesBlockXML ----
+
 
 class TestSpeciesBlockXML:
     def test_single_species(self):
@@ -539,6 +583,7 @@ class TestSpeciesBlockXML:
 
 # ---- MoleculeTypeBlockXML ----
 
+
 class TestMoleculeTypeBlockXML:
     def test_simple_molecule_type(self):
         xml = OrderedDict([("@id", "A")])
@@ -547,58 +592,115 @@ class TestMoleculeTypeBlockXML:
         assert "A" in mt.parsed_obj.items
 
     def test_molecule_type_with_single_component(self):
-        xml = OrderedDict([
-            ("@id", "A"),
-            ("ListOfComponentTypes", OrderedDict([
-                ("ComponentType", OrderedDict([("@id", "x")])),
-            ])),
-        ])
+        xml = OrderedDict(
+            [
+                ("@id", "A"),
+                (
+                    "ListOfComponentTypes",
+                    OrderedDict(
+                        [
+                            ("ComponentType", OrderedDict([("@id", "x")])),
+                        ]
+                    ),
+                ),
+            ]
+        )
         mt = MoleculeTypeBlockXML(xml)
         assert "A" in mt.parsed_obj.items
 
     def test_molecule_type_with_component_states(self):
-        xml = OrderedDict([
-            ("@id", "A"),
-            ("ListOfComponentTypes", OrderedDict([
-                ("ComponentType", OrderedDict([
-                    ("@id", "x"),
-                    ("ListOfAllowedStates", OrderedDict([
-                        ("AllowedState", [
-                            OrderedDict([("@id", "u")]),
-                            OrderedDict([("@id", "p")]),
-                        ]),
-                    ])),
-                ])),
-            ])),
-        ])
+        xml = OrderedDict(
+            [
+                ("@id", "A"),
+                (
+                    "ListOfComponentTypes",
+                    OrderedDict(
+                        [
+                            (
+                                "ComponentType",
+                                OrderedDict(
+                                    [
+                                        ("@id", "x"),
+                                        (
+                                            "ListOfAllowedStates",
+                                            OrderedDict(
+                                                [
+                                                    (
+                                                        "AllowedState",
+                                                        [
+                                                            OrderedDict([("@id", "u")]),
+                                                            OrderedDict([("@id", "p")]),
+                                                        ],
+                                                    ),
+                                                ]
+                                            ),
+                                        ),
+                                    ]
+                                ),
+                            ),
+                        ]
+                    ),
+                ),
+            ]
+        )
         mt = MoleculeTypeBlockXML(xml)
         assert "A" in mt.parsed_obj.items
 
     def test_molecule_type_single_state(self):
-        xml = OrderedDict([
-            ("@id", "A"),
-            ("ListOfComponentTypes", OrderedDict([
-                ("ComponentType", OrderedDict([
-                    ("@id", "x"),
-                    ("ListOfAllowedStates", OrderedDict([
-                        ("AllowedState", OrderedDict([("@id", "active")])),
-                    ])),
-                ])),
-            ])),
-        ])
+        xml = OrderedDict(
+            [
+                ("@id", "A"),
+                (
+                    "ListOfComponentTypes",
+                    OrderedDict(
+                        [
+                            (
+                                "ComponentType",
+                                OrderedDict(
+                                    [
+                                        ("@id", "x"),
+                                        (
+                                            "ListOfAllowedStates",
+                                            OrderedDict(
+                                                [
+                                                    (
+                                                        "AllowedState",
+                                                        OrderedDict([("@id", "active")]),
+                                                    ),
+                                                ]
+                                            ),
+                                        ),
+                                    ]
+                                ),
+                            ),
+                        ]
+                    ),
+                ),
+            ]
+        )
         mt = MoleculeTypeBlockXML(xml)
         assert "A" in mt.parsed_obj.items
 
     def test_molecule_type_multiple_components(self):
-        xml = OrderedDict([
-            ("@id", "R"),
-            ("ListOfComponentTypes", OrderedDict([
-                ("ComponentType", [
-                    OrderedDict([("@id", "x")]),
-                    OrderedDict([("@id", "y")]),
-                ]),
-            ])),
-        ])
+        xml = OrderedDict(
+            [
+                ("@id", "R"),
+                (
+                    "ListOfComponentTypes",
+                    OrderedDict(
+                        [
+                            (
+                                "ComponentType",
+                                [
+                                    OrderedDict([("@id", "x")]),
+                                    OrderedDict([("@id", "y")]),
+                                ],
+                            ),
+                        ]
+                    ),
+                ),
+            ]
+        )
         mt = MoleculeTypeBlockXML(xml)
         assert "R" in mt.parsed_obj.items
 
@@ -612,25 +714,46 @@ class TestMoleculeTypeBlockXML:
         assert "B" in mt.parsed_obj.items
 
     def test_multiple_components_with_states(self):
-        xml = OrderedDict([
-            ("@id", "R"),
-            ("ListOfComponentTypes", OrderedDict([
-                ("ComponentType", [
-                    OrderedDict([
-                        ("@id", "x"),
-                        ("ListOfAllowedStates", OrderedDict([
-                            ("AllowedState", OrderedDict([("@id", "on")])),
-                        ])),
-                    ]),
-                    OrderedDict([("@id", "y")]),
-                ]),
-            ])),
-        ])
+        xml = OrderedDict(
+            [
+                ("@id", "R"),
+                (
+                    "ListOfComponentTypes",
+                    OrderedDict(
+                        [
+                            (
+                                "ComponentType",
+                                [
+                                    OrderedDict(
+                                        [
+                                            ("@id", "x"),
+                                            (
+                                                "ListOfAllowedStates",
+                                                OrderedDict(
+                                                    [
+                                                        (
+                                                            "AllowedState",
+                                                            OrderedDict([("@id", "on")]),
+                                                        ),
+                                                    ]
+                                                ),
+                                            ),
+                                        ]
+                                    ),
+                                    OrderedDict([("@id", "y")]),
+                                ],
+                            ),
+                        ]
+                    ),
+                ),
+            ]
+        )
         mt = MoleculeTypeBlockXML(xml)
         assert "R" in mt.parsed_obj.items
 
 
 # ---- FunctionBlockXML ----
+
 
 class TestFunctionBlockXML:
     def test_single_function_no_args(self):
@@ -649,27 +772,44 @@ class TestFunctionBlockXML:
         assert "f2" in fb.parsed_obj.items
 
     def test_function_with_single_argument(self):
-        xml = OrderedDict([
-            ("@id", "f1"),
-            ("Expression", "k1*x"),
-            ("ListOfArguments", OrderedDict([
-                ("Argument", OrderedDict([("@id", "x")])),
-            ])),
-        ])
+        xml = OrderedDict(
+            [
+                ("@id", "f1"),
+                ("Expression", "k1*x"),
+                (
+                    "ListOfArguments",
+                    OrderedDict(
+                        [
+                            ("Argument", OrderedDict([("@id", "x")])),
+                        ]
+                    ),
+                ),
+            ]
+        )
         fb = FunctionBlockXML(xml)
         assert "f1" in fb.parsed_obj.items
 
     def test_function_with_multiple_arguments(self):
-        xml = OrderedDict([
-            ("@id", "f1"),
-            ("Expression", "k1*x + k2*y"),
-            ("ListOfArguments", OrderedDict([
-                ("Argument", [
-                    OrderedDict([("@id", "x")]),
-                    OrderedDict([("@id", "y")]),
-                ]),
-            ])),
-        ])
+        xml = OrderedDict(
+            [
+                ("@id", "f1"),
+                ("Expression", "k1*x + k2*y"),
+                (
+                    "ListOfArguments",
+                    OrderedDict(
+                        [
+                            (
+                                "Argument",
+                                [
+                                    OrderedDict([("@id", "x")]),
+                                    OrderedDict([("@id", "y")]),
+                                ],
+                            ),
+                        ]
+                    ),
+                ),
+            ]
+        )
         fb = FunctionBlockXML(xml)
         assert "f1" in fb.parsed_obj.items
 
@@ -682,25 +822,29 @@ class TestFunctionBlockXML:
     def test_get_arguments_multiple(self):
         fb_xml = OrderedDict([("@id", "f1"), ("Expression", "x")])
         fb = FunctionBlockXML(fb_xml)
-        args = fb.get_arguments([
-            OrderedDict([("@id", "x")]),
-            OrderedDict([("@id", "y")]),
-        ])
+        args = fb.get_arguments(
+            [
+                OrderedDict([("@id", "x")]),
+                OrderedDict([("@id", "y")]),
+            ]
+        )
         assert args == ["x", "y"]
 
     def test_inline_tfun_round_trip(self):
         """Inline-array tfun() must be reconstructed from XML attributes,
         not echoed as the BNG2.pl placeholder ``__TFUN_VAL__``."""
-        xml = OrderedDict([
-            ("@id", "exp_gfp"),
-            ("@type", "TFUN"),
-            ("@mode", "inline"),
-            ("@ctrName", "IPTG"),
-            ("@xData", "0,3e-6,1e-5,1e-2"),
-            ("@yData", "0.03,0.03,0.04,0.99"),
-            ("@method", "linear"),
-            ("Expression", " __TFUN_VAL__ "),
-        ])
+        xml = OrderedDict(
+            [
+                ("@id", "exp_gfp"),
+                ("@type", "TFUN"),
+                ("@mode", "inline"),
+                ("@ctrName", "IPTG"),
+                ("@xData", "0,3e-6,1e-5,1e-2"),
+                ("@yData", "0.03,0.03,0.04,0.99"),
+                ("@method", "linear"),
+                ("Expression", " __TFUN_VAL__ "),
+            ]
+        )
         fb = FunctionBlockXML(xml)
         fn = fb.parsed_obj.items["exp_gfp"]
         # Must NOT contain the BNG2.pl placeholder
@@ -709,39 +853,45 @@ class TestFunctionBlockXML:
         assert fn.expr == "tfun([0,3e-6,1e-5,1e-2],[0.03,0.03,0.04,0.99],IPTG)"
 
     def test_inline_tfun_step_method_preserved(self):
-        xml = OrderedDict([
-            ("@id", "f"),
-            ("@type", "TFUN"),
-            ("@mode", "inline"),
-            ("@ctrName", "x"),
-            ("@xData", "0,1"),
-            ("@yData", "1,2"),
-            ("@method", "step"),
-            ("Expression", " __TFUN_VAL__ "),
-        ])
+        xml = OrderedDict(
+            [
+                ("@id", "f"),
+                ("@type", "TFUN"),
+                ("@mode", "inline"),
+                ("@ctrName", "x"),
+                ("@xData", "0,1"),
+                ("@yData", "1,2"),
+                ("@method", "step"),
+                ("Expression", " __TFUN_VAL__ "),
+            ]
+        )
         fb = FunctionBlockXML(xml)
         assert fb.parsed_obj.items["f"].expr == 'tfun([0,1],[1,2],x,method=>"step")'
 
     def test_file_tfun_round_trip(self):
         """File-based TFUN(arg, "file") must round-trip back to BNGL."""
-        xml = OrderedDict([
-            ("@id", "f"),
-            ("@type", "TFUN"),
-            ("@file", "data.tfun"),
-            ("@ctrName", "x"),
-            ("Expression", " __TFUN_VAL__ "),
-        ])
+        xml = OrderedDict(
+            [
+                ("@id", "f"),
+                ("@type", "TFUN"),
+                ("@file", "data.tfun"),
+                ("@ctrName", "x"),
+                ("Expression", " __TFUN_VAL__ "),
+            ]
+        )
         fb = FunctionBlockXML(xml)
         assert fb.parsed_obj.items["f"].expr == 'TFUN(x,"data.tfun")'
 
     def test_file_tfun_wrapper_expression_preserved(self):
-        xml = OrderedDict([
-            ("@id", "f"),
-            ("@type", "TFUN"),
-            ("@file", "data.tfun"),
-            ("@ctrName", "x"),
-            ("Expression", "(__TFUN__VAL__/k_t)"),
-        ])
+        xml = OrderedDict(
+            [
+                ("@id", "f"),
+                ("@type", "TFUN"),
+                ("@file", "data.tfun"),
+                ("@ctrName", "x"),
+                ("Expression", "(__TFUN__VAL__/k_t)"),
+            ]
+        )
         fb = FunctionBlockXML(xml)
         assert fb.parsed_obj.items["f"].expr == '(TFUN(x,"data.tfun")/k_t)'
 
@@ -756,14 +906,16 @@ class TestFunctionBlockXML:
         as ``&&`` so the regenerated BNGL parses correctly."""
         # Mirrors the actual XML BNG2.pl emits for
         #   if(plusBafA1==1 && t>=0,0,...)
-        xml = OrderedDict([
-            ("@id", "toggle"),
-            (
-                "Expression",
-                " if(((plusBafA1==1)and(Aobs>=threshold1)),0,"
-                "if(((plusBafA1==2)and(Aobs<=threshold2)),0,1)) ",
-            ),
-        ])
+        xml = OrderedDict(
+            [
+                ("@id", "toggle"),
+                (
+                    "Expression",
+                    " if(((plusBafA1==1)and(Aobs>=threshold1)),0,"
+                    "if(((plusBafA1==2)and(Aobs<=threshold2)),0,1)) ",
+                ),
+            ]
+        )
         fb = FunctionBlockXML(xml)
         expr = fb.parsed_obj.items["toggle"].expr
         assert ")and(" not in expr, expr
@@ -773,10 +925,12 @@ class TestFunctionBlockXML:
 
     def test_b1_or_operator_round_trip(self):
         """B1: BNG2.pl XML serializes ``a || b`` as ``(a)or(b)``."""
-        xml = OrderedDict([
-            ("@id", "f"),
-            ("Expression", " if(((plusBafA1==3)or(Aobs>=threshold3)),0,1) "),
-        ])
+        xml = OrderedDict(
+            [
+                ("@id", "f"),
+                ("Expression", " if(((plusBafA1==3)or(Aobs>=threshold3)),0,1) "),
+            ]
+        )
         fb = FunctionBlockXML(xml)
         expr = fb.parsed_obj.items["f"].expr
         assert ")or(" not in expr, expr
@@ -785,10 +939,12 @@ class TestFunctionBlockXML:
 
     def test_b1_nested_boolean_ops(self):
         """B1: nested ``)and(`` / ``)or(`` patterns all rewrite."""
-        xml = OrderedDict([
-            ("@id", "f"),
-            ("Expression", "(((a==1)and(b==1))and(c==1))or(d==1)"),
-        ])
+        xml = OrderedDict(
+            [
+                ("@id", "f"),
+                ("Expression", "(((a==1)and(b==1))and(c==1))or(d==1)"),
+            ]
+        )
         fb = FunctionBlockXML(xml)
         expr = fb.parsed_obj.items["f"].expr
         assert ")and(" not in expr
@@ -800,19 +956,23 @@ class TestFunctionBlockXML:
         """B1: ``foo(x)`` (no preceding close-paren) is NOT a boolean op
         encoding and must be preserved verbatim. Specifically, identifiers
         ending with ``and``/``or`` (e.g. user functions) must not collide."""
-        xml = OrderedDict([
-            ("@id", "f"),
-            # ``random(x)`` should remain a function call; no preceding ')'.
-            ("Expression", "random(x) + myop(y)"),
-        ])
+        xml = OrderedDict(
+            [
+                ("@id", "f"),
+                # ``random(x)`` should remain a function call; no preceding ')'.
+                ("Expression", "random(x) + myop(y)"),
+            ]
+        )
         fb = FunctionBlockXML(xml)
         assert fb.parsed_obj.items["f"].expr == "random(x) + myop(y)"
 
 
 # ---- RuleBlockXML ----
 
-def _make_rule_xml(name, reactant_mol_name, product_mol_name, rate_value,
-                    rate_type="Ele", operations=None):
+
+def _make_rule_xml(
+    name, reactant_mol_name, product_mol_name, rate_value, rate_type="Ele", operations=None
+):
     """Build a rule XML dict.
 
     Note: ListOfOperations must be a non-empty OrderedDict containing at least
@@ -828,36 +988,49 @@ def _make_rule_xml(name, reactant_mol_name, product_mol_name, rate_value,
     prod_mol = _simple_molecule_xml(product_mol_name)
     prod_pat = _simple_pattern_xml(prod_mol)
 
-    rate_law = OrderedDict([
-        ("@id", "RL1"),
-        ("@type", rate_type),
-    ])
+    rate_law = OrderedDict(
+        [
+            ("@id", "RL1"),
+            ("@type", rate_type),
+        ]
+    )
     if rate_type == "Ele":
-        rate_law["ListOfRateConstants"] = OrderedDict([
-            ("RateConstant", OrderedDict([("@value", rate_value)])),
-        ])
+        rate_law["ListOfRateConstants"] = OrderedDict(
+            [
+                ("RateConstant", OrderedDict([("@value", rate_value)])),
+            ]
+        )
     elif rate_type == "Function":
         rate_law["@name"] = rate_value
         rate_law["@totalrate"] = 0
 
     if operations is None:
         # Provide a minimal valid operations dict so both code paths work.
-        operations = OrderedDict([
-            ("StateChange", OrderedDict([
-                ("@id", "O1"),
-                ("@site", "O1_P1_M1_C1"),
-                ("@finalState", "active"),
-            ])),
-        ])
+        operations = OrderedDict(
+            [
+                (
+                    "StateChange",
+                    OrderedDict(
+                        [
+                            ("@id", "O1"),
+                            ("@site", "O1_P1_M1_C1"),
+                            ("@finalState", "active"),
+                        ]
+                    ),
+                ),
+            ]
+        )
 
-    rule = OrderedDict([
-        ("@id", "R1"),
-        ("@name", name),
-        ("ListOfReactantPatterns", OrderedDict([("ReactantPattern", react_pat)])),
-        ("ListOfProductPatterns", OrderedDict([("ProductPattern", prod_pat)])),
-        ("RateLaw", rate_law),
-        ("ListOfOperations", operations),
-    ])
+    rule = OrderedDict(
+        [
+            ("@id", "R1"),
+            ("@name", name),
+            ("ListOfReactantPatterns", OrderedDict([("ReactantPattern", react_pat)])),
+            ("ListOfProductPatterns", OrderedDict([("ProductPattern", prod_pat)])),
+            ("RateLaw", rate_law),
+            ("ListOfOperations", operations),
+        ]
+    )
     return rule
 
 
@@ -884,12 +1057,19 @@ class TestRuleBlockXML:
     def test_resolve_ratelaw_ele(self):
         xml = _make_rule_xml("r1", "A", "B", "0.5")
         rb = RuleBlockXML(xml)
-        rate_xml = OrderedDict([
-            ("@type", "Ele"),
-            ("ListOfRateConstants", OrderedDict([
-                ("RateConstant", OrderedDict([("@value", "0.5")])),
-            ])),
-        ])
+        rate_xml = OrderedDict(
+            [
+                ("@type", "Ele"),
+                (
+                    "ListOfRateConstants",
+                    OrderedDict(
+                        [
+                            ("RateConstant", OrderedDict([("@value", "0.5")])),
+                        ]
+                    ),
+                ),
+            ]
+        )
         result = rb.resolve_ratelaw(rate_xml)
         assert result == "0.5"
 
@@ -903,27 +1083,44 @@ class TestRuleBlockXML:
     def test_resolve_ratelaw_mm(self):
         xml = _make_rule_xml("r1", "A", "B", "0.5")
         rb = RuleBlockXML(xml)
-        rate_xml = OrderedDict([
-            ("@type", "MM"),
-            ("ListOfRateConstants", OrderedDict([
-                ("RateConstant", [
-                    OrderedDict([("@value", "kcat")]),
-                    OrderedDict([("@value", "Km")]),
-                ]),
-            ])),
-        ])
+        rate_xml = OrderedDict(
+            [
+                ("@type", "MM"),
+                (
+                    "ListOfRateConstants",
+                    OrderedDict(
+                        [
+                            (
+                                "RateConstant",
+                                [
+                                    OrderedDict([("@value", "kcat")]),
+                                    OrderedDict([("@value", "Km")]),
+                                ],
+                            ),
+                        ]
+                    ),
+                ),
+            ]
+        )
         result = rb.resolve_ratelaw(rate_xml)
         assert result == "MM(kcat,Km)"
 
     def test_resolve_ratelaw_mm_single(self):
         xml = _make_rule_xml("r1", "A", "B", "0.5")
         rb = RuleBlockXML(xml)
-        rate_xml = OrderedDict([
-            ("@type", "Sat"),
-            ("ListOfRateConstants", OrderedDict([
-                ("RateConstant", OrderedDict([("@value", "k1")])),
-            ])),
-        ])
+        rate_xml = OrderedDict(
+            [
+                ("@type", "Sat"),
+                (
+                    "ListOfRateConstants",
+                    OrderedDict(
+                        [
+                            ("RateConstant", OrderedDict([("@value", "k1")])),
+                        ]
+                    ),
+                ),
+            ]
+        )
         result = rb.resolve_ratelaw(rate_xml)
         assert result == "Sat(k1)"
 
@@ -949,17 +1146,29 @@ class TestRuleBlockXML:
         (which supports FunctionProduct natively)."""
         xml = _make_rule_xml("r1", "A", "B", "0.5")
         rb = RuleBlockXML(xml)
-        rate_xml = OrderedDict([
-            ("@type", "FunctionProduct"),
-            ("@name1", "_localFuncL1"),
-            ("@name2", "_localFuncR1"),
-            ("ListOfArguments1", OrderedDict([
-                ("Argument", OrderedDict([("@id", "x")])),
-            ])),
-            ("ListOfArguments2", OrderedDict([
-                ("Argument", OrderedDict([("@id", "y")])),
-            ])),
-        ])
+        rate_xml = OrderedDict(
+            [
+                ("@type", "FunctionProduct"),
+                ("@name1", "_localFuncL1"),
+                ("@name2", "_localFuncR1"),
+                (
+                    "ListOfArguments1",
+                    OrderedDict(
+                        [
+                            ("Argument", OrderedDict([("@id", "x")])),
+                        ]
+                    ),
+                ),
+                (
+                    "ListOfArguments2",
+                    OrderedDict(
+                        [
+                            ("Argument", OrderedDict([("@id", "y")])),
+                        ]
+                    ),
+                ),
+            ]
+        )
         result = rb.resolve_ratelaw(rate_xml)
         assert result == 'FunctionProduct("_localFuncL1(x)","_localFuncR1(y)")'
 
@@ -969,20 +1178,35 @@ class TestRuleBlockXML:
         mirroring the existing MM/Sat handling."""
         xml = _make_rule_xml("r1", "A", "B", "0.5")
         rb = RuleBlockXML(xml)
-        rate_xml = OrderedDict([
-            ("@type", "FunctionProduct"),
-            ("@name1", "fL"),
-            ("@name2", "fR"),
-            ("ListOfArguments1", OrderedDict([
-                ("Argument", [
-                    OrderedDict([("@id", "x")]),
-                    OrderedDict([("@id", "z")]),
-                ]),
-            ])),
-            ("ListOfArguments2", OrderedDict([
-                ("Argument", OrderedDict([("@id", "y")])),
-            ])),
-        ])
+        rate_xml = OrderedDict(
+            [
+                ("@type", "FunctionProduct"),
+                ("@name1", "fL"),
+                ("@name2", "fR"),
+                (
+                    "ListOfArguments1",
+                    OrderedDict(
+                        [
+                            (
+                                "Argument",
+                                [
+                                    OrderedDict([("@id", "x")]),
+                                    OrderedDict([("@id", "z")]),
+                                ],
+                            ),
+                        ]
+                    ),
+                ),
+                (
+                    "ListOfArguments2",
+                    OrderedDict(
+                        [
+                            ("Argument", OrderedDict([("@id", "y")])),
+                        ]
+                    ),
+                ),
+            ]
+        )
         result = rb.resolve_ratelaw(rate_xml)
         assert result == 'FunctionProduct("fL(x,z)","fR(y)")'
 
@@ -991,11 +1215,13 @@ class TestRuleBlockXML:
         parens. BNG2.pl is happy parsing this back."""
         xml = _make_rule_xml("r1", "A", "B", "0.5")
         rb = RuleBlockXML(xml)
-        rate_xml = OrderedDict([
-            ("@type", "FunctionProduct"),
-            ("@name1", "fL"),
-            ("@name2", "fR"),
-        ])
+        rate_xml = OrderedDict(
+            [
+                ("@type", "FunctionProduct"),
+                ("@name1", "fL"),
+                ("@name2", "fR"),
+            ]
+        )
         result = rb.resolve_ratelaw(rate_xml)
         assert result == 'FunctionProduct("fL()","fR()")'
 
@@ -1059,27 +1285,41 @@ class TestRuleBlockXML:
         """get_rule_mod returns None when ListOfOperations is None."""
         xml = _make_rule_xml("r1", "A", "B", "0.1")
         rb = RuleBlockXML(xml)
-        rule_xml = OrderedDict([
-            ("@name", "r1"),
-            ("ListOfOperations", None),
-        ])
+        rule_xml = OrderedDict(
+            [
+                ("@name", "r1"),
+                ("ListOfOperations", None),
+            ]
+        )
         result = rb.get_rule_mod(rule_xml)
         assert result is None
 
     def test_get_rule_mod_delete_molecules(self):
         xml = _make_rule_xml("r1", "A", "B", "0.1")
         rb = RuleBlockXML(xml)
-        rule_xml = OrderedDict([
-            ("@name", "r1"),
-            ("ListOfOperations", OrderedDict([
-                ("Delete", OrderedDict([
-                    ("@id", "O1"),
-                    ("@DeleteMolecules", 1),
-                ])),
-            ])),
-            ("ListOfReactantPatterns", None),
-            ("ListOfProductPatterns", None),
-        ])
+        rule_xml = OrderedDict(
+            [
+                ("@name", "r1"),
+                (
+                    "ListOfOperations",
+                    OrderedDict(
+                        [
+                            (
+                                "Delete",
+                                OrderedDict(
+                                    [
+                                        ("@id", "O1"),
+                                        ("@DeleteMolecules", 1),
+                                    ]
+                                ),
+                            ),
+                        ]
+                    ),
+                ),
+                ("ListOfReactantPatterns", None),
+                ("ListOfProductPatterns", None),
+            ]
+        )
         result = rb.get_rule_mod(rule_xml)
         assert result.type == "DeleteMolecules"
 
@@ -1092,24 +1332,38 @@ class TestRuleBlockXML:
     def test_get_rule_mod_include_exclude_selectors(self):
         xml = _make_rule_xml("r1", "A", "B", "0.1")
         rb = RuleBlockXML(xml)
-        rule_xml = OrderedDict([
-            ("@name", "r1"),
-            ("ListOfOperations", OrderedDict()),
-            ("ListOfExcludeReactants", [
-                OrderedDict([
-                    ("@id", "RR12_RP1"),
-                    ("Pattern", _simple_pattern_xml(_simple_molecule_xml("R"))),
-                ]),
-                OrderedDict([
-                    ("@id", "RR12_RP2"),
-                    ("Pattern", _simple_pattern_xml(_simple_molecule_xml("S"))),
-                ]),
-            ]),
-            ("ListOfIncludeProducts", OrderedDict([
-                ("@id", "RR12_PP1"),
-                ("Pattern", _simple_pattern_xml(_simple_molecule_xml("P"))),
-            ])),
-        ])
+        rule_xml = OrderedDict(
+            [
+                ("@name", "r1"),
+                ("ListOfOperations", OrderedDict()),
+                (
+                    "ListOfExcludeReactants",
+                    [
+                        OrderedDict(
+                            [
+                                ("@id", "RR12_RP1"),
+                                ("Pattern", _simple_pattern_xml(_simple_molecule_xml("R"))),
+                            ]
+                        ),
+                        OrderedDict(
+                            [
+                                ("@id", "RR12_RP2"),
+                                ("Pattern", _simple_pattern_xml(_simple_molecule_xml("S"))),
+                            ]
+                        ),
+                    ],
+                ),
+                (
+                    "ListOfIncludeProducts",
+                    OrderedDict(
+                        [
+                            ("@id", "RR12_PP1"),
+                            ("Pattern", _simple_pattern_xml(_simple_molecule_xml("P"))),
+                        ]
+                    ),
+                ),
+            ]
+        )
         result = rb.get_rule_mod(rule_xml)
         assert result is not None
         assert str(result) == (
@@ -1119,46 +1373,69 @@ class TestRuleBlockXML:
     def test_resolve_ratelaw_hill(self):
         xml = _make_rule_xml("r1", "A", "B", "0.5")
         rb = RuleBlockXML(xml)
-        rate_xml = OrderedDict([
-            ("@type", "Hill"),
-            ("ListOfRateConstants", OrderedDict([
-                ("RateConstant", [
-                    OrderedDict([("@value", "Vmax")]),
-                    OrderedDict([("@value", "Kd")]),
-                    OrderedDict([("@value", "n")]),
-                ]),
-            ])),
-        ])
+        rate_xml = OrderedDict(
+            [
+                ("@type", "Hill"),
+                (
+                    "ListOfRateConstants",
+                    OrderedDict(
+                        [
+                            (
+                                "RateConstant",
+                                [
+                                    OrderedDict([("@value", "Vmax")]),
+                                    OrderedDict([("@value", "Kd")]),
+                                    OrderedDict([("@value", "n")]),
+                                ],
+                            ),
+                        ]
+                    ),
+                ),
+            ]
+        )
         result = rb.resolve_ratelaw(rate_xml)
         assert result == "Hill(Vmax,Kd,n)"
 
     def test_resolve_ratelaw_arrhenius(self):
         xml = _make_rule_xml("r1", "A", "B", "0.5")
         rb = RuleBlockXML(xml)
-        rate_xml = OrderedDict([
-            ("@type", "Arrhenius"),
-            ("ListOfRateConstants", OrderedDict([
-                ("RateConstant", [
-                    OrderedDict([("@value", "phi")]),
-                    OrderedDict([("@value", "Ea")]),
-                ]),
-            ])),
-        ])
+        rate_xml = OrderedDict(
+            [
+                ("@type", "Arrhenius"),
+                (
+                    "ListOfRateConstants",
+                    OrderedDict(
+                        [
+                            (
+                                "RateConstant",
+                                [
+                                    OrderedDict([("@value", "phi")]),
+                                    OrderedDict([("@value", "Ea")]),
+                                ],
+                            ),
+                        ]
+                    ),
+                ),
+            ]
+        )
         result = rb.resolve_ratelaw(rate_xml)
         assert result == "Arrhenius(phi,Ea)"
 
 
 # ---- EnergyPatternBlockXML ----
 
+
 class TestEnergyPatternBlockXML:
     def _ep_xml(self, epid, mol_name, expr):
         mol = _simple_molecule_xml(mol_name)
         pat = _simple_pattern_xml(mol)
-        return OrderedDict([
-            ("@id", epid),
-            ("@expression", expr),
-            ("Pattern", pat),
-        ])
+        return OrderedDict(
+            [
+                ("@id", epid),
+                ("@expression", expr),
+                ("Pattern", pat),
+            ]
+        )
 
     def test_single_energy_pattern(self):
         xml = self._ep_xml("ep1", "A", "Gf_A")
@@ -1178,24 +1455,37 @@ class TestEnergyPatternBlockXML:
 
 # ---- PopulationMapBlockXML ----
 
+
 class TestPopulationMapBlockXML:
     def _pm_xml(self, pmid, struct_name, pop_name, rate_value):
         struct_mol = _simple_molecule_xml(struct_name)
         struct_pat = _simple_pattern_xml(struct_mol)
         pop_mol = _simple_molecule_xml(pop_name)
         pop_pat = _simple_pattern_xml(pop_mol)
-        return OrderedDict([
-            ("@id", pmid),
-            ("StructuredSpecies", OrderedDict([("Species", struct_pat)])),
-            ("PopulationSpecies", OrderedDict([("Species", pop_pat)])),
-            ("RateLaw", OrderedDict([
-                ("@id", "RL1"),
-                ("@type", "Ele"),
-                ("ListOfRateConstants", OrderedDict([
-                    ("RateConstant", OrderedDict([("@value", rate_value)])),
-                ])),
-            ])),
-        ])
+        return OrderedDict(
+            [
+                ("@id", pmid),
+                ("StructuredSpecies", OrderedDict([("Species", struct_pat)])),
+                ("PopulationSpecies", OrderedDict([("Species", pop_pat)])),
+                (
+                    "RateLaw",
+                    OrderedDict(
+                        [
+                            ("@id", "RL1"),
+                            ("@type", "Ele"),
+                            (
+                                "ListOfRateConstants",
+                                OrderedDict(
+                                    [
+                                        ("RateConstant", OrderedDict([("@value", rate_value)])),
+                                    ]
+                                ),
+                            ),
+                        ]
+                    ),
+                ),
+            ]
+        )
 
     def test_single_population_map(self):
         xml = self._pm_xml("pm1", "A", "Apop", "0.5")
@@ -1215,23 +1505,32 @@ class TestPopulationMapBlockXML:
     def test_population_map_function_rate(self):
         xml = self._pm_xml("pm1", "A", "Apop", "0.5")
         # override rate law to Function type
-        xml["RateLaw"] = OrderedDict([
-            ("@id", "RL1"),
-            ("@type", "Function"),
-            ("@name", "lumpFunc"),
-        ])
+        xml["RateLaw"] = OrderedDict(
+            [
+                ("@id", "RL1"),
+                ("@type", "Function"),
+                ("@name", "lumpFunc"),
+            ]
+        )
         pm = PopulationMapBlockXML(xml)
         assert "pm1" in pm.parsed_obj.items
 
     def test_resolve_ratelaw_ele(self):
         xml = self._pm_xml("pm1", "A", "Apop", "0.5")
         pm = PopulationMapBlockXML(xml)
-        rate_xml = OrderedDict([
-            ("@type", "Ele"),
-            ("ListOfRateConstants", OrderedDict([
-                ("RateConstant", OrderedDict([("@value", "1.0")])),
-            ])),
-        ])
+        rate_xml = OrderedDict(
+            [
+                ("@type", "Ele"),
+                (
+                    "ListOfRateConstants",
+                    OrderedDict(
+                        [
+                            ("RateConstant", OrderedDict([("@value", "1.0")])),
+                        ]
+                    ),
+                ),
+            ]
+        )
         result = pm.resolve_ratelaw(rate_xml)
         assert result == "1.0"
 
@@ -1245,15 +1544,25 @@ class TestPopulationMapBlockXML:
     def test_resolve_ratelaw_mm(self):
         xml = self._pm_xml("pm1", "A", "Apop", "0.5")
         pm = PopulationMapBlockXML(xml)
-        rate_xml = OrderedDict([
-            ("@type", "MM"),
-            ("ListOfRateConstants", OrderedDict([
-                ("RateConstant", [
-                    OrderedDict([("@value", "kcat")]),
-                    OrderedDict([("@value", "Km")]),
-                ]),
-            ])),
-        ])
+        rate_xml = OrderedDict(
+            [
+                ("@type", "MM"),
+                (
+                    "ListOfRateConstants",
+                    OrderedDict(
+                        [
+                            (
+                                "RateConstant",
+                                [
+                                    OrderedDict([("@value", "kcat")]),
+                                    OrderedDict([("@value", "Km")]),
+                                ],
+                            ),
+                        ]
+                    ),
+                ),
+            ]
+        )
         result = pm.resolve_ratelaw(rate_xml)
         assert result == "MM(kcat,Km)"
 

@@ -268,9 +268,7 @@ class BNGParser:
                 self.parse_xml(xml_str, model_obj)
             model_obj.reset_compilation_tags()
         else:
-            raise NotImplementedError(
-                f"The extension of {model_file} is not supported"
-            )
+            raise NotImplementedError(f"The extension of {model_file} is not supported")
 
     def parse_actions(self, model_obj):
         """
@@ -303,9 +301,7 @@ class BNGParser:
         try:
             action_list = self.alist.action_parser.parse_string(action)
         except Exception as e:
-            raise BNGParseError(
-                self.bngfile.path, f"Failed to parse action {action}"
-            ) from e
+            raise BNGParseError(self.bngfile.path, f"Failed to parse action {action}") from e
         if action_list[-1] == ";":
             _ = action_list.pop(-1)
         atype = action_list.pop(0)
@@ -339,9 +335,7 @@ class BNGParser:
                 arg_name = action_list.pop(0)
                 connector = action_list.pop(0)
                 if connector != "=>":
-                    raise BNGParseError(
-                        self.bngfile.path, f"Action {action} is malformed"
-                    )
+                    raise BNGParseError(self.bngfile.path, f"Action {action} is malformed")
                 if arg_name in self.alist.irregular_args:
                     arg_type = self.alist.irregular_args[arg_name]
                     if arg_type == "dict":
@@ -399,9 +393,7 @@ class BNGParser:
                 self.bngfile.path,
                 f"Action {action} has a malformed argument shape for {atype}.",
             )
-        raise BNGParseError(
-            self.bngfile.path, f"Action type {atype} is not recognized."
-        )
+        raise BNGParseError(self.bngfile.path, f"Action type {atype} is not recognized.")
 
     def parse_xml(self, xml_str, model_obj) -> None:
         """

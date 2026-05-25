@@ -1,6 +1,5 @@
 """Tests for bionetgen.network.structs and bionetgen.network.blocks."""
 
-
 from unittest.mock import patch
 
 import pytest
@@ -738,9 +737,7 @@ class TestNetworkReactionBlock:
         # NetworkReaction stores its rid as `name`. The __setattr__ path is
         # only reachable for string attribute names, so insert a string-keyed
         # reaction directly into items rather than via add_reaction.
-        existing_reaction = NetworkReaction(
-            1, reactants=["1"], products=["2"], rate_constant="k1"
-        )
+        existing_reaction = NetworkReaction(1, reactants=["1"], products=["2"], rate_constant="k1")
         rb.items["rxn1"] = existing_reaction
         rb._changes.clear()
 

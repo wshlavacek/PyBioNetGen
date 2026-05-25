@@ -1,0 +1,16 @@
+name: ruff
+
+on: [push, pull_request]
+
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # Pin the ruff version so formatting style can't silently drift the way
+      # the old unpinned `psf/black@stable` workflow did (a new yearly black
+      # release reformatted the whole repo and broke the lint gate).
+      - uses: astral-sh/ruff-action@v3
+        with:
+          version: "0.15.14"
+          args: "format --check"

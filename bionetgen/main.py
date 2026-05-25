@@ -70,7 +70,9 @@ class BNGBase(cement.Controller):
 
     class Meta:
         label = "bionetgen"
-        description = "A simple CLI to bionetgen <https://bionetgen.org>. Note that you need Perl installed."
+        description = (
+            "A simple CLI to bionetgen <https://bionetgen.org>. Note that you need Perl installed."
+        )
         help = "bionetgen"
         arguments = [
             (["-v", "--version"], {"action": "version", "version": VERSION_BANNER}),
@@ -671,6 +673,7 @@ class BNGBase(cement.Controller):
     )
     def atomize(self):
         from .core.main import runAtomizeTool
+
         runAtomizeTool(self.app)
 
 

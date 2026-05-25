@@ -426,10 +426,7 @@ class Rule(ModelObj):
             self.bidirectional = True
         else:
             raise BNGParseError(
-                message=(
-                    f": Rule {self.name} requires 1 or 2 rate constants, "
-                    f"got {len(rate_cts)}"
-                )
+                message=(f": Rule {self.name} requires 1 or 2 rate constants, got {len(rate_cts)}")
             )
 
     def gen_string(self):
