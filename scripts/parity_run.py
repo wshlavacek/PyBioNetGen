@@ -63,7 +63,19 @@ def run(cmd):
         sys.exit(f"step failed (exit {proc.returncode}): {' '.join(str(c) for c in cmd)}")
 
 
-def sweep(simulator, root, out, n_seeds, workers, timeout, limit, include, exclude, models=None):
+def sweep(
+    simulator,
+    root,
+    out,
+    n_seeds,
+    workers,
+    timeout,
+    limit,
+    include,
+    exclude,
+    models=None,
+    manifest="",
+):
     cmd = [
         sys.executable,
         SWEEP,
@@ -80,6 +92,8 @@ def sweep(simulator, root, out, n_seeds, workers, timeout, limit, include, exclu
         "--timeout",
         timeout,
     ]
+    if manifest:
+        cmd += ["--manifest", manifest]
     if limit:
         cmd += ["--limit", limit]
     if include:
@@ -146,14 +160,28 @@ def main():
     ap.add_argument(
         "--escalate-seeds",
         type=int,
-        default=50,
-        help="Seed count to re-judge stochastic DIFFs at (default 50)",
+        default=150,
+        help="Seed count to re-judge stochastic DIFFs at (default "
+        "150; some slow-tier oscillator/rare-species ensemble "
+        "means need ~100-150 seeds to settle above the 0.99 bar)",
     )
     ap.add_argument("--workers", type=int, default=6)
     ap.add_argument("--timeout", type=int, default=180, help="Per-model timeout (s)")
     ap.add_argument("--limit", type=int, default=0, help="Max .bngl files (0=all)")
     ap.add_argument("--include", default="", help="Substring path filter")
     ap.add_argument("--exclude", default="", help="Substring path filter (drop)")
+    ap.add_argument(
+        "--manifest",
+        default="",
+        help="parity-corpus manifest.json forwarded to the sweeps "
+        "for per-model overrides (relpath-keyed).",
+    )
+    ap.add_argument(
+        "--models",
+        default="",
+        help="Comma-separated model basenames to restrict the base "
+        "sweep to (a selected smaller suite).",
+    )
     ap.add_argument(
         "--no-escalate",
         action="store_true",
@@ -175,6 +203,7 @@ def main():
     started = time.time()
 
     # 1. Base sweeps.
+    base_models = [m.strip() for m in args.models.split(",") if m.strip()] or None
     common = dict(
         root=args.root,
         n_seeds=str(args.n_seeds),
@@ -183,6 +212,8 @@ def main():
         limit=str(args.limit) if args.limit else "",
         include=args.include,
         exclude=args.exclude,
+        manifest=args.manifest,
+        models=base_models,
     )
     print("=== [1/4] base sweep — subprocess ===")
     sweep("subprocess", out=str(base_sub), **common)
@@ -236,6 +267,7 @@ def main():
             limit="",
             include="",
             exclude="",
+            manifest=args.manifest,
         )
         sweep("subprocess", out=str(esc_sub), models=models, **esc_common)
         sweep("bngsim", out=str(esc_bng), models=models, **esc_common)
