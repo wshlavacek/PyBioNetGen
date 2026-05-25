@@ -155,6 +155,10 @@ module = [
     "bngsim.*",
     "pyyed",
     "setuptools._distutils.*",
+    # scripts/ is not a package on mypy's path; tests import these via a
+    # sys.path insert (tests/test_parity_diff.py et al.).
+    "parity_diff",
+    "parity_sweep",
 ]
 ignore_missing_imports = true
 

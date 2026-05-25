@@ -26,7 +26,7 @@ import socket
 import sys
 import traceback
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, overload
 
 from bionetgen.core.exc import BNGSimError
 from bionetgen.core.tools.bngsim_bridge import (
@@ -81,7 +81,14 @@ class BackendHelperJob:
     backend_flags: dict[str, Any]
 
 
+@overload
+def _as_number(value: Any, default: float) -> float: ...
+@overload
+def _as_number(value: Any, default: None = None) -> float | None: ...
 def _as_number(value: Any, default: float | None = None) -> float | None:
+    # When called with a concrete float default (e.g. t_start/t_end), the
+    # result is always a float — every return path yields the float `default`
+    # or float(value). The overloads encode that so callers don't see float|None.
     if value is None:
         return default
     try:
