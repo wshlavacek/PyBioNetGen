@@ -89,3 +89,25 @@ class TestRuleMonkeyRewriteAndRegistry:
         for stem, entry in pd.SUBPROCESS_NF_RULEMONKEY.items():
             assert isinstance(stem, str) and not stem.endswith(".bngl")  # stems
             assert "reason" in entry and "issue" in entry
+
+
+class TestKnownStochasticArtifacts:
+    def test_registry_contract(self):
+        for stem, entry in pd.KNOWN_STOCHASTIC_ARTIFACTS.items():
+            assert isinstance(stem, str) and not stem.endswith(".bngl")
+            assert "reason" in entry and "issue" in entry
+            af = entry["artifact_files"]
+            assert isinstance(af, set) and af
+            # artifact files name the model's own segments
+            assert all(f.startswith(stem) and f.endswith((".gdat", ".cdat"))
+                       for f in af), af
+
+    def test_segment_scoped_subset_logic(self):
+        # the reclassification rule: a failing-file set reclassifies iff it is a
+        # non-empty subset of the registered artifact files.
+        art = pd.KNOWN_STOCHASTIC_ARTIFACTS["Kholodenko2000"]["artifact_files"]
+        ssa_only = {"Kholodenko2000_ssa.gdat", "Kholodenko2000_ssa.cdat"}
+        with_ode = ssa_only | {"Kholodenko2000_ode.gdat"}
+        assert ssa_only and ssa_only <= art          # SSA-only -> KNOWN_ARTIFACT
+        assert not (with_ode <= art)                 # ode regression -> stays DIFF
+        assert not (set() and set() <= art)          # no failures -> not artifact

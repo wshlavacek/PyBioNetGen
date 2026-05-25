@@ -373,6 +373,60 @@ SUBPROCESS_NF_RULEMONKEY = {
                   "bngsim NF vs bngsim RuleMonkey agree to 99.7%. Legacy NFsim "
                   "is the outlier. Verified 2026-05-24.",
     },
+    "ft_cooperative_binding": {
+        "issue": "legacy NFsim v1.14.3 cooperative-binding feature",
+        "reason": "Cooperative-binding feature test. bngsim NF vs legacy "
+                  "subprocess NF DIFFs catastrophically (14% cell pass); "
+                  "bngsim NF vs bngsim RuleMonkey agree (~99%). Legacy NFsim "
+                  "mishandles the cooperative rate; bngsim is correct. "
+                  "Verified 2026-05-24.",
+    },
+    "Tutorial_Example": {
+        "issue": "legacy NFsim v1.14.3 nf segment",
+        "reason": "bngsim NF vs legacy subprocess NF DIFFs (72% cell pass); "
+                  "bngsim NF vs bngsim RuleMonkey agree exactly (100%). Legacy "
+                  "NFsim is the outlier. Verified 2026-05-24.",
+    },
+}
+
+# Stochastic models whose SSA (or other stochastic) SEGMENT is a known-artifact
+# DIFF — not an engine bug, but a comparison the ensemble-mean test can't make
+# cleanly. The motivating class is SSA of oscillatory / bistable systems, where
+# the ensemble MEAN is a high-variance, ill-conditioned target: trajectories
+# decohere in phase (oscillators) or split between attractors (bistable), so
+# two correct engines' 10-seed means differ — and MORE seeds makes it worse
+# (the 3-sigma band tightens). Each model's DETERMINISTIC ode segment passes
+# exactly, confirming the network is correct; the artifact is confined to the
+# named stochastic files. The entry is SEGMENT-SCOPED: the model is reclassified
+# KNOWN_ARTIFACT only if every FAILING file is in ``artifact_files``. A
+# regression in any other segment (e.g. the ode .gdat) still flags DIFF.
+KNOWN_STOCHASTIC_ARTIFACTS = {
+    "Kholodenko2000": {
+        "artifact_files": {"Kholodenko2000_ssa.gdat", "Kholodenko2000_ssa.cdat"},
+        "issue": "SSA ensemble-mean of an oscillator",
+        "reason": "MAPK cascade with negative feedback (sustained oscillations). "
+                  "SSA trajectories decohere in phase, so the ensemble mean is a "
+                  "high-variance target; bngsim-SSA vs subprocess-SSA means "
+                  "differ (~88% cell pass) while the ODE segment matches exactly "
+                  "and more seeds widen the gap. Not an engine bug.",
+    },
+    "V2005_bistable_gene": {
+        "artifact_files": {"V2005_bistable_gene_ssa.gdat", "V2005_bistable_gene_ssa.cdat"},
+        "issue": "SSA ensemble-mean of a bistable switch",
+        "reason": "Bistable gene circuit. SSA trajectories split between the two "
+                  "stable states, so the ensemble mean is bimodal and seed-"
+                  "sensitive (cell pass 1.00 early -> 0.84 late as states "
+                  "separate); the ODE segment matches exactly. Not an engine bug.",
+    },
+    "Krishna2006": {
+        "artifact_files": {"Krishna2006_ssa.gdat", "Krishna2006_ssa.cdat",
+                           "Krishna2006_nfr.gdat", "Krishna2006_nfr.cdat"},
+        "issue": "SSA/NF ensemble-mean of an oscillator",
+        "reason": "NF-kB oscillation model. Both stochastic segments sit just "
+                  "under the 0.99 ensemble-pass threshold (ssa 0.985, nfr 0.989) "
+                  "— near-threshold noise on an oscillatory system; the ODE "
+                  "segment matches exactly. Not an engine bug.",
+    },
 }
 
 # Relative tolerance for the ODE-oracle revalidation. Looser than the
@@ -1535,6 +1589,16 @@ def main():
                         bng_ok, bng_dirs, stem, rulemonkey)
                     ref_bug = rulemonkey
                     oracle_field = "rulemonkey_oracle"
+                # Segment-scoped known stochastic artifact: reclassify out of
+                # DIFF only if EVERY failing file is a documented artifact
+                # segment (e.g. an oscillatory/bistable SSA segment). A failing
+                # non-artifact segment (e.g. the ode .gdat) is a regression and
+                # stays DIFF.
+                art = KNOWN_STOCHASTIC_ARTIFACTS.get(stem)
+                failing = {fn for fn, pf in details.get("per_file", {}).items()
+                           if pf.get("fail")}
+                stoch_artifact = (art is not None and failing
+                                  and failing <= art["artifact_files"])
                 if ref_bug is not None and oracle_status == "pass":
                     buckets["PASS_REF_BUG"].append(bngl)
                     per_model[bngl] = {
@@ -1543,6 +1607,13 @@ def main():
                         "issue": ref_bug.get("issue"),
                         "details": details,
                         oracle_field: oracle_details,
+                    }
+                elif stoch_artifact:
+                    buckets["KNOWN_ARTIFACT"].append(bngl)
+                    per_model[bngl] = {
+                        "bucket": "KNOWN_ARTIFACT", "regime": "stochastic",
+                        "reason": art["reason"], "issue": art.get("issue"),
+                        "artifact_files": sorted(failing), "details": details,
                     }
                 else:
                     per_model[bngl] = {"bucket": "DIFF", "regime": "stochastic",
