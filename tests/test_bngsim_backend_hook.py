@@ -69,7 +69,21 @@ def _patch_real_bng_action(bng_root):
         my @helper_command;
         if ($ENV{'BIONETGEN_BNGSIM_BACKEND_HELPER'})
         {
-            @helper_command = ($ENV{'BIONETGEN_BNGSIM_BACKEND_HELPER'});
+            # The test helper is a Python script. Run it through the interpreter
+            # (BNGCLI always advertises BIONETGEN_BNGSIM_BACKEND_HELPER_PYTHON)
+            # rather than exec'ing the path directly: a chmod'd shebang script
+            # is not executable on Windows, where system($script, ...) fails.
+            if ($ENV{'BIONETGEN_BNGSIM_BACKEND_HELPER_PYTHON'})
+            {
+                @helper_command = (
+                    $ENV{'BIONETGEN_BNGSIM_BACKEND_HELPER_PYTHON'},
+                    $ENV{'BIONETGEN_BNGSIM_BACKEND_HELPER'},
+                );
+            }
+            else
+            {
+                @helper_command = ($ENV{'BIONETGEN_BNGSIM_BACKEND_HELPER'});
+            }
         }
         elsif ($ENV{'BIONETGEN_BNGSIM_BACKEND_HELPER_PYTHON'} && $ENV{'BIONETGEN_BNGSIM_BACKEND_HELPER_MODULE'})
         {
