@@ -135,7 +135,10 @@ def test_bng_xml_job_uses_nfsim_session_for_nf_method_only():
     ):
         execute_bngsim_direct_job(job)
 
-    mock_bngsim.NfsimSession.assert_called_once_with("/model.xml", molecule_limit=1000)
+    # execute_bngsim_direct_job abspaths input_path (Windows: D:\model.xml).
+    mock_bngsim.NfsimSession.assert_called_once_with(
+        os.path.abspath("/model.xml"), molecule_limit=1000
+    )
     session.initialize.assert_called_once_with(7)
     session.simulate.assert_called_once_with(0.0, 10.0, 11)
     mock_bngsim.Simulator.assert_not_called()
@@ -203,7 +206,9 @@ def test_bng_xml_rm_job_writes_final_state_and_replays_conc():
     ):
         execute_bngsim_direct_job(job)
 
-    mock_bngsim.RuleMonkeySession.assert_called_once_with("/model.xml", molecule_limit=1000)
+    mock_bngsim.RuleMonkeySession.assert_called_once_with(
+        os.path.abspath("/model.xml"), molecule_limit=1000
+    )
     session.initialize.assert_called_once_with(7)
     session.simulate.assert_called_once_with(0.0, 10.0, 11)
     # get_final_state writeback -> <root>.species (was missing for rm)

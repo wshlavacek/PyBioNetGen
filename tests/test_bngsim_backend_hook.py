@@ -274,7 +274,9 @@ def test_helper_contract_normalizes_single_ode_job():
     assert direct.method == "ode"
     assert direct.t_span == (0.0, 5.0)
     assert direct.n_points == 6
-    assert direct.output_dir == "/tmp/out"
+    # output_prefix is abspath'd then split, so derive the expected dir the
+    # same way rather than hardcoding a POSIX path (Windows: D:\tmp\out).
+    assert direct.output_dir == os.path.dirname(os.path.abspath("/tmp/out/model"))
     assert direct.output_root == "model"
     assert direct.bngsim_options["atol"] == "1e-8"
     assert direct.result_options["print_functions"] is True
