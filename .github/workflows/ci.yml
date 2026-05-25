@@ -41,9 +41,12 @@ jobs:
         fi
       shell: bash
     - name: Run pytest + mypy
+      # bngsim isn't on public PyPI yet, so hosted runners can't install it.
+      # Skip it here (its tests skip via conftest); drop --no-bngsim once
+      # bngsim is publicly installable to exercise the bngsim path in CI too.
       run: |
-        python scripts/run_dev_checks.py
-  
+        python scripts/run_dev_checks.py --no-bngsim
+
   deploy-container:
     runs-on: ubuntu-latest
     permissions:

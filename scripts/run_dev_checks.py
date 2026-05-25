@@ -82,7 +82,17 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="Fail instead of downloading the BioNetGen runtime when it is missing.",
     )
+    parser.add_argument(
+        "--no-bngsim",
+        action="store_true",
+        help="Run pytest/mypy WITHOUT bngsim. bngsim is an optional dependency "
+        "and is not on public PyPI, so it can't be installed on a hosted CI "
+        "runner; this skips it (bngsim-specific tests skip via conftest). Also "
+        "enabled by setting PYBNG_DEV_NO_BNGSIM=1.",
+    )
     args, pytest_args = parser.parse_known_args(argv)
+    if os.environ.get("PYBNG_DEV_NO_BNGSIM"):
+        args.no_bngsim = True
     args.pytest_args = pytest_args or ["tests/"]
     return args
 
@@ -94,7 +104,7 @@ def main(argv: list[str] | None = None) -> int:
         raise RuntimeError("uv is required to run developer checks")
 
     bng_dir = resolve_bng_runtime(skip_download=args.skip_bng_download)
-    uv_base = build_uv_command(uv)
+    uv_base = build_uv_command(uv, no_bngsim=args.no_bngsim)
     env = os.environ.copy()
     env["BNGPATH"] = str(bng_dir)
 
@@ -114,7 +124,7 @@ def main(argv: list[str] | None = None) -> int:
     return 0
 
 
-def build_uv_command(uv_executable: str) -> list[str]:
+def build_uv_command(uv_executable: str, *, no_bngsim: bool = False) -> list[str]:
     command = [
         uv_executable,
         "run",
@@ -123,7 +133,13 @@ def build_uv_command(uv_executable: str) -> list[str]:
         str(REPO_ROOT / "requirements-dev.txt"),
     ]
     bngsim_checkout = resolve_local_bngsim_checkout()
-    if bngsim_checkout is not None:
+    if no_bngsim:
+        # bngsim is optional and not on public PyPI, so it can't be installed
+        # on a hosted CI runner. Run without it; conftest skips the
+        # bngsim-specific tests. Local dev (with a checkout) still runs the
+        # full suite by omitting --no-bngsim.
+        print("Skipping bngsim (--no-bngsim); bngsim-specific tests will skip", flush=True)
+    elif bngsim_checkout is not None:
         print(f"Using local editable bngsim checkout {bngsim_checkout}", flush=True)
         command.extend(["--with-editable", str(bngsim_checkout)])
     else:
