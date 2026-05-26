@@ -35,8 +35,8 @@ Layout under ``--out``:
     parity_report_base.*   base verdict (before escalation)
     parity_report.{md,json} final verdict (escalated models re-judged)
 
-Run from the .venv-bngsim venv so the spawned sweeps and the backend
-helper see the pinned bngsim. Cap --workers at the core count.
+Run from the .venv venv so the spawned sweeps and the backend
+helper see the installed bngsim. Cap --workers at the core count.
 """
 
 import argparse

@@ -1,7 +1,7 @@
 """Correctness sweep: run BNGL-Models/models through one or more simulators and diff vs reference.
 
 Usage:
-    .venv312/bin/python scripts/bngl_models_sweep.py [--models-dir PATH] [--only NAME] [--simulator MODE]
+    .venv/bin/python scripts/bngl_models_sweep.py [--models-dir PATH] [--only NAME] [--simulator MODE]
 
 For each .bngl file discovered, runs it via ``bionetgen.run()`` under one or
 more simulator modes, locates the produced .gdat/.scan files, and compares
