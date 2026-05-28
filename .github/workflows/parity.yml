@@ -6,8 +6,8 @@
 # is provided via the BNGSIM_WHEEL_URL repo secret. The lightweight manifest
 # integrity checks already run on every PR through the normal ci-testing
 # workflow (tests/test_parity_suite.py::test_manifest_*), so per-PR coverage of
-# the corpus catalog exists today; this workflow adds the on-demand / nightly
-# full numerical run once bngsim is fetchable.
+# the corpus catalog exists today; this workflow is the on-demand
+# (workflow_dispatch) full numerical run, usable once bngsim is fetchable.
 #
 # When bngsim is public: drop the gate step, add `pip install bngsim==<pin>`,
 # and (optionally) add a fast-tier job to the PR trigger.
@@ -21,8 +21,6 @@ on:
         description: "Corpus tier to run (fast | slow | glacial | original | all)"
         default: "fast"
         type: string
-  schedule:
-    - cron: "0 7 * * *"   # nightly 07:00 UTC (full suite)
 
 jobs:
   parity:
