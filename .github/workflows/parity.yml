@@ -40,7 +40,7 @@ jobs:
       - name: Install PyBioNetGen
         run: |
           sudo apt-get update && sudo apt-get -y install libncurses-dev
-          python -m pip install -e .
+          python -m pip install -e . pytest
 
       # Gate: bngsim is private today. If a wheel URL secret is configured,
       # install it; otherwise mark the run gated and fall back to integrity-only.
